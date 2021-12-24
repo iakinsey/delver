@@ -3,6 +3,6 @@ package queue
 import "github.com/iakinsey/delver/model"
 
 type Queue interface {
-	Get() (*model.Message, error)
+	GetChannel() chan model.Message
 	Put(model.Message) error
 }
