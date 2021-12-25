@@ -54,11 +54,9 @@ func (s *workerManager) Stop() {
 }
 
 func (s *workerManager) doWork() {
-	messages := s.inbox.GetChannel()
-
 	for {
 		select {
-		case message := <-messages:
+		case message := <-s.inbox.GetChannel():
 			s.worker.OnMessage(message)
 		case <-s.terminate:
 			s.terminated <- true
