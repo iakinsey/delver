@@ -1,6 +1,8 @@
 package worker
 
 import (
+	"fmt"
+	"log"
 	"time"
 
 	"github.com/iakinsey/delver/queue"
@@ -57,7 +59,17 @@ func (s *workerManager) doWork() {
 	for {
 		select {
 		case message := <-s.inbox.GetChannel():
-			s.worker.OnMessage(message)
+			err := s.worker.OnMessage(message)
+			success := err == nil
+
+			if !success {
+				log.Printf(fmt.Sprintf("Error occured while processing message: %s", err))
+
+			}
+
+			if err := s.inbox.EndTransaction(message, err == nil); err != nil {
+				log.Printf(err.Error())
+			}
 		case <-s.terminate:
 			s.terminated <- true
 			return
