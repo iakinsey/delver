@@ -1,8 +1,13 @@
 package model
 
-import "github.com/iakinsey/delver/types"
+import (
+	"encoding/json"
+
+	"github.com/iakinsey/delver/types"
+)
 
 type Message struct {
-	MessageType types.MessageType
-	Message     []byte
+	ID          string            `json:"id"`
+	MessageType types.MessageType `json:"message_type"`
+	Message     json.RawMessage   `json:"message"`
 }
