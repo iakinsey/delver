@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"internal/oserror"
 	"io/fs"
 	"io/ioutil"
 	"os"
@@ -22,6 +23,14 @@ func GetOrCreateDir(path string) (err error) {
 	}
 
 	return
+}
+
+func CreateFileOrFail(path string) (*os.File, error) {
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		return nil, oserror.ErrExist
+	}
+
+	return os.Create(path)
 }
 
 func ReadDirAlphabetized(path string) ([]fs.FileInfo, error) {
