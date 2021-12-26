@@ -2,9 +2,9 @@ package util
 
 import (
 	"fmt"
-	"internal/oserror"
 	"io/fs"
 	"io/ioutil"
+	"log"
 	"os"
 	"sort"
 )
@@ -27,7 +27,7 @@ func GetOrCreateDir(path string) (err error) {
 
 func CreateFileOrFail(path string) (*os.File, error) {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		return nil, oserror.ErrExist
+		return nil, os.ErrExist
 	}
 
 	return os.Create(path)
@@ -45,4 +45,14 @@ func ReadDirAlphabetized(path string) ([]fs.FileInfo, error) {
 	})
 
 	return files, err
+}
+
+func MakeTempFile(name string) string {
+	path, err := os.MkdirTemp("", name)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return path
 }
