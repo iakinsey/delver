@@ -2,11 +2,11 @@ package fetcher
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
+	"time"
 
+	"github.com/iakinsey/delver/gateway/streamstore"
 	"github.com/iakinsey/delver/model"
-	"github.com/iakinsey/delver/model/args"
 	"github.com/iakinsey/delver/model/request"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/worker"
@@ -14,20 +14,21 @@ import (
 
 const defaultUserAgent = "delver"
 
-type httpFetcher struct {
-	args.HTTPFetcherArgs
+type HttpFetcherArgs struct {
+	UserAgent   string
+	MaxRetries  int
+	Timeout     time.Duration
+	ProxyHost   string
+	ProxyPort   string
+	StreamStore streamstore.StreamStore
 }
 
-func NewHTTPFetcher(fetcherArgs args.HTTPFetcherArgs) (worker.Worker, error) {
-	if fetcherArgs.UserAgent == "" {
-		fetcherArgs.UserAgent = defaultUserAgent
-	}
+type httpFetcher struct {
+	HttpFetcherArgs
+}
 
-	if fetcherArgs.StreamStore == nil {
-		return nil, errors.New("HTTPFetcher requires StreamStore argument")
-	}
-
-	return &httpFetcher{fetcherArgs}, nil
+func NewHttpFetcher(args HttpFetcherArgs) worker.Worker {
+	return &httpFetcher{args}
 }
 
 func (s *httpFetcher) OnMessage(message model.Message) error {
