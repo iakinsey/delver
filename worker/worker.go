@@ -5,6 +5,6 @@ import (
 )
 
 type Worker interface {
-	OnMessage(model.Message) error
+	OnMessage(model.Message) (interface{}, error)
 	OnComplete()
 }

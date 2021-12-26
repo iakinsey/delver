@@ -27,6 +27,7 @@ type fileQueue struct {
 	path           string
 	dlqPath        string
 	maxPollDelayMs time.Duration
+	// TODO
 	maxSize        int
 	channel        chan model.Message
 	terminate      chan bool

@@ -9,18 +9,12 @@ import (
 	"github.com/iakinsey/delver/util"
 )
 
-type FilesystemStreamStoreArgs struct {
+type filesystemStreamStore struct {
 	Path string
 }
 
-type filesystemStreamStore struct {
-	FilesystemStreamStoreArgs
-}
-
-func NewFilesystemStreamStore(arg FilesystemStreamStoreArgs) (StreamStore, error) {
-	streamStore := filesystemStreamStore{arg}
-
-	return &streamStore, nil
+func NewFilesystemStreamStore(path string) (StreamStore, error) {
+	return &filesystemStreamStore{Path: path}, nil
 }
 
 func (s *filesystemStreamStore) Get(uuid types.UUID) (io.Reader, error) {

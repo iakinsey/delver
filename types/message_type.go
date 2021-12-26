@@ -3,6 +3,7 @@ package types
 type MessageType int32
 
 const (
-	FetchRequest MessageType = iota
+	NullMessage MessageType = iota
+	FetchRequest
 	FetchResponse
 )

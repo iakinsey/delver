@@ -7,7 +7,7 @@ import (
 
 	"github.com/iakinsey/delver/gateway/streamstore"
 	"github.com/iakinsey/delver/model"
-	"github.com/iakinsey/delver/model/request"
+	"github.com/iakinsey/delver/model/message"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/worker"
 )
@@ -31,32 +31,51 @@ func NewHttpFetcher(args HttpFetcherArgs) worker.Worker {
 	return &httpFetcher{args}
 }
 
-func (s *httpFetcher) OnMessage(message model.Message) error {
-	fetcherRequest := request.FetcherRequest{}
+func (s *httpFetcher) OnMessage(msg model.Message) (interface{}, error) {
+	request := message.FetcherRequest{}
+	response := message.FetcherResponse{}
+	response.RequestID = request.RequestID
+	response.URI = request.URI
+	response.Protocol = request.Protocol
 
-	if err := json.Unmarshal(message.Message, &fetcherRequest); err != nil {
-		return err
+	if err := json.Unmarshal(msg.Message, &request); err != nil {
+		return nil, err
 	}
-	return nil
+
+	s.doHttpRequestWithRetry(request, &response)
+
+	return response, nil
 }
 
 func (s *httpFetcher) OnComplete() {}
 
-func (s *httpFetcher) doHttpRequestWithRetry(uri string) (key types.UUID, err error) {
+func (s *httpFetcher) doHttpRequestWithRetry(request message.FetcherRequest, response *message.FetcherResponse) {
+	var key types.UUID
+	var err error
+
+	start := time.Now()
+
 	for i := 0; i < s.MaxRetries+1; i++ {
-		key, err := s.doHttpRequest(uri)
+		key, err = s.doHttpRequest(request, response)
 
 		if err == nil {
-			return key, nil
+			response.StoreKey = key
+			break
 		}
 	}
 
-	return key, err
+	// TODO ContentMD5
+	response.Success = err == nil
+	response.ElapsedTimeMs = time.Since(start).Milliseconds()
+
+	if err != nil {
+		response.Error = err.Error()
+	}
 }
 
-func (s *httpFetcher) doHttpRequest(uri string) (key types.UUID, err error) {
+func (s *httpFetcher) doHttpRequest(request message.FetcherRequest, response *message.FetcherResponse) (key types.UUID, err error) {
 	client := &http.Client{Timeout: s.Timeout}
-	req, err := http.NewRequest("GET", uri, nil)
+	req, err := http.NewRequest("GET", string(request.URI), nil)
 
 	if err != nil {
 		return key, err
@@ -70,6 +89,7 @@ func (s *httpFetcher) doHttpRequest(uri string) (key types.UUID, err error) {
 		return key, err
 	}
 
+	response.HTTPCode = res.StatusCode
 	key = types.NewV4()
 
 	return key, s.StreamStore.Put(key, res.Body)
