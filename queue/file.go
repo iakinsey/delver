@@ -2,6 +2,7 @@ package queue
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -20,7 +21,9 @@ import (
 const claimedSuffix = ".claimed"
 const writingSuffix = ".writing"
 const nameRegex = `[a-zA-Z0-9]+`
-const identifierRegex = `\d+-\d+-\d+-` + nameRegex
+const identifierRegex = `^\d+-\d+-\d+-` + nameRegex + "$"
+
+var errQueueEmpty = errors.New("queue is empty")
 
 type fileQueue struct {
 	name           string
@@ -70,6 +73,7 @@ func NewFileQueue(name string, path string, dlqPath string, maxPollDelayMs int, 
 		maxSize:        maxSize,
 		channel:        make(chan model.Message),
 		terminate:      make(chan bool),
+		terminated:     make(chan bool),
 		resilient:      resilient,
 		messageCounter: 0,
 		entityRegex:    entityRegex,
@@ -99,7 +103,7 @@ func (s *fileQueue) Put(message model.Message, priority int) error {
 	timestamp := time.Now().Unix()
 	fileName := fmt.Sprintf("%d-%d-%d-%s", priority, timestamp, s.messageCounter, s.name)
 	finalPath := filepath.Join(s.path, fileName)
-	writingPath := fmt.Sprintf("%s.%s", finalPath, writingSuffix)
+	writingPath := fmt.Sprintf("%s%s", finalPath, writingSuffix)
 	message.ID = fileName
 	payload, err := json.Marshal(message)
 
@@ -150,16 +154,13 @@ func (s *fileQueue) Prepare() error {
 }
 
 func (s *fileQueue) EndTransaction(message model.Message, success bool) error {
-	messagePath := filepath.Join(s.path, message.ID)
+	messagePath := filepath.Join(s.path, message.ID) + claimedSuffix
 
 	if success {
 		return os.Remove(messagePath)
 	}
 
-	fileName := strings.TrimSuffix(message.ID, claimedSuffix)
-	dlqDest := filepath.Join(s.path, fileName)
-
-	return os.Rename(messagePath, dlqDest)
+	return os.Rename(messagePath, filepath.Join(s.path, message.ID))
 }
 
 func (s *fileQueue) perform() {
@@ -170,7 +171,9 @@ func (s *fileQueue) perform() {
 		case <-time.After(sleepTime):
 			message, err := s.next()
 
-			if err != nil && !s.resilient {
+			if err == errQueueEmpty {
+				continue
+			} else if err != nil && !s.resilient {
 				log.Fatalf(err.Error())
 			} else if err != nil {
 				log.Println(err.Error())
@@ -182,6 +185,7 @@ func (s *fileQueue) perform() {
 				s.channel <- *message
 			}
 		case <-s.terminate:
+			s.terminated <- true
 			return
 		}
 	}
@@ -210,11 +214,11 @@ func (s *fileQueue) next() (*model.Message, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("Unable to claim files in queue %s", s.name)
+	return nil, errQueueEmpty
 }
 
 func (s *fileQueue) claimFile(path string) (string, error) {
-	newPath := fmt.Sprintf("%s.%s", path, claimedSuffix)
+	newPath := fmt.Sprintf("%s%s", path, claimedSuffix)
 
 	return newPath, os.Rename(path, newPath)
 }

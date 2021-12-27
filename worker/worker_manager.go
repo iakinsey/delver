@@ -2,9 +2,7 @@ package worker
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
-	"time"
 
 	"github.com/iakinsey/delver/model"
 	"github.com/iakinsey/delver/model/message"
@@ -16,51 +14,26 @@ type WorkerManager interface {
 	Stop()
 }
 type workerManager struct {
-	inbox         queue.Queue
-	outbox        queue.Queue
-	maxCoroutines int
-	priority      int
-	worker        Worker
-	terminate     chan bool
-	terminated    chan bool
+	inbox      queue.Queue
+	outbox     queue.Queue
+	priority   int
+	worker     Worker
+	terminate  chan bool
+	terminated chan bool
 }
 
-func NewWorkerManager(worker Worker, inbox queue.Queue, outbox queue.Queue, maxCoroutines int) WorkerManager {
+func NewWorkerManager(worker Worker, inbox queue.Queue, outbox queue.Queue) WorkerManager {
 	return &workerManager{
-		inbox:         inbox,
-		outbox:        outbox,
-		maxCoroutines: maxCoroutines,
-		priority:      0,
-		worker:        worker,
-		terminate:     make(chan bool, maxCoroutines),
-		terminated:    make(chan bool, maxCoroutines),
+		inbox:      inbox,
+		outbox:     outbox,
+		priority:   0,
+		worker:     worker,
+		terminate:  make(chan bool),
+		terminated: make(chan bool),
 	}
 }
 
 func (s *workerManager) Start() {
-	for i := 0; i < s.maxCoroutines; i = i + 1 {
-		go s.doWork()
-	}
-}
-
-func (s *workerManager) Stop() {
-	defer s.worker.OnComplete()
-
-	for i := 0; i < s.maxCoroutines; i = i + 1 {
-		s.terminate <- true
-	}
-
-	for i := 0; i < s.maxCoroutines; i = i + 1 {
-		select {
-		case <-s.terminated:
-			continue
-		case <-time.After(10 * time.Millisecond):
-			continue
-		}
-	}
-}
-
-func (s *workerManager) doWork() {
 	for {
 		select {
 		case message := <-s.inbox.GetChannel():
@@ -70,17 +43,24 @@ func (s *workerManager) doWork() {
 			if success {
 				s.publishResponse(result)
 			} else {
-				log.Printf(fmt.Sprintf("Error occured while processing message: %s", err))
+				log.Printf("Error occured while processing message: %s", err)
 			}
 
 			if err := s.inbox.EndTransaction(message, err == nil); err != nil {
-				log.Printf(err.Error())
+				log.Print(err.Error())
 			}
 		case <-s.terminate:
 			s.terminated <- true
 			return
 		}
 	}
+}
+
+func (s *workerManager) Stop() {
+	defer s.worker.OnComplete()
+
+	s.terminate <- true
+	<-s.terminated
 }
 
 func (s *workerManager) publishResponse(result interface{}) {
