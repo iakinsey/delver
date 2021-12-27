@@ -28,19 +28,24 @@ type httpFetcher struct {
 }
 
 func NewHttpFetcher(args HttpFetcherArgs) worker.Worker {
+	if args.UserAgent == "" {
+		args.UserAgent = defaultUserAgent
+	}
+
 	return &httpFetcher{args}
 }
 
 func (s *httpFetcher) OnMessage(msg model.Message) (interface{}, error) {
 	request := message.FetcherRequest{}
 	response := message.FetcherResponse{}
-	response.RequestID = request.RequestID
-	response.URI = request.URI
-	response.Protocol = request.Protocol
 
 	if err := json.Unmarshal(msg.Message, &request); err != nil {
 		return nil, err
 	}
+
+	response.RequestID = request.RequestID
+	response.URI = request.URI
+	response.Protocol = request.Protocol
 
 	s.doHttpRequestWithRetry(request, &response)
 
@@ -54,6 +59,7 @@ func (s *httpFetcher) doHttpRequestWithRetry(request message.FetcherRequest, res
 	var err error
 
 	start := time.Now()
+	response.Timestamp = start.Unix()
 
 	for i := 0; i < s.MaxRetries+1; i++ {
 		key, err = s.doHttpRequest(request, response)
@@ -90,7 +96,14 @@ func (s *httpFetcher) doHttpRequest(request message.FetcherRequest, response *me
 	}
 
 	response.HTTPCode = res.StatusCode
+	response.Header = res.Header
 	key = types.NewV4()
 
-	return key, s.StreamStore.Put(key, res.Body)
+	hash, err := s.StreamStore.Put(key, res.Body)
+
+	if err == nil {
+		response.ContentMD5 = hash
+	}
+
+	return key, err
 }
