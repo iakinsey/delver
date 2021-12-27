@@ -56,11 +56,11 @@ func TestComposeFetcher(t *testing.T) {
 	outboxDlqPath := util.MakeTempFile(folderPrefix + "OutboxDlq")
 	streamStorePath := util.MakeTempFile(folderPrefix + "StreamStore")
 
-	defer os.Remove(inboxPath)
-	defer os.Remove(inboxDlqPath)
-	defer os.Remove(outboxPath)
-	defer os.Remove(outboxDlqPath)
-	defer os.Remove(streamStorePath)
+	defer os.RemoveAll(inboxPath)
+	defer os.RemoveAll(inboxDlqPath)
+	defer os.RemoveAll(outboxPath)
+	defer os.RemoveAll(outboxDlqPath)
+	defer os.RemoveAll(streamStorePath)
 
 	inbox, err := queue.NewFileQueue("TestInboxQueue", inboxPath, inboxDlqPath, 100, 100, false)
 
