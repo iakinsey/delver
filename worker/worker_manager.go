@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"log"
 
-	"github.com/iakinsey/delver/model"
-	"github.com/iakinsey/delver/model/message"
 	"github.com/iakinsey/delver/queue"
+	"github.com/iakinsey/delver/types"
+	"github.com/iakinsey/delver/types/message"
 )
 
 type WorkerManager interface {
@@ -78,7 +78,7 @@ func (s *workerManager) publishResponse(result interface{}) {
 		return
 	}
 
-	message := model.Message{}
+	message := types.Message{}
 	message.MessageType = messageType
 	message.Message = json.RawMessage(msg)
 

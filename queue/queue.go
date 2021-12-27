@@ -1,12 +1,12 @@
 package queue
 
-import "github.com/iakinsey/delver/model"
+import "github.com/iakinsey/delver/types"
 
 type Queue interface {
 	Start() error
 	Stop() error
-	GetChannel() chan model.Message
-	Put(model.Message, int) error
+	GetChannel() chan types.Message
+	Put(types.Message, int) error
 	Prepare() error
-	EndTransaction(model.Message, bool) error
+	EndTransaction(types.Message, bool) error
 }

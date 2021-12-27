@@ -11,10 +11,9 @@ import (
 	"time"
 
 	"github.com/iakinsey/delver/gateway/streamstore"
-	"github.com/iakinsey/delver/model"
-	"github.com/iakinsey/delver/model/message"
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/types"
+	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/worker"
 	"github.com/stretchr/testify/assert"
@@ -92,7 +91,7 @@ func TestComposeFetcher(t *testing.T) {
 		Protocol:  types.ProtocolHTTP,
 	})
 
-	inbox.Put(model.Message{
+	inbox.Put(types.Message{
 		ID:          "0-0-0-TestName",
 		MessageType: types.FetchResponse,
 		Message:     json.RawMessage(message),

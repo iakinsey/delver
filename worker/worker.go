@@ -1,10 +1,10 @@
 package worker
 
 import (
-	"github.com/iakinsey/delver/model"
+	"github.com/iakinsey/delver/types"
 )
 
 type Worker interface {
-	OnMessage(model.Message) (interface{}, error)
+	OnMessage(types.Message) (interface{}, error)
 	OnComplete()
 }

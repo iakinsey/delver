@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/iakinsey/delver/model"
+	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/util"
 )
 
@@ -32,7 +32,7 @@ type fileQueue struct {
 	maxPollDelayMs time.Duration
 	// TODO
 	maxSize        int
-	channel        chan model.Message
+	channel        chan types.Message
 	terminate      chan bool
 	terminated     chan bool
 	resilient      bool
@@ -71,7 +71,7 @@ func NewFileQueue(name string, path string, dlqPath string, maxPollDelayMs int, 
 		dlqPath:        dlqPath,
 		maxPollDelayMs: time.Duration(maxPollDelayMs) * time.Millisecond,
 		maxSize:        maxSize,
-		channel:        make(chan model.Message),
+		channel:        make(chan types.Message),
 		terminate:      make(chan bool),
 		terminated:     make(chan bool),
 		resilient:      resilient,
@@ -93,11 +93,11 @@ func (s *fileQueue) Stop() error {
 	return nil
 }
 
-func (s *fileQueue) GetChannel() chan model.Message {
+func (s *fileQueue) GetChannel() chan types.Message {
 	return s.channel
 }
 
-func (s *fileQueue) Put(message model.Message, priority int) error {
+func (s *fileQueue) Put(message types.Message, priority int) error {
 	atomic.AddUint64(&s.messageCounter, 1)
 
 	timestamp := time.Now().Unix()
@@ -153,7 +153,7 @@ func (s *fileQueue) Prepare() error {
 	return nil
 }
 
-func (s *fileQueue) EndTransaction(message model.Message, success bool) error {
+func (s *fileQueue) EndTransaction(message types.Message, success bool) error {
 	messagePath := filepath.Join(s.path, message.ID) + claimedSuffix
 
 	if success {
@@ -191,7 +191,7 @@ func (s *fileQueue) perform() {
 	}
 }
 
-func (s *fileQueue) next() (*model.Message, error) {
+func (s *fileQueue) next() (*types.Message, error) {
 	// TODO regex filter results
 	files, err := util.ReadDirAlphabetized(s.path)
 
@@ -223,14 +223,14 @@ func (s *fileQueue) claimFile(path string) (string, error) {
 	return newPath, os.Rename(path, newPath)
 }
 
-func (s *fileQueue) getFileMessage(path string) (*model.Message, error) {
+func (s *fileQueue) getFileMessage(path string) (*types.Message, error) {
 	contents, err := os.ReadFile(path)
 
 	if err != nil {
 		return nil, err
 	}
 
-	message := model.Message{}
+	message := types.Message{}
 	err = json.Unmarshal(contents, &message)
 
 	return &message, err
