@@ -6,9 +6,8 @@ import (
 	"time"
 
 	"github.com/iakinsey/delver/gateway/streamstore"
-	"github.com/iakinsey/delver/model"
-	"github.com/iakinsey/delver/model/message"
 	"github.com/iakinsey/delver/types"
+	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/worker"
 )
 
@@ -35,7 +34,7 @@ func NewHttpFetcher(args HttpFetcherArgs) worker.Worker {
 	return &httpFetcher{args}
 }
 
-func (s *httpFetcher) OnMessage(msg model.Message) (interface{}, error) {
+func (s *httpFetcher) OnMessage(msg types.Message) (interface{}, error) {
 	request := message.FetcherRequest{}
 	response := message.FetcherResponse{}
 

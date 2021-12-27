@@ -1,9 +1,6 @@
-package model
+package types
 
-import (
-	"github.com/iakinsey/delver/model/features"
-	"github.com/iakinsey/delver/types"
-)
+import "github.com/iakinsey/delver/types/features"
 
 type CompositeAnalysis struct {
 	Adversarial   *features.Adversarial
@@ -15,5 +12,5 @@ type CompositeAnalysis struct {
 	TermFrequency *map[string]string
 	TextContent   *string
 	Sentiment     *features.Sentiment
-	URIs          *[]types.URI
+	URIs          *[]URI
 }
