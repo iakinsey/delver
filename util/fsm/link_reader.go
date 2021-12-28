@@ -7,7 +7,6 @@ import (
 
 type linkReaderFsm struct {
 	result  []string
-	begin   bool
 	next    func() error
 	hasNext bool
 	file    *os.File
@@ -25,8 +24,8 @@ func NewLinkReaderFSM() FSMStates {
 	var result []string
 
 	return &linkReaderFsm{
-		result: result,
-		begin:  true,
+		hasNext: true,
+		result:  result,
 	}
 }
 
@@ -110,12 +109,4 @@ func (s *linkReaderFsm) check(err error, match bool) (bool, error) {
 
 	return shouldReturn, err
 
-}
-
-func (s *linkReaderFsm) checkError(err error) bool {
-	if err == io.EOF {
-		s.hasNext = false
-	}
-
-	return err != nil
 }

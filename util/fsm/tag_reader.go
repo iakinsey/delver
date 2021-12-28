@@ -5,9 +5,14 @@ import (
 	"os"
 )
 
+var aPattern = []byte("a")
+var hrefPattern = []byte("href=")
+var aTerminatePattern = []byte(">\"'")
+var closeTagPattern = []byte(">")
+var tagQuotesPattern = []byte("'\"")
+
 type tagReaderFsm struct {
 	result  []string
-	begin   bool
 	next    func() error
 	hasNext bool
 	file    *os.File
@@ -17,8 +22,8 @@ func NewTagReaderFSM() FSMStates {
 	var result []string
 
 	return &tagReaderFsm{
-		result: result,
-		begin:  true,
+		hasNext: true,
+		result:  result,
 	}
 }
 
@@ -40,7 +45,7 @@ func (s *tagReaderFsm) Init(f *os.File) {
 }
 
 func (s *tagReaderFsm) readTag() error {
-	match, err := MatchNext(s.file, []byte("a"), true)
+	match, err := MatchNext(s.file, aPattern, true)
 
 	if s.checkError(err) {
 		return err
@@ -56,19 +61,19 @@ func (s *tagReaderFsm) readTag() error {
 }
 
 func (s *tagReaderFsm) readATag() error {
-	match, err := ReadUntilMatch(s.file, []byte("href="), []byte(">"), true)
+	match, err := ReadUntilMatch(s.file, hrefPattern, closeTagPattern, true)
 
 	if rtn, err := s.check(err, match); rtn {
 		return err
 	}
 
-	matchBytes, err := MatchNextOr(s.file, []byte("'\""), true)
+	matchBytes, err := MatchNextOr(s.file, tagQuotesPattern, true)
 
 	if rtn, err := s.check(err, matchBytes != nil); rtn {
 		return err
 	}
 
-	url, err := GetUntil(s.file, []byte(">\"'"))
+	url, err := GetUntil(s.file, aTerminatePattern)
 
 	if s.checkError(err) {
 		return err
