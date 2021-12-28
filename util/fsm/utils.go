@@ -14,7 +14,7 @@ Returns `false` if string is not found or term_chars are matched.
 If rewind is set to `true`, set the buffer's cursor to its initial
 value when this function was first called.
 */
-func ReadUntilMatch(f *os.File, toMatch string, termChars []byte, rewind bool) (bool, error) {
+func ReadUntilMatch(f *os.File, toMatch []byte, termChars []byte, rewind bool) (bool, error) {
 	index := 0
 	char := toMatch[0]
 	startPos, err := f.Seek(0, io.SeekCurrent)
