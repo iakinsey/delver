@@ -1,13 +1,16 @@
 package fsm
 
+import "os"
+
 type FSMStates interface {
+	Init(*os.File)
 	Next() error
 	HasNext() bool
 	GetResult() []string
 }
 
 type FSM interface {
-	Perform() ([]string, error)
+	Perform(*os.File) ([]string, error)
 }
 
 type fsm struct {
@@ -18,12 +21,14 @@ func NewFSM(states FSMStates) FSM {
 	return &fsm{states}
 }
 
-func (f *fsm) Perform() ([]string, error) {
-	for f.HasNext() {
-		if err := f.Next(); err != nil {
-			return f.GetResult(), err
+func (s *fsm) Perform(f *os.File) ([]string, error) {
+	s.Init(f)
+
+	for s.HasNext() {
+		if err := s.Next(); err != nil {
+			return s.GetResult(), err
 		}
 	}
 
-	return f.GetResult(), nil
+	return s.GetResult(), nil
 }
