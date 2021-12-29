@@ -2,7 +2,6 @@ package types
 
 import "github.com/google/uuid"
 
-type URI string
 type Protocol string
 type UUID string
 
