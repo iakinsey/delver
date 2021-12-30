@@ -19,7 +19,7 @@ func NewFilesystemStreamStore(path string) (StreamStore, error) {
 	return &filesystemStreamStore{Path: path}, nil
 }
 
-func (s *filesystemStreamStore) Get(uuid types.UUID) (io.Reader, error) {
+func (s *filesystemStreamStore) Get(uuid types.UUID) (*os.File, error) {
 	return os.Open(path.Join(s.Path, string(uuid)))
 }
 

@@ -1,25 +1,107 @@
 package extractor
 
 import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"reflect"
+	"strings"
+
 	"github.com/iakinsey/delver/extractors"
+	"github.com/iakinsey/delver/gateway/streamstore"
 	"github.com/iakinsey/delver/types"
+	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/worker"
 )
 
 type compositeExtractor struct {
+	extractors  []extractors.Extractor
+	StreamStore streamstore.StreamStore
 }
 
-func NewCompositeExtractorWorker() worker.Worker {
-	return &compositeExtractor{}
+type CompositeArgs struct {
+	Extractors  []string
+	StreamStore streamstore.StreamStore
+}
+
+func NewCompositeExtractorWorker(opts CompositeArgs) worker.Worker {
+	var extractors []extractors.Extractor
+
+	for _, name := range opts.Extractors {
+		if e := getExtractor(name, opts); e != nil {
+			extractors = append(extractors, e)
+		} else {
+			log.Fatalf("unknown extractor name: %s", name)
+		}
+	}
+
+	return &compositeExtractor{
+		extractors:  extractors,
+		StreamStore: opts.StreamStore,
+	}
 }
 
 func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
-	return nil, nil
+	var errors []error
+	composite := types.CompositeAnalysis{}
+	meta := message.FetcherResponse{}
+
+	if err := json.Unmarshal(msg.Message, &meta); err != nil {
+		return nil, err
+	}
+
+	f, err := s.StreamStore.Get(meta.StoreKey)
+
+	if err != nil {
+		return nil, err
+	}
+
+	for _, extractor := range s.extractors {
+		data, err := extractor.Perform(f, meta)
+
+		if err != nil {
+			errors = append(errors, err)
+		}
+
+		if data != nil {
+			types.UpdateCompositeAnalysis(data, &composite)
+		}
+	}
+
+	if err := s.StreamStore.Delete(meta.StoreKey); err != nil {
+		errors = append(errors, err)
+	}
+
+	return composite, getCompositeError(&composite, errors)
 }
 
 func (s *compositeExtractor) OnComplete() {}
 
-func (s *compositeExtractor) getExtractor(name string) extractors.Extractor {
+func getCompositeError(composite *types.CompositeAnalysis, errors []error) error {
+	noAnalysis := reflect.DeepEqual(composite, nil)
+	hasErrors := len(errors) != 0
+	errStr := ""
+
+	if hasErrors {
+		var errStrs []string
+
+		for _, err := range errors {
+			errStrs = append(errStrs, err.Error())
+		}
+
+		errStr = strings.Join(errStrs, "\n")
+	}
+
+	if noAnalysis && hasErrors {
+		return fmt.Errorf("fatal error during extraction\n%s", errStr)
+	} else if hasErrors {
+		log.Printf("errors during extraction:\n%s", errStr)
+	}
+
+	return nil
+}
+
+func getExtractor(name string, args CompositeArgs) extractors.Extractor {
 	switch name {
 	case types.UrlExtractor:
 		return extractors.NewUrlExtractor()
@@ -34,4 +116,6 @@ func (s *compositeExtractor) getExtractor(name string) extractors.Extractor {
 	default:
 		return nil
 	}
+
+	return nil
 }
