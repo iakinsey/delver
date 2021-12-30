@@ -69,7 +69,6 @@ func (s *httpFetcher) doHttpRequestWithRetry(request message.FetcherRequest, res
 		}
 	}
 
-	// TODO ContentMD5
 	response.Success = err == nil
 	response.ElapsedTimeMs = time.Since(start).Milliseconds()
 
