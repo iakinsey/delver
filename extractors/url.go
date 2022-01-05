@@ -16,7 +16,6 @@ func NewUrlExtractor() Extractor {
 
 func (s *urlExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {
 	fsm := fsm.NewFSM(fsm.NewDocumentReaderFSM())
-
 	urls, err := fsm.Perform(f)
 
 	return util.DedupeStrSlice(urls), err
