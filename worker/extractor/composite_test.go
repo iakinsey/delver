@@ -1,7 +1,8 @@
-package fetcher
+package extractor
 
 import (
 	"encoding/json"
+	"log"
 	"testing"
 	"time"
 
@@ -11,36 +12,49 @@ import (
 	"github.com/iakinsey/delver/worker"
 )
 
-func TestComposeFetcher(t *testing.T) {
-	paths := testutil.SetupWorkerQueueFolders("HttpTest")
+const exampleHtmlFile = "example_html_file.html"
+
+func TestCompositeExtractorUrlOnly(t *testing.T) {
+	paths := testutil.SetupWorkerQueueFolders("CompositeTest")
 
 	defer testutil.TeardownWorkerQueueFolders(paths)
 
 	queues := testutil.CreateQueueTriad(paths)
+	htmlFile := testutil.TestDataFile(exampleHtmlFile)
+	storeKey := types.NewV4()
+	md5sum, err := queues.StreamStore.Put(storeKey, htmlFile)
 
-	fetcher := NewHttpFetcher(HttpFetcherArgs{
-		UserAgent:   "test",
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+
+	extractor := NewCompositeExtractorWorker(CompositeArgs{
+		Extractors:  []string{types.UrlExtractor},
 		StreamStore: queues.StreamStore,
 	})
 
-	message, _ := json.Marshal(message.FetcherRequest{
-		RequestID: types.NewV4(),
-		URI:       "http://google.com",
-		Protocol:  types.ProtocolHTTP,
+	message, _ := json.Marshal(message.FetcherResponse{
+		StoreKey:      storeKey,
+		ContentMD5:    md5sum,
+		ElapsedTimeMs: 100,
+		HTTPCode:      200,
+		Success:       true,
+		Timestamp:     time.Now().Unix(),
 	})
 
 	queues.Inbox.Put(types.Message{
 		ID:          "0-0-0-TestName",
-		MessageType: types.FetchRequest,
+		MessageType: types.FetchResponse,
 		Message:     json.RawMessage(message),
 	}, 0)
 
 	testutil.AssertFolderSize(t, paths.Inbox, 1)
 
-	manager := worker.NewWorkerManager(fetcher, queues.Inbox, queues.Outbox)
+	manager := worker.NewWorkerManager(extractor, queues.Inbox, queues.Outbox)
 
 	queues.Inbox.Start()
 	go manager.Start()
+
 	<-time.After(2 * time.Second)
 
 	testutil.AssertFolderSize(t, paths.Inbox, 0)

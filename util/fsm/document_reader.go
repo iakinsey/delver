@@ -14,17 +14,19 @@ type documentReaderFsm struct {
 	file       *os.File
 	linkReader FSMStates
 	tagReader  FSMStates
+	hasNext    bool
 }
 
 func NewDocumentReaderFSM() FSMStates {
 	return &documentReaderFsm{
 		linkReader: NewLinkReaderFSM(),
 		tagReader:  NewTagReaderFSM(),
+		hasNext:    true,
 	}
 }
 
 func (s *documentReaderFsm) HasNext() bool {
-	return s.linkReader.HasNext() && s.tagReader.HasNext()
+	return s.hasNext && s.linkReader.HasNext() && s.tagReader.HasNext()
 }
 
 func (s *documentReaderFsm) GetResult() []string {
@@ -42,6 +44,7 @@ func (s *documentReaderFsm) Next() error {
 	matchByte, err := ReadUntilMatchChars(s.file, urlHintPattern, nullPattern, true)
 
 	if rtn, err := s.check(err, matchByte != nil); rtn {
+		s.hasNext = false
 		return err
 	}
 
