@@ -63,11 +63,13 @@ func (s *linkReaderFsm) readLink() error {
 
 	if *nextChar == httpsSuffixPattern {
 		data = append(data, httpsSuffixPattern)
-		match, err := MatchNext(s.file, followsHttpPattern, true)
+		match, err := MatchNext(s.file, []byte{finalHttpSuffixPattern}, true)
 
 		if rtn, err := s.check(err, match); rtn {
 			return err
 		}
+
+		nextChar = &finalHttpSuffixPattern
 	}
 
 	if *nextChar != finalHttpSuffixPattern {
@@ -99,7 +101,7 @@ func (s *linkReaderFsm) readLink() error {
 func (s *linkReaderFsm) check(err error, match bool) (bool, error) {
 	shouldReturn := err != nil || !match
 
-	if shouldReturn {
+	if err != nil {
 		s.hasNext = false
 	}
 
