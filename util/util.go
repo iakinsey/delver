@@ -2,6 +2,7 @@ package util
 
 import (
 	"bufio"
+	"net/url"
 	"os"
 )
 
@@ -28,4 +29,18 @@ func ReadLines(file *os.File) (lines []string, err error) {
 		lines = append(lines, scanner.Text())
 	}
 	return lines, scanner.Err()
+}
+
+func ResolveUrls(base *url.URL, urls []string) (result []string) {
+	for _, rawUrl := range urls {
+		u, err := url.Parse(rawUrl)
+
+		if err != nil {
+			continue
+		}
+
+		result = append(result, base.ResolveReference(u).String())
+	}
+
+	return
 }

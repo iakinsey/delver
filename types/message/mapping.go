@@ -9,9 +9,11 @@ import (
 func GetMessageTypeMapping(msg interface{}) (types.MessageType, error) {
 	switch msg.(type) {
 	case FetcherRequest:
-		return types.FetchRequest, nil
+		return types.FetcherRequestType, nil
 	case FetcherResponse:
-		return types.FetchResponse, nil
+		return types.FetcherResponseType, nil
+	case types.CompositeAnalysis:
+		return types.CompositeAnalysisType, nil
 	default:
 		return types.NullMessage, fmt.Errorf("unmappable message type")
 	}

@@ -1,8 +1,10 @@
 package extractors
 
 import (
+	"net/url"
 	"os"
 
+	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/util/fsm"
@@ -15,8 +17,20 @@ func NewUrlExtractor() Extractor {
 }
 
 func (s *urlExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {
+	base, err := url.Parse(meta.URI)
+
+	if err != nil {
+		return nil, err
+	}
+
 	fsm := fsm.NewFSM(fsm.NewDocumentReaderFSM())
 	urls, err := fsm.Perform(f)
 
-	return util.DedupeStrSlice(urls), err
+	if err != nil {
+		return nil, err
+	}
+
+	result := util.ResolveUrls(base, util.DedupeStrSlice(urls))
+
+	return features.URIs(result), nil
 }

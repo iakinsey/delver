@@ -4,6 +4,7 @@ type MessageType int32
 
 const (
 	NullMessage MessageType = iota
-	FetchRequest
-	FetchResponse
+	FetcherRequestType
+	FetcherResponseType
+	CompositeAnalysisType
 )
