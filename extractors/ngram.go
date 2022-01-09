@@ -13,7 +13,7 @@ func NewNgramExtractor() Extractor {
 	return &ngramExtractor{}
 }
 
-func (s *ngramExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {
+func (s *ngramExtractor) Perform(f *os.File, meta message.FetcherResponse, composite types.CompositeAnalysis) (interface{}, error) {
 	return nil, nil
 }
 

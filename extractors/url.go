@@ -17,7 +17,7 @@ func NewUrlExtractor() Extractor {
 	return &urlExtractor{}
 }
 
-func (s *urlExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {
+func (s *urlExtractor) Perform(f *os.File, meta message.FetcherResponse, composite types.CompositeAnalysis) (interface{}, error) {
 	base, err := url.Parse(meta.URI)
 
 	if err != nil {

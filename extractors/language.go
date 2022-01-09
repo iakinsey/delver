@@ -13,7 +13,7 @@ func NewLanguageExtractor() Extractor {
 	return &languageExtractor{}
 }
 
-func (s *languageExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {
+func (s *languageExtractor) Perform(f *os.File, meta message.FetcherResponse, composite types.CompositeAnalysis) (interface{}, error) {
 	return nil, nil
 }
 

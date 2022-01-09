@@ -19,7 +19,7 @@ func NewAdversarialExtractor() Extractor {
 	}
 }
 
-func (s *adversarialExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {
+func (s *adversarialExtractor) Perform(f *os.File, meta message.FetcherResponse, composite types.CompositeAnalysis) (interface{}, error) {
 	return nil, nil
 }
 
@@ -33,6 +33,6 @@ func (s *adversarialExtractor) Requires() []string {
 	}
 }
 
-func detectEnumeration(urls []string) {
-
+func (s *adversarialExtractor) detectEnumeration(urls []string) bool {
+	return false
 }

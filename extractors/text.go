@@ -13,7 +13,7 @@ func NewTextExtractor() Extractor {
 	return &textExtractor{}
 }
 
-func (s *textExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {
+func (s *textExtractor) Perform(f *os.File, meta message.FetcherResponse, composite types.CompositeAnalysis) (interface{}, error) {
 	return nil, nil
 }
 
