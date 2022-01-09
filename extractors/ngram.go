@@ -9,7 +9,7 @@ import (
 type ngramExtractor struct{}
 
 func NewNgramExtractor() Extractor {
-	return &urlExtractor{}
+	return &ngramExtractor{}
 }
 
 func (s *ngramExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {

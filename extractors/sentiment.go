@@ -9,7 +9,7 @@ import (
 type sentimentExtractor struct{}
 
 func NewSentimentExtractor() Extractor {
-	return &urlExtractor{}
+	return &sentimentExtractor{}
 }
 
 func (s *sentimentExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {
