@@ -13,7 +13,7 @@ func NewCountryExtractor() Extractor {
 	return &countryExtractor{}
 }
 
-func (s *countryExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {
+func (s *countryExtractor) Perform(f *os.File, meta message.FetcherResponse, composite types.CompositeAnalysis) (interface{}, error) {
 	return nil, nil
 }
 

@@ -13,7 +13,7 @@ func NewSentimentExtractor() Extractor {
 	return &sentimentExtractor{}
 }
 
-func (s *sentimentExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {
+func (s *sentimentExtractor) Perform(f *os.File, meta message.FetcherResponse, composite types.CompositeAnalysis) (interface{}, error) {
 	return nil, nil
 }
 

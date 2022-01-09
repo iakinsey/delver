@@ -64,7 +64,7 @@ func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 	}
 
 	for _, extractor := range s.extractors {
-		data, err := extractor.Perform(f, meta)
+		data, err := extractor.Perform(f, meta, composite)
 
 		if err != nil {
 			errors = append(errors, err)
