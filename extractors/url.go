@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"os"
 
+	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
@@ -33,4 +34,12 @@ func (s *urlExtractor) Perform(f *os.File, meta message.FetcherResponse) (interf
 	result := util.ResolveUrls(base, util.DedupeStrSlice(urls))
 
 	return features.URIs(result), nil
+}
+
+func (s *urlExtractor) Name() string {
+	return types.UrlExtractor
+}
+
+func (s *urlExtractor) Requires() []string {
+	return nil
 }

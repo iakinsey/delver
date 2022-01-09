@@ -3,6 +3,7 @@ package extractors
 import (
 	"os"
 
+	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 )
 
@@ -14,4 +15,12 @@ func NewNgramExtractor() Extractor {
 
 func (s *ngramExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {
 	return nil, nil
+}
+
+func (s *ngramExtractor) Name() string {
+	return types.NgramExtractor
+}
+
+func (s *ngramExtractor) Requires() []string {
+	return nil
 }

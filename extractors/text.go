@@ -3,6 +3,7 @@ package extractors
 import (
 	"os"
 
+	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 )
 
@@ -14,4 +15,12 @@ func NewTextExtractor() Extractor {
 
 func (s *textExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {
 	return nil, nil
+}
+
+func (s *textExtractor) Name() string {
+	return types.TextExtractor
+}
+
+func (s *textExtractor) Requires() []string {
+	return nil
 }
