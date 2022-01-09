@@ -9,7 +9,7 @@ import (
 type textExtractor struct{}
 
 func NewTextExtractor() Extractor {
-	return &urlExtractor{}
+	return &textExtractor{}
 }
 
 func (s *textExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {

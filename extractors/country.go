@@ -9,7 +9,7 @@ import (
 type countryExtractor struct{}
 
 func NewCountryExtractor() Extractor {
-	return &urlExtractor{}
+	return &countryExtractor{}
 }
 
 func (s *countryExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {

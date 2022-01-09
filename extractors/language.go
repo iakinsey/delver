@@ -9,7 +9,7 @@ import (
 type languageExtractor struct{}
 
 func NewLanguageExtractor() Extractor {
-	return &urlExtractor{}
+	return &languageExtractor{}
 }
 
 func (s *languageExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {

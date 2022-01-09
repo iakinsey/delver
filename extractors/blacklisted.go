@@ -9,7 +9,7 @@ import (
 type blacklistedExtractor struct{}
 
 func NewBlacklistedExtractor() Extractor {
-	return &urlExtractor{}
+	return &blacklistedExtractor{}
 }
 
 func (s *blacklistedExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {

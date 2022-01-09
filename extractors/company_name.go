@@ -9,7 +9,7 @@ import (
 type companyNameExtractor struct{}
 
 func NewCompanyNameExtractor() Extractor {
-	return &urlExtractor{}
+	return &companyNameExtractor{}
 }
 
 func (s *companyNameExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {
