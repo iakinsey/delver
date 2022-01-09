@@ -17,7 +17,7 @@ const exampleHtmlFile = "example_html_file.html"
 func TestCompositeExtractorUrlOnly(t *testing.T) {
 	paths := testutil.SetupWorkerQueueFolders("CompositeTest")
 
-	defer testutil.TeardownWorkerQueueFolders(paths)
+	//defer testutil.TeardownWorkerQueueFolders(paths)
 
 	queues := testutil.CreateQueueTriad(paths)
 	htmlFile := testutil.TestDataFile(exampleHtmlFile)
@@ -44,7 +44,7 @@ func TestCompositeExtractorUrlOnly(t *testing.T) {
 
 	queues.Inbox.Put(types.Message{
 		ID:          "0-0-0-TestName",
-		MessageType: types.FetchResponse,
+		MessageType: types.FetcherResponseType,
 		Message:     json.RawMessage(message),
 	}, 0)
 
@@ -61,7 +61,6 @@ func TestCompositeExtractorUrlOnly(t *testing.T) {
 	testutil.AssertFolderSize(t, paths.InboxDLQ, 0)
 	testutil.AssertFolderSize(t, paths.Outbox, 1)
 	testutil.AssertFolderSize(t, paths.OutboxDLQ, 0)
-	testutil.AssertFolderSize(t, paths.StreamStore, 1)
 
 	manager.Stop()
 	queues.Inbox.Stop()

@@ -31,7 +31,7 @@ func TestComposeFetcher(t *testing.T) {
 
 	queues.Inbox.Put(types.Message{
 		ID:          "0-0-0-TestName",
-		MessageType: types.FetchRequest,
+		MessageType: types.FetcherRequestType,
 		Message:     json.RawMessage(message),
 	}, 0)
 
