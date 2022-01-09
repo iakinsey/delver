@@ -3,6 +3,7 @@ package extractors
 import (
 	"os"
 
+	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 )
 
@@ -20,4 +21,18 @@ func NewAdversarialExtractor() Extractor {
 
 func (s *adversarialExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {
 	return nil, nil
+}
+
+func (s *adversarialExtractor) Name() string {
+	return types.AdversarialExtractor
+}
+
+func (s *adversarialExtractor) Requires() []string {
+	return []string{
+		types.UrlExtractor,
+	}
+}
+
+func detectEnumeration(urls []string) {
+
 }

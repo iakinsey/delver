@@ -25,20 +25,27 @@ type CompositeArgs struct {
 }
 
 func NewCompositeExtractorWorker(opts CompositeArgs) worker.Worker {
-	var extractors []extractors.Extractor
+	var exts []extractors.Extractor
 
 	for _, name := range opts.Extractors {
 		if e := getExtractor(name, opts); e != nil {
-			extractors = append(extractors, e)
+			exts = append(exts, e)
 		} else {
 			log.Fatalf("unknown extractor name: %s", name)
 		}
 	}
 
+	exts = sortExtractorDeps(exts)
+
 	return &compositeExtractor{
-		extractors:  extractors,
+		extractors:  exts,
 		StreamStore: opts.StreamStore,
 	}
+}
+
+func sortExtractorDeps(exts []extractors.Extractor) []extractors.Extractor {
+	// TODO Sort extractors based on their required dependencies
+	return exts
 }
 
 func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
@@ -102,6 +109,8 @@ func getCompositeError(composite *types.CompositeAnalysis, errors []error) error
 }
 
 func getExtractor(name string, args CompositeArgs) extractors.Extractor {
+	// TODO have a constant list of extractor instantiation methods and use a map here instead
+	// based on its Name() values
 	switch name {
 	case types.UrlExtractor:
 		return extractors.NewUrlExtractor()

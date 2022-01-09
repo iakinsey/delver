@@ -8,4 +8,6 @@ import (
 
 type Extractor interface {
 	Perform(*os.File, message.FetcherResponse) (interface{}, error)
+	Requires() []string
+	Name() string
 }

@@ -3,6 +3,7 @@ package extractors
 import (
 	"os"
 
+	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 )
 
@@ -14,4 +15,12 @@ func NewBlacklistedExtractor() Extractor {
 
 func (s *blacklistedExtractor) Perform(f *os.File, meta message.FetcherResponse) (interface{}, error) {
 	return nil, nil
+}
+
+func (s *blacklistedExtractor) Name() string {
+	return types.BlacklistedExtractor
+}
+
+func (s *blacklistedExtractor) Requires() []string {
+	return nil
 }
