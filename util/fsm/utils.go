@@ -81,7 +81,7 @@ func ReadUntilMatchChars(f *os.File, chars []byte, termChars []byte, rewind bool
 		}
 
 		if err != nil {
-			return &data[0], err
+			return nil, err
 		} else if stringInSlice(data[0], termChars) {
 			if rewind {
 				if _, err := f.Seek(startPos, io.SeekStart); err != nil {
@@ -90,7 +90,7 @@ func ReadUntilMatchChars(f *os.File, chars []byte, termChars []byte, rewind bool
 			}
 			return nil, nil
 		} else if stringInSlice(data[0], chars) {
-			return nil, nil
+			return &data[0], nil
 		}
 	}
 }
