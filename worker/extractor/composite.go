@@ -106,16 +106,22 @@ func getExtractor(name string, args CompositeArgs) extractors.Extractor {
 	case types.UrlExtractor:
 		return extractors.NewUrlExtractor()
 	case types.AdversarialExtractor:
+		return extractors.NewAdversarialExtractor()
 	case types.BlacklistedExtractor:
+		return extractors.NewBlacklistedExtractor()
 	case types.CompanyNameExtractor:
+		return extractors.NewCompanyNameExtractor()
 	case types.CountryExtractor:
+		return extractors.NewCountryExtractor()
 	case types.LanguageExtractor:
+		return extractors.NewLanguageExtractor()
 	case types.NgramExtractor:
+		return extractors.NewNgramExtractor()
 	case types.SentimentExtractor:
+		return extractors.NewSentimentExtractor()
 	case types.TextExtractor:
+		return extractors.NewTextExtractor()
 	default:
 		return nil
 	}
-
-	return nil
 }
