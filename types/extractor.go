@@ -8,7 +8,6 @@ import (
 
 const (
 	AdversarialExtractor = "adversarial"
-	BlacklistedExtractor = "blacklisted"
 	CompanyNameExtractor = "company_name"
 	CountryExtractor     = "country"
 	LanguageExtractor    = "language"
@@ -20,7 +19,6 @@ const (
 
 type CompositeAnalysis struct {
 	Adversarial   *features.Adversarial
-	Blacklist     *features.Blacklist
 	Corporations  *features.Corporations
 	Countries     *features.Countries
 	Language      *features.Language
@@ -35,8 +33,6 @@ func UpdateCompositeAnalysis(data interface{}, composite *CompositeAnalysis) err
 	switch d := data.(type) {
 	case features.Adversarial:
 		composite.Adversarial = &d
-	case features.Blacklist:
-		composite.Blacklist = &d
 	case features.Corporations:
 		composite.Corporations = &d
 	case features.Countries:
