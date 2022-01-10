@@ -46,18 +46,6 @@ func ResolveUrls(base *url.URL, urls []string) (result []string) {
 	return
 }
 
-func GetSLDAndTLD(host string) string {
-	tokens := strings.Split(host, ".")
-	size := len(tokens)
-	start := 0
-
-	if size > 2 {
-		start = size - 2
-	}
-
-	return strings.Join(tokens[start:size], ".")
-}
-
 func GetSLD(host string) string {
 	tokens := strings.Split(host, ".")
 

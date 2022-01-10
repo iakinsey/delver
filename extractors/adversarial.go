@@ -11,14 +11,18 @@ import (
 )
 
 const subdomainThreshold = 25
+const enumerationThreshold = 1
 
 type adversarialExtractor struct {
-	subdomainThreshold int32
+	subdomainThreshold   int32
+	enumerationThreshold int32
 }
 
+// TODO turn these into matrix operations
 func NewAdversarialExtractor() Extractor {
 	return &adversarialExtractor{
-		subdomainThreshold: subdomainThreshold,
+		subdomainThreshold:   subdomainThreshold,
+		enumerationThreshold: enumerationThreshold,
 	}
 }
 
@@ -59,6 +63,8 @@ func (s *adversarialExtractor) Requires() []string {
 }
 
 func (s *adversarialExtractor) detectEnumeration(urls []*url.URL) bool {
+	counter := 0
+
 	for _, u1 := range urls {
 		d1 := util.GetSLD(u1.Host)
 
@@ -69,7 +75,13 @@ func (s *adversarialExtractor) detectEnumeration(urls []*url.URL) bool {
 
 			d2 := util.GetSLD(u2.Host)
 
-			if d1[len(d1)-1] == d2[len(d2)-1]+1 {
+			if d1[len(d1)-1] != d2[len(d2)-1]+1 {
+				continue
+			}
+
+			counter += 1
+
+			if counter >= int(s.enumerationThreshold) {
 				return true
 			}
 		}
@@ -79,13 +91,15 @@ func (s *adversarialExtractor) detectEnumeration(urls []*url.URL) bool {
 }
 
 func (s *adversarialExtractor) detectSubdomainExplosion(origin *url.URL, urls []*url.URL) bool {
-	sld1 := util.GetSLDAndTLD(origin.String())
+	sld1 := util.GetSLD(origin.Host)
 	counter := 0
+	keys := make(map[string]bool)
 
 	for _, target := range urls {
-		sld2 := util.GetSLDAndTLD(target.String())
+		sld2 := util.GetSLD(target.Host)
 
-		if sld1 != sld2 || origin.Host == target.Host {
+		// Deduplicate on SLD
+		if _, value := keys[target.Host]; value || sld1 != sld2 || origin.Host == target.Host {
 			continue
 		}
 
@@ -94,6 +108,8 @@ func (s *adversarialExtractor) detectSubdomainExplosion(origin *url.URL, urls []
 		if counter >= int(s.subdomainThreshold) {
 			return true
 		}
+
+		keys[sld2] = true
 	}
 
 	return false
