@@ -60,8 +60,16 @@ func (s *adversarialExtractor) Requires() []string {
 
 func (s *adversarialExtractor) detectEnumeration(urls []*url.URL) bool {
 	for _, u1 := range urls {
+		d1 := util.GetSLD(u1.Host)
+
 		for _, u2 := range urls {
-			if u1.Host[len(u1.Host)-1] == u2.Host[len(u2.Host)-1]+1 {
+			if u1 == u2 {
+				continue
+			}
+
+			d2 := util.GetSLD(u2.Host)
+
+			if d1[len(d1)-1] == d2[len(d2)-1]+1 {
 				return true
 			}
 		}
@@ -71,11 +79,11 @@ func (s *adversarialExtractor) detectEnumeration(urls []*url.URL) bool {
 }
 
 func (s *adversarialExtractor) detectSubdomainExplosion(origin *url.URL, urls []*url.URL) bool {
-	sld1 := util.GetSecondLevelDomain(origin.String())
+	sld1 := util.GetSLDAndTLD(origin.String())
 	counter := 0
 
 	for _, target := range urls {
-		sld2 := util.GetSecondLevelDomain(target.String())
+		sld2 := util.GetSLDAndTLD(target.String())
 
 		if sld1 != sld2 || origin.Host == target.Host {
 			continue
