@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"net/url"
 	"os"
+	"strings"
 )
 
 func DedupeStrSlice(slice []string) (deduped []string) {
@@ -43,4 +44,16 @@ func ResolveUrls(base *url.URL, urls []string) (result []string) {
 	}
 
 	return
+}
+
+func GetSecondLevelDomain(host string) string {
+	tokens := strings.Split(host, ".")
+	size := len(tokens)
+	start := 0
+
+	if size > 2 {
+		start = size - 2
+	}
+
+	return strings.Join(tokens[start:size], ".")
 }
