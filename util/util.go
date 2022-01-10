@@ -46,7 +46,7 @@ func ResolveUrls(base *url.URL, urls []string) (result []string) {
 	return
 }
 
-func GetSecondLevelDomain(host string) string {
+func GetSLDAndTLD(host string) string {
 	tokens := strings.Split(host, ".")
 	size := len(tokens)
 	start := 0
@@ -56,4 +56,14 @@ func GetSecondLevelDomain(host string) string {
 	}
 
 	return strings.Join(tokens[start:size], ".")
+}
+
+func GetSLD(host string) string {
+	tokens := strings.Split(host, ".")
+
+	if len(tokens) == 1 {
+		return host
+	}
+
+	return tokens[len(tokens)-2]
 }
