@@ -116,8 +116,6 @@ func getExtractor(name string, args CompositeArgs) extractors.Extractor {
 		return extractors.NewUrlExtractor()
 	case types.AdversarialExtractor:
 		return extractors.NewAdversarialExtractor()
-	case types.BlacklistedExtractor:
-		return extractors.NewBlacklistedExtractor()
 	case types.CompanyNameExtractor:
 		return extractors.NewCompanyNameExtractor()
 	case types.CountryExtractor:
