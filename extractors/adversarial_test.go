@@ -1,6 +1,7 @@
 package extractors
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/iakinsey/delver/types"
@@ -9,25 +10,29 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestAdversarialExtractorIsEnumeration(t *testing.T) {
+func prepareAdvTest(origin string, uris []string) (interface{}, error) {
 	extractor := NewAdversarialExtractor()
 
 	meta := message.FetcherResponse{
 		FetcherRequest: message.FetcherRequest{
-			URI: "http://example.com",
+			URI: origin,
 		},
 	}
 
-	uris := features.URIs([]string{
+	inputUris := features.URIs(uris)
+
+	composite := types.CompositeAnalysis{
+		URIs: &inputUris,
+	}
+
+	return extractor.Perform(nil, meta, composite)
+}
+
+func TestAdversarialExtractorIsEnumeration(t *testing.T) {
+	adv, err := prepareAdvTest("http://example.com", []string{
 		"http://examplf.com",
 		"http://examplg.com",
 	})
-
-	composite := types.CompositeAnalysis{
-		URIs: &uris,
-	}
-
-	adv, err := extractor.Perform(nil, meta, composite)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, adv)
@@ -37,6 +42,19 @@ func TestAdversarialExtractorIsEnumeration(t *testing.T) {
 }
 
 func TestAdversarialExtractorIsSubdomainExplosion(t *testing.T) {
+	var explodedSubdomains []string
+
+	for i := 0; i < subdomainThreshold; i++ {
+		url := fmt.Sprintf("http://test%c.example.com", rune(i+65))
+		explodedSubdomains = append(explodedSubdomains, url)
+	}
+
+	adv, err := prepareAdvTest("http://example.com", explodedSubdomains)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, adv)
+	assert.IsType(t, features.Adversarial{}, adv)
+	assert.True(t, *adv.(features.Adversarial).SubdomainExplosion)
 }
 
 func TestAdversarialExtractorNotAdversarial(t *testing.T) {
