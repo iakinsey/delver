@@ -2,9 +2,16 @@ package util
 
 import (
 	"bufio"
+	"flag"
+	"log"
 	"net/url"
 	"os"
+	"path"
+	"path/filepath"
+	"runtime"
 	"strings"
+
+	"github.com/iakinsey/delver/config"
 )
 
 func DedupeStrSlice(slice []string) (deduped []string) {
@@ -54,4 +61,24 @@ func GetSLD(host string) string {
 	}
 
 	return tokens[len(tokens)-2]
+}
+
+func DataFilePath(name string) string {
+	_, b, _, ok := runtime.Caller(0)
+
+	if !ok {
+		log.Fatalf("failed to get base path for data file")
+	}
+
+	basepath := ""
+
+	if flag.Lookup("test.v") != nil {
+		basepath = path.Dir(path.Dir(path.Dir(b)))
+	} else if p, err := os.Executable(); err != nil {
+		log.Fatalf(err.Error())
+	} else {
+		basepath = path.Dir(p)
+	}
+
+	return filepath.Join(basepath, config.DataPath, name)
 }
