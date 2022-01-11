@@ -73,7 +73,7 @@ func DataFilePath(name string) string {
 	basepath := ""
 
 	if flag.Lookup("test.v") != nil {
-		basepath = path.Dir(path.Dir(path.Dir(b)))
+		basepath = path.Dir(path.Dir(b))
 	} else if p, err := os.Executable(); err != nil {
 		log.Fatalf(err.Error())
 	} else {

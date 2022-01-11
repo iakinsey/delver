@@ -27,7 +27,7 @@ var regexCharRange = []*unicode.RangeTable{
 	unicode.Space,
 }
 
-func GetCompanies(path string) ([]Company, error) {
+func GetCompanies(path string) ([]*Company, error) {
 	f, err := os.Open(path)
 
 	if err != nil {
@@ -42,7 +42,7 @@ func GetCompanies(path string) ([]Company, error) {
 		return nil, err
 	}
 
-	var companies []Company
+	var companies []*Company
 
 	if err = json.Unmarshal(bytes, &companies); err != nil {
 		return nil, err
