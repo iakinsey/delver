@@ -37,7 +37,6 @@ func TestAdversarialExtractorIsEnumeration(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, adv)
 	assert.IsType(t, features.Adversarial{}, adv)
-
 	assert.True(t, *adv.(features.Adversarial).Enumeration)
 }
 

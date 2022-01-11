@@ -35811,15 +35811,6 @@
         "ticker": "XOMA"
     },
     {
-        "clean_name": "xp",
-        "exchange": "nasdaq",
-        "formal_name": "XP Inc.",
-        "identifier": "NASDAQ:XP",
-        "industry": "Investment Bankers/Brokers/Service",
-        "sector": "Finance",
-        "ticker": "XP"
-    },
-    {
         "clean_name": "xpel",
         "exchange": "nasdaq",
         "formal_name": "XPEL, Inc.",
@@ -38655,49 +38646,13 @@
         "ticker": "HOME"
     },
     {
-        "clean_name": "att",
+        "clean_name": "at&t",
         "exchange": "nyse",
         "formal_name": "AT&T Inc.",
         "identifier": "NYSE:T",
         "industry": "Telecommunications Equipment",
         "sector": "Public Utilities",
         "ticker": "T"
-    },
-    {
-        "clean_name": "att",
-        "exchange": "nyse",
-        "formal_name": "AT&T Inc.",
-        "identifier": "NYSE:T^A",
-        "industry": "n/a",
-        "sector": "n/a",
-        "ticker": "T^A"
-    },
-    {
-        "clean_name": "att",
-        "exchange": "nyse",
-        "formal_name": "AT&T Inc.",
-        "identifier": "NYSE:T^C",
-        "industry": "n/a",
-        "sector": "n/a",
-        "ticker": "T^C"
-    },
-    {
-        "clean_name": "att",
-        "exchange": "nyse",
-        "formal_name": "AT&T Inc.",
-        "identifier": "NYSE:TBB",
-        "industry": "Telecommunications Equipment",
-        "sector": "Public Utilities",
-        "ticker": "TBB"
-    },
-    {
-        "clean_name": "att",
-        "exchange": "nyse",
-        "formal_name": "AT&T Inc.",
-        "identifier": "NYSE:TBC",
-        "industry": "Telecommunications Equipment",
-        "sector": "Public Utilities",
-        "ticker": "TBC"
     },
     {
         "clean_name": "atento sa",
@@ -46809,24 +46764,6 @@
         "ticker": "FRC^K"
     },
     {
-        "clean_name": "first trust",
-        "exchange": "nyse",
-        "formal_name": "First Trust",
-        "identifier": "NYSE:FFA",
-        "industry": "n/a",
-        "sector": "n/a",
-        "ticker": "FFA"
-    },
-    {
-        "clean_name": "first trust",
-        "exchange": "nyse",
-        "formal_name": "First Trust",
-        "identifier": "NYSE:FMY",
-        "industry": "n/a",
-        "sector": "n/a",
-        "ticker": "FMY"
-    },
-    {
         "clean_name": "first trust dynamic europe equity income fund",
         "exchange": "nyse",
         "formal_name": "First Trust Dynamic Europe Equity Income Fund",
@@ -46875,10 +46812,10 @@
         "clean_name": "first trust mlp and energy income fund",
         "exchange": "nyse",
         "formal_name": "First Trust MLP and Energy Income Fund",
-        "identifier": "NYSE:FEI           ",
+        "identifier": "NYSE:FEI",
         "industry": "n/a",
         "sector": "n/a",
-        "ticker": "FEI           "
+        "ticker": "FEI"
     },
     {
         "clean_name": "first trust new opportunities mlp  energy fund",

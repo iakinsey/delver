@@ -14,7 +14,7 @@ import (
 const companiesFileName = "companies.json"
 
 type companyNameExtractor struct {
-	companies []types.Company
+	companies []*types.Company
 }
 
 func NewCompanyNameExtractor() Extractor {

@@ -3,7 +3,6 @@ package fsm
 import (
 	"testing"
 
-	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/util/testutil"
 	"github.com/stretchr/testify/assert"
 )
@@ -15,9 +14,5 @@ func TestDocumentReader(t *testing.T) {
 	actualUrls, err := docReader.Perform(testutil.TestDataFile(urlListName))
 
 	assert.NoError(t, err)
-
-	lines, err := util.ReadLines(testutil.TestDataFile(urlListName))
-
-	assert.NoError(t, err)
-	assert.Equal(t, len(lines), len(actualUrls))
+	assert.Equal(t, 164, len(actualUrls))
 }
