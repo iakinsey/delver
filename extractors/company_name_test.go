@@ -30,5 +30,5 @@ func TestCompanyNameExtractors(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, corp)
 	assert.IsType(t, features.Corporations{}, corp)
-	assert.Equal(t, expectedCompanyNames, corp)
+	assert.ElementsMatch(t, expectedCompanyNames, corp)
 }
