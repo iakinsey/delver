@@ -19,7 +19,7 @@ func GetOrCreateDir(path string) (err error) {
 	}
 
 	if !info.IsDir() {
-		return fmt.Errorf("Path exists and is not a directory: %s", path)
+		return fmt.Errorf("path exists and is not a directory: %s", path)
 	}
 
 	return
