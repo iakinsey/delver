@@ -30,7 +30,7 @@ func NewCompanyNameExtractor() Extractor {
 }
 
 func (s *companyNameExtractor) Perform(f *os.File, meta message.FetcherResponse, composite types.CompositeAnalysis) (interface{}, error) {
-	var results features.Corporations
+	var results []string
 
 	contents, err := ioutil.ReadAll(f)
 
@@ -44,7 +44,7 @@ func (s *companyNameExtractor) Perform(f *os.File, meta message.FetcherResponse,
 		}
 	}
 
-	return results, nil
+	return features.Corporations(util.DedupeStrSlice(results)), nil
 }
 
 func (s *companyNameExtractor) Name() string {
