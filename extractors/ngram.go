@@ -22,5 +22,7 @@ func (s *ngramExtractor) Name() string {
 }
 
 func (s *ngramExtractor) Requires() []string {
-	return nil
+	return []string{
+		types.TextExtractor,
+	}
 }

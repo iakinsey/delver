@@ -1,7 +1,6 @@
 package extractors
 
 import (
-	"io/ioutil"
 	"log"
 	"os"
 
@@ -32,14 +31,8 @@ func NewCountryExtractor() Extractor {
 func (s *countryExtractor) Perform(f *os.File, meta message.FetcherResponse, composite types.CompositeAnalysis) (interface{}, error) {
 	var results []string
 
-	contents, err := ioutil.ReadAll(f)
-
-	if err != nil {
-		return nil, err
-	}
-
 	for iso3166Alpha2, regex := range s.countries {
-		if r := regex.Find(contents); r != nil {
+		if r := regex.Find(composite.TextContent); r != nil {
 			results = append(results, iso3166Alpha2)
 		}
 	}
@@ -52,5 +45,7 @@ func (s *countryExtractor) Name() string {
 }
 
 func (s *countryExtractor) Requires() []string {
-	return nil
+	return []string{
+		types.TextExtractor,
+	}
 }

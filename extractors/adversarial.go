@@ -35,7 +35,7 @@ func (s *adversarialExtractor) Perform(f *os.File, meta message.FetcherResponse,
 
 	var urls []*url.URL
 
-	for _, u := range *composite.URIs {
+	for _, u := range composite.URIs {
 		u1, err := url.Parse(u)
 
 		if err == nil && u1.Host != "" {
