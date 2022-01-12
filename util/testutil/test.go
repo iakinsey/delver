@@ -114,6 +114,17 @@ func TestDataFile(name string) *os.File {
 	return file
 }
 
+func TestData(name string) []byte {
+	f := TestDataFile(name)
+	data, err := ioutil.ReadAll(f)
+
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+
+	return data
+}
+
 func createTestQueue(path string, dlq string) queue.Queue {
 	queue, err := queue.NewFileQueue("TestInboxQueue", path, dlq, 100, 100, false)
 

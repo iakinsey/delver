@@ -1,7 +1,6 @@
 package extractors
 
 import (
-	"io/ioutil"
 	"log"
 	"os"
 
@@ -32,14 +31,8 @@ func NewCompanyNameExtractor() Extractor {
 func (s *companyNameExtractor) Perform(f *os.File, meta message.FetcherResponse, composite types.CompositeAnalysis) (interface{}, error) {
 	var results []string
 
-	contents, err := ioutil.ReadAll(f)
-
-	if err != nil {
-		return nil, err
-	}
-
 	for _, company := range s.companies {
-		if c := company.Regex.Find(contents); c != nil {
+		if c := company.Regex.Find(composite.TextContent); c != nil {
 			results = append(results, company.Identifier)
 		}
 	}
@@ -52,5 +45,7 @@ func (s *companyNameExtractor) Name() string {
 }
 
 func (s *companyNameExtractor) Requires() []string {
-	return nil
+	return []string{
+		types.TextExtractor,
+	}
 }

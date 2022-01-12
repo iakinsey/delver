@@ -22,7 +22,7 @@ func prepareAdvTest(origin string, uris []string) (interface{}, error) {
 	inputUris := features.URIs(uris)
 
 	composite := types.CompositeAnalysis{
-		URIs: &inputUris,
+		URIs: inputUris,
 	}
 
 	return extractor.Perform(nil, meta, composite)

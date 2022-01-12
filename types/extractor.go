@@ -19,14 +19,14 @@ const (
 
 type CompositeAnalysis struct {
 	Adversarial   *features.Adversarial
-	Corporations  *features.Corporations
-	Countries     *features.Countries
+	Corporations  features.Corporations
+	Countries     features.Countries
 	Language      *features.Language
 	Ngrams        *features.Ngrams
 	TermFrequency *features.TermFrequency
-	TextContent   *features.TextContent
+	TextContent   features.TextContent
 	Sentiment     *features.Sentiment
-	URIs          *features.URIs
+	URIs          features.URIs
 }
 
 func UpdateCompositeAnalysis(data interface{}, composite *CompositeAnalysis) error {
@@ -34,9 +34,9 @@ func UpdateCompositeAnalysis(data interface{}, composite *CompositeAnalysis) err
 	case features.Adversarial:
 		composite.Adversarial = &d
 	case features.Corporations:
-		composite.Corporations = &d
+		composite.Corporations = d
 	case features.Countries:
-		composite.Countries = &d
+		composite.Countries = d
 	case features.Language:
 		composite.Language = &d
 	case features.Ngrams:
@@ -44,11 +44,11 @@ func UpdateCompositeAnalysis(data interface{}, composite *CompositeAnalysis) err
 	case features.TermFrequency:
 		composite.TermFrequency = &d
 	case features.TextContent:
-		composite.TextContent = &d
+		composite.TextContent = d
 	case features.Sentiment:
 		composite.Sentiment = &d
 	case features.URIs:
-		composite.URIs = &d
+		composite.URIs = d
 	default:
 		return fmt.Errorf("attempt to cast unknown type in composite analysis")
 	}

@@ -22,5 +22,7 @@ func (s *languageExtractor) Name() string {
 }
 
 func (s *languageExtractor) Requires() []string {
-	return nil
+	return []string{
+		types.TextExtractor,
+	}
 }

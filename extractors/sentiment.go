@@ -22,5 +22,7 @@ func (s *sentimentExtractor) Name() string {
 }
 
 func (s *sentimentExtractor) Requires() []string {
-	return nil
+	return []string{
+		types.TextExtractor,
+	}
 }

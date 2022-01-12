@@ -45,6 +45,8 @@ func NewCompositeExtractorWorker(opts CompositeArgs) worker.Worker {
 
 func sortExtractorDeps(exts []extractors.Extractor) []extractors.Extractor {
 	// TODO Sort extractors based on their required dependencies
+	// If the result of a dependency is nil, then its dependent extractors dont run
+	// Seek to beginning of file after each analysis
 	return exts
 }
 
