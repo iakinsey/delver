@@ -9,6 +9,7 @@ require (
 )
 
 require (
+	github.com/abadojack/whatlanggo v1.0.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/cdipaolo/goml v0.0.0-20210723214924-bf439dd662aa // indirect
 	github.com/cdipaolo/sentiment v0.0.0-20200617002423-c697f64e7f10 // indirect
