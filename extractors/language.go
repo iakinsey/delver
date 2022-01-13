@@ -3,7 +3,9 @@ package extractors
 import (
 	"os"
 
+	"github.com/abadojack/whatlanggo"
 	"github.com/iakinsey/delver/types"
+	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 )
 
@@ -14,7 +16,11 @@ func NewLanguageExtractor() Extractor {
 }
 
 func (s *languageExtractor) Perform(f *os.File, meta message.FetcherResponse, composite types.CompositeAnalysis) (interface{}, error) {
-	return nil, nil
+	info := whatlanggo.Detect(string(composite.TextContent))
+	return features.Language{
+		Name:       info.Lang.Iso6391(),
+		Confidence: info.Confidence,
+	}, nil
 }
 
 func (s *languageExtractor) Name() string {
