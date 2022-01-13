@@ -10,6 +10,8 @@ require (
 
 require (
 	github.com/aymerick/douceur v0.2.0 // indirect
+	github.com/cdipaolo/goml v0.0.0-20210723214924-bf439dd662aa // indirect
+	github.com/cdipaolo/sentiment v0.0.0-20200617002423-c697f64e7f10 // indirect
 	github.com/davecgh/go-spew v1.1.0 // indirect
 	github.com/gorilla/css v1.0.0 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.17 // indirect
