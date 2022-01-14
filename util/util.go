@@ -82,3 +82,13 @@ func DataFilePath(name string) string {
 
 	return filepath.Join(basepath, config.DataPath, name)
 }
+
+func StringInSlice(a string, l []string) bool {
+	for _, b := range l {
+		if a == b {
+			return true
+		}
+	}
+
+	return false
+}
