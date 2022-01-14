@@ -29,7 +29,6 @@ func TestCompositeExtractorUrlOnly(t *testing.T) {
 	}
 
 	extractor := NewCompositeExtractorWorker(CompositeArgs{
-		Extractors:  []string{types.UrlExtractor},
 		StreamStore: queues.StreamStore,
 	})
 

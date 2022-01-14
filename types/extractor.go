@@ -17,6 +17,17 @@ const (
 	UrlExtractor         = "url"
 )
 
+var ExtractorNames = []string{
+	AdversarialExtractor,
+	CompanyNameExtractor,
+	CountryExtractor,
+	LanguageExtractor,
+	NgramExtractor,
+	SentimentExtractor,
+	TextExtractor,
+	UrlExtractor,
+}
+
 type CompositeAnalysis struct {
 	Adversarial   *features.Adversarial
 	Corporations  features.Corporations
