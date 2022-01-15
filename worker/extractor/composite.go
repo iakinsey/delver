@@ -2,6 +2,7 @@ package extractor
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -14,10 +15,10 @@ import (
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/worker"
-	"github.com/pkg/errors"
 )
 
 type compositeExtractor struct {
+	enabled     []string
 	opts        CompositeArgs
 	StreamStore streamstore.StreamStore
 }
@@ -26,8 +27,9 @@ type CompositeArgs struct {
 	StreamStore streamstore.StreamStore
 }
 
-func NewCompositeExtractorWorker(opts CompositeArgs) worker.Worker {
+func NewCompositeExtractorWorker(enabled []string, opts CompositeArgs) worker.Worker {
 	return &compositeExtractor{
+		enabled:     enabled,
 		opts:        opts,
 		StreamStore: opts.StreamStore,
 	}
@@ -42,6 +44,7 @@ func (s *compositeExtractor) executeExtractors(path string, meta message.Fetcher
 	composite := &types.CompositeAnalysis{}
 	pending := s.getExtractors()
 	var completed []string
+	var errs []error
 
 	for len(pending) > 0 {
 		var toExecute []extractors.Extractor
@@ -53,16 +56,29 @@ func (s *compositeExtractor) executeExtractors(path string, meta message.Fetcher
 		}
 
 		if len(toExecute) == 0 && len(completed) == 0 {
-			return nil, errors.New("failed to find extractors to execute")
+			errs := append(errs, errors.New("failed to find extractors to execute"))
+			return nil, getCompositeError(composite, errs)
 		} else if len(toExecute) == 0 {
-			return composite, nil
+			return composite, getCompositeError(composite, errs)
 		}
 
-		// TODO accumulate errors when running executeExtractorSet
-		s.executeExtractorSet(toExecute, path, meta, composite)
+		newCompleted, newErrs := s.executeExtractorSet(toExecute, path, meta, composite)
+		completed = append(completed, newCompleted...)
+		errs = append(errs, newErrs...)
+		pending = s.getNextPending(pending, newCompleted)
 	}
 
-	return composite, nil
+	return composite, getCompositeError(composite, errs)
+}
+
+func (s *compositeExtractor) getNextPending(pending []extractors.Extractor, completed []string) (next []extractors.Extractor) {
+	for _, ext := range pending {
+		if !util.StringInSlice(ext.Name(), completed) {
+			next = append(next, ext)
+		}
+	}
+
+	return
 }
 
 func (s *compositeExtractor) canExecuteExtractor(ext extractors.Extractor, completed []string) bool {
@@ -81,7 +97,9 @@ func (s *compositeExtractor) canExecuteExtractor(ext extractors.Extractor, compl
 	return true
 }
 
-func (s *compositeExtractor) executeExtractorSet(exts []extractors.Extractor, path string, meta message.FetcherResponse, composite *types.CompositeAnalysis) {
+func (s *compositeExtractor) executeExtractorSet(exts []extractors.Extractor, path string, meta message.FetcherResponse, composite *types.CompositeAnalysis) ([]string, []error) {
+	var errors []error
+	var completed []string
 	results := make(chan interface{}, len(exts))
 
 	for _, ext := range exts {
@@ -90,8 +108,14 @@ func (s *compositeExtractor) executeExtractorSet(exts []extractors.Extractor, pa
 
 	// TODO add timeouts to execution
 	for i := 0; i < len(exts); i++ {
-		types.UpdateCompositeAnalysis(<-results, composite)
+		if newComplete, err := types.UpdateCompositeAnalysis(<-results, composite); err != nil {
+			errors = append(errors, err)
+		} else {
+			completed = append(completed, newComplete)
+		}
 	}
+
+	return completed, errors
 }
 
 func (s *compositeExtractor) executeExtractor(ext extractors.Extractor, path string, meta message.FetcherResponse, composite types.CompositeAnalysis, results chan interface{}) {
@@ -123,7 +147,13 @@ func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 		return nil, err
 	}
 
-	composite, err := s.executeExtractors(f.Name(), meta)
+	path := f.Name()
+
+	if err = f.Close(); err != nil {
+		return nil, err
+	}
+
+	composite, err := s.executeExtractors(path, meta)
 
 	if err != nil {
 		return nil, err
@@ -139,8 +169,6 @@ func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 func (s *compositeExtractor) OnComplete() {}
 
 func (s *compositeExtractor) getExtractor(name string) extractors.Extractor {
-	// TODO have a constant list of extractor instantiation methods and use a map here instead
-	// based on its Name() values
 	switch name {
 	case types.UrlExtractor:
 		return extractors.NewUrlExtractor()
@@ -164,7 +192,7 @@ func (s *compositeExtractor) getExtractor(name string) extractors.Extractor {
 }
 
 func (s *compositeExtractor) getExtractors() (result []extractors.Extractor) {
-	for _, name := range types.ExtractorNames {
+	for _, name := range s.enabled {
 		result = append(result, s.getExtractor(name))
 	}
 

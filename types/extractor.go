@@ -17,52 +17,50 @@ const (
 	UrlExtractor         = "url"
 )
 
-var ExtractorNames = []string{
-	AdversarialExtractor,
-	CompanyNameExtractor,
-	CountryExtractor,
-	LanguageExtractor,
-	NgramExtractor,
-	SentimentExtractor,
-	TextExtractor,
-	UrlExtractor,
-}
-
 type CompositeAnalysis struct {
-	Adversarial   *features.Adversarial
-	Corporations  features.Corporations
-	Countries     features.Countries
-	Language      *features.Language
-	Ngrams        *features.Ngrams
-	TermFrequency *features.TermFrequency
-	TextContent   features.TextContent
-	Sentiment     *features.Sentiment
-	URIs          features.URIs
+	Adversarial  *features.Adversarial
+	Corporations features.Corporations
+	Countries    features.Countries
+	Language     *features.Language
+	Ngrams       *features.Ngrams
+	TextContent  features.TextContent
+	Sentiment    *features.Sentiment
+	URIs         features.URIs
 }
 
-func UpdateCompositeAnalysis(data interface{}, composite *CompositeAnalysis) error {
+func UpdateCompositeAnalysis(data interface{}, composite *CompositeAnalysis) (string, error) {
+	var name string
+
 	switch d := data.(type) {
 	case features.Adversarial:
+		name = AdversarialExtractor
 		composite.Adversarial = &d
 	case features.Corporations:
+		name = CompanyNameExtractor
 		composite.Corporations = d
 	case features.Countries:
+		name = CountryExtractor
 		composite.Countries = d
 	case features.Language:
+		name = LanguageExtractor
 		composite.Language = &d
 	case features.Ngrams:
+		name = NgramExtractor
 		composite.Ngrams = &d
-	case features.TermFrequency:
-		composite.TermFrequency = &d
 	case features.TextContent:
+		name = TextExtractor
 		composite.TextContent = d
 	case features.Sentiment:
+		name = SentimentExtractor
 		composite.Sentiment = &d
 	case features.URIs:
+		name = UrlExtractor
 		composite.URIs = d
+	case error:
+		return name, d
 	default:
-		return fmt.Errorf("attempt to cast unknown type in composite analysis")
+		return name, fmt.Errorf("attempt to cast unknown type in composite analysis")
 	}
 
-	return nil
+	return name, nil
 }
