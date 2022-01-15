@@ -3,7 +3,6 @@ package extractors
 import (
 	"testing"
 
-	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util/testutil"
@@ -18,7 +17,7 @@ func TestCountryExtractor(t *testing.T) {
 	extractor := NewCountryExtractor()
 	textContent := features.TextContent(testutil.TestData(testCountryNames))
 	meta := message.FetcherResponse{}
-	composite := types.CompositeAnalysis{
+	composite := message.CompositeAnalysis{
 		TextContent: textContent,
 	}
 

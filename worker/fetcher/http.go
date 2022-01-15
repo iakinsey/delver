@@ -2,6 +2,7 @@ package fetcher
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -96,6 +97,8 @@ func (s *httpFetcher) doHttpRequest(request message.FetcherRequest, response *me
 	response.HTTPCode = res.StatusCode
 	response.Header = res.Header
 	key = types.NewV4()
+
+	log.Printf("GET %d %s", response.HTTPCode, request.URI)
 
 	hash, err := s.StreamStore.Put(key, res.Body)
 

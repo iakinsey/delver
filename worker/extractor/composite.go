@@ -34,8 +34,8 @@ func NewCompositeExtractorWorker(opts CompositeArgs) worker.Worker {
 	}
 }
 
-func (s *compositeExtractor) executeExtractors(path string, meta message.FetcherResponse) (*types.CompositeAnalysis, error) {
-	composite := &types.CompositeAnalysis{}
+func (s *compositeExtractor) executeExtractors(path string, meta message.FetcherResponse) (*message.CompositeAnalysis, error) {
+	composite := &message.CompositeAnalysis{}
 	pending := s.getExtractors()
 	var completed []string
 	var errs []error
@@ -91,7 +91,7 @@ func (s *compositeExtractor) canExecuteExtractor(ext extractors.Extractor, compl
 	return true
 }
 
-func (s *compositeExtractor) executeExtractorSet(exts []extractors.Extractor, path string, meta message.FetcherResponse, composite *types.CompositeAnalysis) ([]string, []error) {
+func (s *compositeExtractor) executeExtractorSet(exts []extractors.Extractor, path string, meta message.FetcherResponse, composite *message.CompositeAnalysis) ([]string, []error) {
 	var errors []error
 	var completed []string
 	results := make(chan interface{}, len(exts))
@@ -102,7 +102,7 @@ func (s *compositeExtractor) executeExtractorSet(exts []extractors.Extractor, pa
 
 	// TODO add timeouts to execution
 	for i := 0; i < len(exts); i++ {
-		if newComplete, err := types.UpdateCompositeAnalysis(<-results, composite); err != nil {
+		if newComplete, err := message.UpdateCompositeAnalysis(<-results, composite); err != nil {
 			errors = append(errors, err)
 		} else {
 			completed = append(completed, newComplete)
@@ -112,7 +112,7 @@ func (s *compositeExtractor) executeExtractorSet(exts []extractors.Extractor, pa
 	return completed, errors
 }
 
-func (s *compositeExtractor) executeExtractor(ext extractors.Extractor, path string, meta message.FetcherResponse, composite types.CompositeAnalysis, results chan interface{}) {
+func (s *compositeExtractor) executeExtractor(ext extractors.Extractor, path string, meta message.FetcherResponse, composite message.CompositeAnalysis, results chan interface{}) {
 	f, err := os.Open(path)
 
 	if err != nil {
@@ -164,21 +164,21 @@ func (s *compositeExtractor) OnComplete() {}
 
 func (s *compositeExtractor) getExtractor(name string) extractors.Extractor {
 	switch name {
-	case types.UrlExtractor:
+	case message.UrlExtractor:
 		return extractors.NewUrlExtractor()
-	case types.AdversarialExtractor:
+	case message.AdversarialExtractor:
 		return extractors.NewAdversarialExtractor()
-	case types.CompanyNameExtractor:
+	case message.CompanyNameExtractor:
 		return extractors.NewCompanyNameExtractor()
-	case types.CountryExtractor:
+	case message.CountryExtractor:
 		return extractors.NewCountryExtractor()
-	case types.LanguageExtractor:
+	case message.LanguageExtractor:
 		return extractors.NewLanguageExtractor()
-	case types.NgramExtractor:
+	case message.NgramExtractor:
 		return extractors.NewNgramExtractor()
-	case types.SentimentExtractor:
+	case message.SentimentExtractor:
 		return extractors.NewSentimentExtractor()
-	case types.TextExtractor:
+	case message.TextExtractor:
 		return extractors.NewTextExtractor()
 	default:
 		return nil
@@ -193,7 +193,7 @@ func (s *compositeExtractor) getExtractors() (result []extractors.Extractor) {
 	return
 }
 
-func getCompositeError(composite *types.CompositeAnalysis, errors []error) error {
+func getCompositeError(composite *message.CompositeAnalysis, errors []error) error {
 	noAnalysis := reflect.DeepEqual(composite, nil)
 	hasErrors := len(errors) != 0
 	errStr := ""

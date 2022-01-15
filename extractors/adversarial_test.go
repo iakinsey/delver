@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/stretchr/testify/assert"
@@ -21,7 +20,7 @@ func prepareAdvTest(origin string, uris []string) (interface{}, error) {
 
 	inputUris := features.URIs(uris)
 
-	composite := types.CompositeAnalysis{
+	composite := message.CompositeAnalysis{
 		URIs: inputUris,
 	}
 

@@ -3,7 +3,6 @@ package extractors
 import (
 	"testing"
 
-	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/stretchr/testify/assert"
@@ -25,7 +24,7 @@ func TestLanguageExtractor(t *testing.T) {
 	for text, expectedLang := range langScenarios {
 		textContent := features.TextContent(text)
 
-		composite := types.CompositeAnalysis{
+		composite := message.CompositeAnalysis{
 			TextContent: textContent,
 		}
 

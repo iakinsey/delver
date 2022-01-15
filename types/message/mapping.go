@@ -12,7 +12,7 @@ func GetMessageTypeMapping(msg interface{}) (types.MessageType, error) {
 		return types.FetcherRequestType, nil
 	case FetcherResponse:
 		return types.FetcherResponseType, nil
-	case types.CompositeAnalysis:
+	case CompositeAnalysis:
 		return types.CompositeAnalysisType, nil
 	default:
 		return types.NullMessage, fmt.Errorf("unmappable message type")

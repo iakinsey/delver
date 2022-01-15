@@ -31,11 +31,11 @@ func TestCompositeExtractorUrlOnly(t *testing.T) {
 	extractor := NewCompositeExtractorWorker(CompositeArgs{
 		StreamStore: queues.StreamStore,
 		Enabled: []string{
-			types.TextExtractor,
-			types.LanguageExtractor,
-			types.SentimentExtractor,
-			types.CountryExtractor,
-			types.CompanyNameExtractor,
+			message.TextExtractor,
+			message.LanguageExtractor,
+			message.SentimentExtractor,
+			message.CountryExtractor,
+			message.CompanyNameExtractor,
 		},
 	})
 

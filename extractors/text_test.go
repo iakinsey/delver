@@ -3,7 +3,6 @@ package extractors
 import (
 	"testing"
 
-	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util/testutil"
@@ -16,7 +15,7 @@ func TestTextExtractor(t *testing.T) {
 	extractor := NewTextExtractor()
 	f := testutil.TestDataFile(lipsumHtml)
 	meta := message.FetcherResponse{}
-	composite := types.CompositeAnalysis{}
+	composite := message.CompositeAnalysis{}
 
 	text, err := extractor.Perform(f, meta, composite)
 	assert.NoError(t, err)

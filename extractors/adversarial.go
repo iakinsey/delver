@@ -4,7 +4,6 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
@@ -26,7 +25,7 @@ func NewAdversarialExtractor() Extractor {
 	}
 }
 
-func (s *adversarialExtractor) Perform(f *os.File, meta message.FetcherResponse, composite types.CompositeAnalysis) (interface{}, error) {
+func (s *adversarialExtractor) Perform(f *os.File, meta message.FetcherResponse, composite message.CompositeAnalysis) (interface{}, error) {
 	origin, err := url.Parse(meta.URI)
 
 	if err != nil {
@@ -53,12 +52,12 @@ func (s *adversarialExtractor) Perform(f *os.File, meta message.FetcherResponse,
 }
 
 func (s *adversarialExtractor) Name() string {
-	return types.AdversarialExtractor
+	return message.AdversarialExtractor
 }
 
 func (s *adversarialExtractor) Requires() []string {
 	return []string{
-		types.UrlExtractor,
+		message.UrlExtractor,
 	}
 }
 

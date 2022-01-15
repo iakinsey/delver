@@ -3,7 +3,6 @@ package extractors
 import (
 	"testing"
 
-	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util/testutil"
@@ -16,7 +15,7 @@ func TestUrlExtractor(t *testing.T) {
 	extractor := NewUrlExtractor()
 	htmlFile := testutil.TestDataFile(exampleHtmlFile)
 	meta := message.FetcherResponse{}
-	composite := types.CompositeAnalysis{}
+	composite := message.CompositeAnalysis{}
 
 	urls, err := extractor.Perform(htmlFile, meta, composite)
 

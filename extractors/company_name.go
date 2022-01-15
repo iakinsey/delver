@@ -28,7 +28,7 @@ func NewCompanyNameExtractor() Extractor {
 	}
 }
 
-func (s *companyNameExtractor) Perform(f *os.File, meta message.FetcherResponse, composite types.CompositeAnalysis) (interface{}, error) {
+func (s *companyNameExtractor) Perform(f *os.File, meta message.FetcherResponse, composite message.CompositeAnalysis) (interface{}, error) {
 	var results []string
 
 	for _, company := range s.companies {
@@ -41,11 +41,11 @@ func (s *companyNameExtractor) Perform(f *os.File, meta message.FetcherResponse,
 }
 
 func (s *companyNameExtractor) Name() string {
-	return types.CompanyNameExtractor
+	return message.CompanyNameExtractor
 }
 
 func (s *companyNameExtractor) Requires() []string {
 	return []string{
-		types.TextExtractor,
+		message.TextExtractor,
 	}
 }

@@ -3,7 +3,6 @@ package extractors
 import (
 	"testing"
 
-	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/stretchr/testify/assert"
@@ -39,7 +38,7 @@ func TestNgramExtractor(t *testing.T) {
 	resp := message.FetcherResponse{}
 
 	for basicText, expectedNgrams := range scenarios {
-		composite := types.CompositeAnalysis{
+		composite := message.CompositeAnalysis{
 			TextContent: []byte(basicText),
 		}
 		ngrams, err := extractor.Perform(nil, resp, composite)

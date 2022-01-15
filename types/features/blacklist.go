@@ -1,6 +1,6 @@
 package features
 
 type Blacklist struct {
-	HasBlacklistedKeyword bool
-	HasManualBlacklist    bool
+	HasBlacklistedKeyword bool `json:"has_blacklisted_keyword"`
+	HasManualBlacklist    bool `json:"has_manual_blacklist"`
 }
