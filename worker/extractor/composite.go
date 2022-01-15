@@ -18,29 +18,23 @@ import (
 )
 
 type compositeExtractor struct {
-	enabled     []string
-	opts        CompositeArgs
+	Enabled     []string
 	StreamStore streamstore.StreamStore
 }
 
 type CompositeArgs struct {
+	Enabled     []string
 	StreamStore streamstore.StreamStore
 }
 
-func NewCompositeExtractorWorker(enabled []string, opts CompositeArgs) worker.Worker {
+func NewCompositeExtractorWorker(opts CompositeArgs) worker.Worker {
 	return &compositeExtractor{
-		enabled:     enabled,
-		opts:        opts,
+		Enabled:     opts.Enabled,
 		StreamStore: opts.StreamStore,
 	}
 }
 
 func (s *compositeExtractor) executeExtractors(path string, meta message.FetcherResponse) (*types.CompositeAnalysis, error) {
-	// Start by executing every nondependent extractor
-	// When an extractor completes add its completion state to a map[string]bool
-	// Check every remaining exeutor that hasnt run yet, if its dependencies indicate completion in the map, then run
-	// If no new executors were queued, and none are pending, return
-
 	composite := &types.CompositeAnalysis{}
 	pending := s.getExtractors()
 	var completed []string
@@ -65,15 +59,15 @@ func (s *compositeExtractor) executeExtractors(path string, meta message.Fetcher
 		newCompleted, newErrs := s.executeExtractorSet(toExecute, path, meta, composite)
 		completed = append(completed, newCompleted...)
 		errs = append(errs, newErrs...)
-		pending = s.getNextPending(pending, newCompleted)
+		pending = s.getNextPending(pending, toExecute)
 	}
 
 	return composite, getCompositeError(composite, errs)
 }
 
-func (s *compositeExtractor) getNextPending(pending []extractors.Extractor, completed []string) (next []extractors.Extractor) {
+func (s *compositeExtractor) getNextPending(pending []extractors.Extractor, completed []extractors.Extractor) (next []extractors.Extractor) {
 	for _, ext := range pending {
-		if !util.StringInSlice(ext.Name(), completed) {
+		if !ExtractorInSlice(ext, completed) {
 			next = append(next, ext)
 		}
 	}
@@ -192,7 +186,7 @@ func (s *compositeExtractor) getExtractor(name string) extractors.Extractor {
 }
 
 func (s *compositeExtractor) getExtractors() (result []extractors.Extractor) {
-	for _, name := range s.enabled {
+	for _, name := range s.Enabled {
 		result = append(result, s.getExtractor(name))
 	}
 
@@ -221,4 +215,14 @@ func getCompositeError(composite *types.CompositeAnalysis, errors []error) error
 	}
 
 	return nil
+}
+
+func ExtractorInSlice(a extractors.Extractor, l []extractors.Extractor) bool {
+	for _, b := range l {
+		if a.Name() == b.Name() {
+			return true
+		}
+	}
+
+	return false
 }

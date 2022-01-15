@@ -58,6 +58,8 @@ func UpdateCompositeAnalysis(data interface{}, composite *CompositeAnalysis) (st
 		composite.URIs = d
 	case error:
 		return name, d
+	case nil:
+		return name, nil
 	default:
 		return name, fmt.Errorf("attempt to cast unknown type in composite analysis")
 	}
