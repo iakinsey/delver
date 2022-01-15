@@ -28,7 +28,7 @@ func NewCountryExtractor() Extractor {
 	}
 }
 
-func (s *countryExtractor) Perform(f *os.File, meta message.FetcherResponse, composite types.CompositeAnalysis) (interface{}, error) {
+func (s *countryExtractor) Perform(f *os.File, meta message.FetcherResponse, composite message.CompositeAnalysis) (interface{}, error) {
 	var results []string
 
 	for iso3166Alpha2, regex := range s.countries {
@@ -41,11 +41,11 @@ func (s *countryExtractor) Perform(f *os.File, meta message.FetcherResponse, com
 }
 
 func (s *countryExtractor) Name() string {
-	return types.CountryExtractor
+	return message.CountryExtractor
 }
 
 func (s *countryExtractor) Requires() []string {
 	return []string{
-		types.TextExtractor,
+		message.TextExtractor,
 	}
 }

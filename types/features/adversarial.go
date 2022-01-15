@@ -1,6 +1,6 @@
 package features
 
 type Adversarial struct {
-	Enumeration        *bool
-	SubdomainExplosion *bool
+	Enumeration        *bool `json:"enumeration"`
+	SubdomainExplosion *bool `json:"subdomain_explosion"`
 }

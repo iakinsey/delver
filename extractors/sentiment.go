@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/cdipaolo/sentiment"
-	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 )
@@ -26,7 +25,7 @@ func NewSentimentExtractor() Extractor {
 	}
 }
 
-func (s *sentimentExtractor) Perform(f *os.File, meta message.FetcherResponse, composite types.CompositeAnalysis) (interface{}, error) {
+func (s *sentimentExtractor) Perform(f *os.File, meta message.FetcherResponse, composite message.CompositeAnalysis) (interface{}, error) {
 	if composite.Language.Name != features.LangEnglish {
 		return nil, nil
 	}
@@ -40,11 +39,11 @@ func (s *sentimentExtractor) Perform(f *os.File, meta message.FetcherResponse, c
 }
 
 func (s *sentimentExtractor) Name() string {
-	return types.SentimentExtractor
+	return message.SentimentExtractor
 }
 
 func (s *sentimentExtractor) Requires() []string {
 	return []string{
-		types.LanguageExtractor,
+		message.LanguageExtractor,
 	}
 }

@@ -7,5 +7,5 @@ import (
 type Entity struct {
 	ID       types.UUID
 	Response FetcherResponse
-	Features *types.CompositeAnalysis
+	Features *CompositeAnalysis
 }

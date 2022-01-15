@@ -5,7 +5,6 @@ import (
 	"os"
 	"unicode"
 
-	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"golang.org/x/text/unicode/rangetable"
@@ -47,7 +46,7 @@ func NewNgramExtractor() Extractor {
 	}
 }
 
-func (s *ngramExtractor) Perform(f *os.File, meta message.FetcherResponse, composite types.CompositeAnalysis) (interface{}, error) {
+func (s *ngramExtractor) Perform(f *os.File, meta message.FetcherResponse, composite message.CompositeAnalysis) (interface{}, error) {
 	feature := make(features.Ngrams)
 	var result [][]string
 	var ngrams []string
@@ -88,11 +87,11 @@ func (s *ngramExtractor) Perform(f *os.File, meta message.FetcherResponse, compo
 }
 
 func (s *ngramExtractor) Name() string {
-	return types.NgramExtractor
+	return message.NgramExtractor
 }
 
 func (s *ngramExtractor) Requires() []string {
 	return []string{
-		types.TextExtractor,
+		message.TextExtractor,
 	}
 }

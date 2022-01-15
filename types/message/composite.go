@@ -1,4 +1,4 @@
-package types
+package message
 
 import (
 	"fmt"
@@ -18,14 +18,14 @@ const (
 )
 
 type CompositeAnalysis struct {
-	Adversarial  *features.Adversarial
-	Corporations features.Corporations
-	Countries    features.Countries
-	Language     *features.Language
-	Ngrams       *features.Ngrams
-	TextContent  features.TextContent
-	Sentiment    *features.Sentiment
-	URIs         features.URIs
+	Adversarial  *features.Adversarial `json:"adversarial"`
+	Corporations features.Corporations `json:"corporations"`
+	Countries    features.Countries    `json:"countries"`
+	Language     *features.Language    `json:"language"`
+	Ngrams       *features.Ngrams      `json:"ngrams"`
+	TextContent  features.TextContent  `json:"text_content"`
+	Sentiment    *features.Sentiment   `json:"sentiment"`
+	URIs         features.URIs         `json:"uris"`
 }
 
 func UpdateCompositeAnalysis(data interface{}, composite *CompositeAnalysis) (string, error) {

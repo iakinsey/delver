@@ -4,7 +4,6 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
@@ -17,7 +16,7 @@ func NewUrlExtractor() Extractor {
 	return &urlExtractor{}
 }
 
-func (s *urlExtractor) Perform(f *os.File, meta message.FetcherResponse, composite types.CompositeAnalysis) (interface{}, error) {
+func (s *urlExtractor) Perform(f *os.File, meta message.FetcherResponse, composite message.CompositeAnalysis) (interface{}, error) {
 	base, err := url.Parse(meta.URI)
 
 	if err != nil {
@@ -37,7 +36,7 @@ func (s *urlExtractor) Perform(f *os.File, meta message.FetcherResponse, composi
 }
 
 func (s *urlExtractor) Name() string {
-	return types.UrlExtractor
+	return message.UrlExtractor
 }
 
 func (s *urlExtractor) Requires() []string {
