@@ -153,6 +153,7 @@ func (s *compositeExtractor) executeExtractor(ext extractors.Extractor, path str
 
 func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 	meta := message.FetcherResponse{}
+	var result interface{} = nil
 
 	if err := json.Unmarshal(msg.Message, &meta); err != nil {
 		return nil, err
@@ -172,15 +173,19 @@ func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 
 	composite, err := s.executeExtractors(path, meta)
 
-	if err != nil {
-		return nil, err
+	if composite != nil {
+		result = *composite
 	}
 
 	if streamStoreErr := s.StreamStore.Delete(meta.StoreKey); err != nil {
 		log.Printf("failed to delete stream store object after extraction: %s", streamStoreErr)
 	}
 
-	return *composite, nil
+	if delErr := os.Remove(f.Name()); !os.IsNotExist(delErr) {
+		log.Printf("failed to delete file after extraction: %s", delErr)
+	}
+
+	return result, err
 }
 
 func (s *compositeExtractor) OnComplete() {}
