@@ -2,15 +2,35 @@ package logger
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"strings"
 
 	"github.com/elastic/go-elasticsearch"
+	"github.com/elastic/go-elasticsearch/esapi"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/pkg/errors"
 )
+
+const indexSpec = `{
+	"settings":{},
+	"mappings":{
+		"properties": {
+			"uri": {"type": "keyword"},
+			"host": {"type": "keyword"},
+			"origin": {"type": "keyword"},
+			"protocol": {"type": "keyword"},
+			"content_md5": {"type": "keyword"},
+			"elapsed_time_ms": {"type": "keyword"},
+			"error": {"type": "text"},
+			"timestamp": {"type": "integer"},
+			"http_code": {"type": "integer"},
+			"text": {"type": "text"}
+		}
+	}
+}`
 
 type ElasticsearchLogger interface {
 }
@@ -21,6 +41,8 @@ type elasticsearchLogger struct {
 }
 
 func NewElasticsearchLogger(addresses []string) Logger {
+	index := "resource"
+
 	client, err := elasticsearch.NewClient(elasticsearch.Config{
 		Addresses: addresses,
 	})
@@ -29,9 +51,13 @@ func NewElasticsearchLogger(addresses []string) Logger {
 		log.Panic(errors.Wrap(err, "failed to create elasticsearch client"))
 	}
 
+	if err := initESIndex(client, index); err != nil {
+		log.Panic(errors.Wrap(err, "failed to initialize elasticsearch index"))
+	}
+
 	return &elasticsearchLogger{
 		client: client,
-		index:  "resource",
+		index:  index,
 	}
 }
 
@@ -50,15 +76,29 @@ func (s *elasticsearchLogger) LogResource(composite message.CompositeAnalysis) e
 
 	if err != nil {
 		return errors.Wrapf(err, "failed to index resource")
-	} else if res.StatusCode == 200 {
+	} else if res.StatusCode >= 300 {
+		return fmt.Errorf("failed to index resource (code %d): %s", res.StatusCode, res.String())
+	}
+
+	return nil
+}
+
+func initESIndex(client *elasticsearch.Client, index string) error {
+	request := esapi.IndicesCreateRequest{
+		Index:  index,
+		Human:  true,
+		Pretty: true,
+		Body:   strings.NewReader(indexSpec),
+	}
+
+	if res, err := request.Do(context.Background(), client); err != nil {
+		return errors.Wrap(err, "failed to create index")
+	} else if res.StatusCode == 400 {
+		// Index already exists
 		return nil
+	} else if res.StatusCode >= 300 {
+		return fmt.Errorf("failed to create index (code %d): %s", res.StatusCode, res.String())
 	}
 
-	data, err := ioutil.ReadAll(res.Body)
-
-	if err != nil {
-		return errors.Wrapf(err, "failed to parse error after logging resource")
-	}
-
-	return fmt.Errorf("failed to index resource (code %d): %s", res.StatusCode, string(data))
+	return nil
 }
