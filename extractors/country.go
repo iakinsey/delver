@@ -32,7 +32,7 @@ func (s *countryExtractor) Perform(f *os.File, composite message.CompositeAnalys
 	var results []string
 
 	for iso3166Alpha2, regex := range s.countries {
-		if r := regex.Find(composite.TextContent); r != nil {
+		if r := regex.Find([]byte(composite.TextContent)); r != nil {
 			results = append(results, iso3166Alpha2)
 		}
 	}

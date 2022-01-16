@@ -39,7 +39,7 @@ func TestNgramExtractor(t *testing.T) {
 	for basicText, expectedNgrams := range scenarios {
 		composite := message.CompositeAnalysis{
 			FetcherResponse: message.FetcherResponse{},
-			TextContent:     []byte(basicText),
+			TextContent:     features.TextContent(basicText),
 		}
 		ngrams, err := extractor.Perform(nil, composite)
 

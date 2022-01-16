@@ -32,7 +32,7 @@ func (s *companyNameExtractor) Perform(f *os.File, composite message.CompositeAn
 	var results []string
 
 	for _, company := range s.companies {
-		if c := company.Regex.Find(composite.TextContent); c != nil {
+		if c := company.Regex.Find([]byte(composite.TextContent)); c != nil {
 			results = append(results, company.Identifier)
 		}
 	}

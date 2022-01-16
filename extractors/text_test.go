@@ -18,6 +18,6 @@ func TestTextExtractor(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.NotNil(t, text)
-	assert.IsType(t, features.TextContent{}, text)
+	assert.IsType(t, features.TextContent(""), text)
 	assert.Len(t, text, 3596)
 }
