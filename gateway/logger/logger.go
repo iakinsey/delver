@@ -1,7 +1,7 @@
 package logger
 
+import "github.com/iakinsey/delver/types/message"
+
 type Logger interface {
-	LogUrlsFound()
-	LogComposite()
-	LogGraph()
+	LogResource(message.CompositeAnalysis) error
 }
