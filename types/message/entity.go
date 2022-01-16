@@ -5,7 +5,7 @@ import (
 )
 
 type Entity struct {
-	ID       types.UUID
-	Response FetcherResponse
-	Features *CompositeAnalysis
+	ID       types.UUID         `json:"id,omitempty"`
+	Response FetcherResponse    `json:"id,omitempty"`
+	Features *CompositeAnalysis `json:"id,omitempty"`
 }

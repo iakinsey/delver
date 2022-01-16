@@ -18,12 +18,12 @@ const (
 type CompositeAnalysis struct {
 	FetcherResponse
 
-	Adversarial  *features.Adversarial `json:"adversarial"`
-	Corporations features.Corporations `json:"corporations"`
-	Countries    features.Countries    `json:"countries"`
-	Language     *features.Language    `json:"language"`
-	Ngrams       *features.Ngrams      `json:"ngrams"`
-	TextContent  features.TextContent  `json:"text_content"`
-	Sentiment    *features.Sentiment   `json:"sentiment"`
-	URIs         features.URIs         `json:"uris"`
+	Adversarial  *features.Adversarial `json:"adversarial,omitempty"`
+	Corporations features.Corporations `json:"corporations,omitempty"`
+	Countries    features.Countries    `json:"countries,omitempty"`
+	Language     *features.Language    `json:"language,omitempty"`
+	Ngrams       *features.Ngrams      `json:"ngrams,omitempty"`
+	TextContent  features.TextContent  `json:"text_content,omitempty"`
+	Sentiment    *features.Sentiment   `json:"sentiment,omitempty"`
+	URIs         features.URIs         `json:"uris,omitempty"`
 }
