@@ -1,6 +1,7 @@
 package extractors
 
 import (
+	"fmt"
 	"log"
 	"os"
 
@@ -47,5 +48,15 @@ func (s *countryExtractor) Name() string {
 func (s *countryExtractor) Requires() []string {
 	return []string{
 		message.TextExtractor,
+	}
+}
+
+func (s *countryExtractor) SetResult(result interface{}, composite *message.CompositeAnalysis) error {
+	switch d := result.(type) {
+	case features.Countries:
+		composite.Countries = d
+		return nil
+	default:
+		return fmt.Errorf("CountryExtractor: attempt to cast unknown type")
 	}
 }

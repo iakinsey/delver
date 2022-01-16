@@ -58,3 +58,13 @@ func (s *textExtractor) Name() string {
 func (s *textExtractor) Requires() []string {
 	return nil
 }
+
+func (s *textExtractor) SetResult(result interface{}, composite *message.CompositeAnalysis) error {
+	switch d := result.(type) {
+	case features.TextContent:
+		composite.TextContent = d
+		return nil
+	default:
+		return fmt.Errorf("TextExtractor: attempt to cast unknown type")
+	}
+}

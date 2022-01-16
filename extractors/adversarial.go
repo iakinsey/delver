@@ -1,6 +1,7 @@
 package extractors
 
 import (
+	"fmt"
 	"net/url"
 	"os"
 
@@ -58,6 +59,16 @@ func (s *adversarialExtractor) Name() string {
 func (s *adversarialExtractor) Requires() []string {
 	return []string{
 		message.UrlExtractor,
+	}
+}
+
+func (s *adversarialExtractor) SetResult(result interface{}, composite *message.CompositeAnalysis) error {
+	switch d := result.(type) {
+	case features.Adversarial:
+		composite.Adversarial = &d
+		return nil
+	default:
+		return fmt.Errorf("AdversarialExtractor: attempt to cast unknown type")
 	}
 }
 
