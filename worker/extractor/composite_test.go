@@ -17,7 +17,7 @@ const exampleHtmlFile = "example_html_file.html"
 func TestCompositeExtractorUrlOnly(t *testing.T) {
 	paths := testutil.SetupWorkerQueueFolders("CompositeTest")
 
-	//defer testutil.TeardownWorkerQueueFolders(paths)
+	defer testutil.TeardownWorkerQueueFolders(paths)
 
 	queues := testutil.CreateQueueTriad(paths)
 	htmlFile := testutil.TestDataFile(exampleHtmlFile)
