@@ -46,7 +46,7 @@ func NewNgramExtractor() Extractor {
 	}
 }
 
-func (s *ngramExtractor) Perform(f *os.File, meta message.FetcherResponse, composite message.CompositeAnalysis) (interface{}, error) {
+func (s *ngramExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
 	feature := make(features.Ngrams)
 	var result [][]string
 	var ngrams []string

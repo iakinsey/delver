@@ -2,4 +2,5 @@ default:
 	go build .
 
 test:
-	go test ./...
+	go clean -testcache
+	go test ./... | grep -v "no test files"

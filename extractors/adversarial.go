@@ -25,8 +25,8 @@ func NewAdversarialExtractor() Extractor {
 	}
 }
 
-func (s *adversarialExtractor) Perform(f *os.File, meta message.FetcherResponse, composite message.CompositeAnalysis) (interface{}, error) {
-	origin, err := url.Parse(meta.URI)
+func (s *adversarialExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
+	origin, err := url.Parse(composite.URI)
 
 	if err != nil {
 		return nil, err

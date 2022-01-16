@@ -25,7 +25,7 @@ func NewSentimentExtractor() Extractor {
 	}
 }
 
-func (s *sentimentExtractor) Perform(f *os.File, meta message.FetcherResponse, composite message.CompositeAnalysis) (interface{}, error) {
+func (s *sentimentExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
 	if composite.Language.Name != features.LangEnglish {
 		return nil, nil
 	}

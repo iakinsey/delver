@@ -14,7 +14,7 @@ func NewLanguageExtractor() Extractor {
 	return &languageExtractor{}
 }
 
-func (s *languageExtractor) Perform(f *os.File, meta message.FetcherResponse, composite message.CompositeAnalysis) (interface{}, error) {
+func (s *languageExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
 	info := whatlanggo.Detect(string(composite.TextContent))
 	return features.Language{
 		Name:       info.Lang.Iso6391(),

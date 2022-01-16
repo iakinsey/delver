@@ -18,6 +18,8 @@ const (
 )
 
 type CompositeAnalysis struct {
+	FetcherResponse
+
 	Adversarial  *features.Adversarial `json:"adversarial"`
 	Corporations features.Corporations `json:"corporations"`
 	Countries    features.Countries    `json:"countries"`

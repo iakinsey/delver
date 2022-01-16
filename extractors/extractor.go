@@ -7,7 +7,7 @@ import (
 )
 
 type Extractor interface {
-	Perform(*os.File, message.FetcherResponse, message.CompositeAnalysis) (interface{}, error)
+	Perform(*os.File, message.CompositeAnalysis) (interface{}, error)
 	Requires() []string
 	Name() string
 }
