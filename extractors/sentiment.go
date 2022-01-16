@@ -1,6 +1,7 @@
 package extractors
 
 import (
+	"fmt"
 	"log"
 	"os"
 
@@ -45,5 +46,15 @@ func (s *sentimentExtractor) Name() string {
 func (s *sentimentExtractor) Requires() []string {
 	return []string{
 		message.LanguageExtractor,
+	}
+}
+
+func (s *sentimentExtractor) SetResult(result interface{}, composite *message.CompositeAnalysis) error {
+	switch d := result.(type) {
+	case features.Sentiment:
+		composite.Sentiment = &d
+		return nil
+	default:
+		return fmt.Errorf("SentimentExtractor: attempt to cast unknown type")
 	}
 }

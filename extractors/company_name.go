@@ -1,6 +1,7 @@
 package extractors
 
 import (
+	"fmt"
 	"log"
 	"os"
 
@@ -47,5 +48,15 @@ func (s *companyNameExtractor) Name() string {
 func (s *companyNameExtractor) Requires() []string {
 	return []string{
 		message.TextExtractor,
+	}
+}
+
+func (s *companyNameExtractor) SetResult(result interface{}, composite *message.CompositeAnalysis) error {
+	switch d := result.(type) {
+	case features.Corporations:
+		composite.Corporations = d
+		return nil
+	default:
+		return fmt.Errorf("CompanyNameExtractor: attempt to cast unknown type")
 	}
 }

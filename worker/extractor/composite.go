@@ -17,6 +17,11 @@ import (
 	"github.com/iakinsey/delver/worker"
 )
 
+type compositeResult struct {
+	Extractor extractors.Extractor
+	Result    interface{}
+}
+
 type compositeExtractor struct {
 	Enabled     []string
 	StreamStore streamstore.StreamStore
@@ -96,7 +101,7 @@ func (s *compositeExtractor) canExecuteExtractor(ext extractors.Extractor, compl
 func (s *compositeExtractor) executeExtractorSet(exts []extractors.Extractor, path string, composite *message.CompositeAnalysis) ([]string, []error) {
 	var errors []error
 	var completed []string
-	results := make(chan interface{}, len(exts))
+	results := make(chan compositeResult, len(exts))
 
 	for _, ext := range exts {
 		go s.executeExtractor(ext, path, *composite, results)
@@ -104,7 +109,7 @@ func (s *compositeExtractor) executeExtractorSet(exts []extractors.Extractor, pa
 
 	// TODO add timeouts to execution
 	for i := 0; i < len(exts); i++ {
-		if newComplete, err := message.UpdateCompositeAnalysis(<-results, composite); err != nil {
+		if newComplete, err := s.updateCompositeAnalysis(<-results, composite); err != nil {
 			errors = append(errors, err)
 		} else {
 			completed = append(completed, newComplete)
@@ -114,7 +119,20 @@ func (s *compositeExtractor) executeExtractorSet(exts []extractors.Extractor, pa
 	return completed, errors
 }
 
-func (s *compositeExtractor) executeExtractor(ext extractors.Extractor, path string, composite message.CompositeAnalysis, results chan interface{}) {
+func (s *compositeExtractor) updateCompositeAnalysis(result compositeResult, composite *message.CompositeAnalysis) (string, error) {
+	name := result.Extractor.Name()
+
+	switch d := result.Result.(type) {
+	case error:
+		return name, d
+	case nil:
+		return name, nil
+	default:
+		return name, result.Extractor.SetResult(result.Result, composite)
+	}
+}
+
+func (s *compositeExtractor) executeExtractor(ext extractors.Extractor, path string, composite message.CompositeAnalysis, results chan compositeResult) {
 	f, err := os.Open(path)
 
 	if err != nil {
@@ -127,7 +145,10 @@ func (s *compositeExtractor) executeExtractor(ext extractors.Extractor, path str
 		log.Printf("failed to execute extractor %s: %s", ext.Name(), err)
 	}
 
-	results <- result
+	results <- compositeResult{
+		Extractor: ext,
+		Result:    result,
+	}
 }
 
 func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {

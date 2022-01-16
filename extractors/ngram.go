@@ -2,6 +2,7 @@ package extractors
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"unicode"
 
@@ -93,5 +94,14 @@ func (s *ngramExtractor) Name() string {
 func (s *ngramExtractor) Requires() []string {
 	return []string{
 		message.TextExtractor,
+	}
+}
+func (s *ngramExtractor) SetResult(result interface{}, composite *message.CompositeAnalysis) error {
+	switch d := result.(type) {
+	case features.Ngrams:
+		composite.Ngrams = &d
+		return nil
+	default:
+		return fmt.Errorf("NgramExtractor: attempt to cast unknown type")
 	}
 }

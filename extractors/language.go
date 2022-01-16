@@ -1,6 +1,7 @@
 package extractors
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/abadojack/whatlanggo"
@@ -29,5 +30,15 @@ func (s *languageExtractor) Name() string {
 func (s *languageExtractor) Requires() []string {
 	return []string{
 		message.TextExtractor,
+	}
+}
+
+func (s *languageExtractor) SetResult(result interface{}, composite *message.CompositeAnalysis) error {
+	switch d := result.(type) {
+	case features.Language:
+		composite.Language = &d
+		return nil
+	default:
+		return fmt.Errorf("LanguageExtractor: attempt to cast unknown type")
 	}
 }
