@@ -14,6 +14,7 @@ import (
 	"github.com/pkg/errors"
 )
 
+const indexExist = "resource_already_exists_exception"
 const indexSpec = `{
 	"settings":{},
 	"mappings":{
@@ -93,8 +94,7 @@ func initESIndex(client *elasticsearch.Client, index string) error {
 
 	if res, err := request.Do(context.Background(), client); err != nil {
 		return errors.Wrap(err, "failed to create index")
-	} else if res.StatusCode == 400 {
-		// Index already exists
+	} else if res.StatusCode == 400 && strings.Contains(res.String(), indexExist) {
 		return nil
 	} else if res.StatusCode >= 300 {
 		return fmt.Errorf("failed to create index (code %d): %s", res.StatusCode, res.String())
