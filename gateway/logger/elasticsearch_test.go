@@ -1,20 +1,41 @@
 package logger
 
 import (
+	"net/http"
 	"testing"
 
+	"github.com/elastic/go-elasticsearch"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/stretchr/testify/assert"
 )
 
-const enableEstest = false
+const mockConnection = true
+
+type mockRoundTripper struct{}
+
+func (s *mockRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	return &http.Response{}, nil
+}
 
 func TestElasticsearchLogger(t *testing.T) {
-	if !enableEstest {
-		return
+	var l Logger
+
+	client, err := elasticsearch.NewClient(elasticsearch.Config{
+		Addresses: make([]string, 1),
+		Transport: &mockRoundTripper{},
+	})
+
+	assert.NoError(t, err)
+
+	if mockConnection {
+		l = &elasticsearchLogger{
+			index:  "resource",
+			client: client,
+		}
+	} else {
+		l = NewElasticsearchLogger([]string{"http://localhost:9200"})
 	}
 
-	l := NewElasticsearchLogger([]string{"http://localhost:9200"})
 	composite := message.CompositeAnalysis{
 		TextContent: "Test text content",
 		Corporations: []string{
@@ -29,7 +50,7 @@ func TestElasticsearchLogger(t *testing.T) {
 			},
 		},
 	}
-	err := l.LogResource(composite)
+	err = l.LogResource(composite)
 
 	assert.NoError(t, err)
 }
