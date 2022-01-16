@@ -14,10 +14,8 @@ const lipsumHtml = "lipsum.html"
 func TestTextExtractor(t *testing.T) {
 	extractor := NewTextExtractor()
 	f := testutil.TestDataFile(lipsumHtml)
-	meta := message.FetcherResponse{}
-	composite := message.CompositeAnalysis{}
+	text, err := extractor.Perform(f, message.CompositeAnalysis{})
 
-	text, err := extractor.Perform(f, meta, composite)
 	assert.NoError(t, err)
 	assert.NotNil(t, text)
 	assert.IsType(t, features.TextContent{}, text)

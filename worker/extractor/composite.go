@@ -35,7 +35,9 @@ func NewCompositeExtractorWorker(opts CompositeArgs) worker.Worker {
 }
 
 func (s *compositeExtractor) executeExtractors(path string, meta message.FetcherResponse) (*message.CompositeAnalysis, error) {
-	composite := &message.CompositeAnalysis{}
+	composite := &message.CompositeAnalysis{
+		FetcherResponse: meta,
+	}
 	pending := s.getExtractors()
 	var completed []string
 	var errs []error
@@ -56,7 +58,7 @@ func (s *compositeExtractor) executeExtractors(path string, meta message.Fetcher
 			return composite, getCompositeError(composite, errs)
 		}
 
-		newCompleted, newErrs := s.executeExtractorSet(toExecute, path, meta, composite)
+		newCompleted, newErrs := s.executeExtractorSet(toExecute, path, composite)
 		completed = append(completed, newCompleted...)
 		errs = append(errs, newErrs...)
 		pending = s.getNextPending(pending, toExecute)
@@ -91,13 +93,13 @@ func (s *compositeExtractor) canExecuteExtractor(ext extractors.Extractor, compl
 	return true
 }
 
-func (s *compositeExtractor) executeExtractorSet(exts []extractors.Extractor, path string, meta message.FetcherResponse, composite *message.CompositeAnalysis) ([]string, []error) {
+func (s *compositeExtractor) executeExtractorSet(exts []extractors.Extractor, path string, composite *message.CompositeAnalysis) ([]string, []error) {
 	var errors []error
 	var completed []string
 	results := make(chan interface{}, len(exts))
 
 	for _, ext := range exts {
-		go s.executeExtractor(ext, path, meta, *composite, results)
+		go s.executeExtractor(ext, path, *composite, results)
 	}
 
 	// TODO add timeouts to execution
@@ -112,14 +114,14 @@ func (s *compositeExtractor) executeExtractorSet(exts []extractors.Extractor, pa
 	return completed, errors
 }
 
-func (s *compositeExtractor) executeExtractor(ext extractors.Extractor, path string, meta message.FetcherResponse, composite message.CompositeAnalysis, results chan interface{}) {
+func (s *compositeExtractor) executeExtractor(ext extractors.Extractor, path string, composite message.CompositeAnalysis, results chan interface{}) {
 	f, err := os.Open(path)
 
 	if err != nil {
 		log.Printf("failed to open file for extractor %s %s: %s", ext.Name(), path, err)
 	}
 
-	result, err := ext.Perform(f, meta, composite)
+	result, err := ext.Perform(f, composite)
 
 	if err != nil {
 		log.Printf("failed to execute extractor %s: %s", ext.Name(), err)

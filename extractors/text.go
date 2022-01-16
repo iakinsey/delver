@@ -23,12 +23,12 @@ var spacing = []*unicode.RangeTable{
 	unicode.Pattern_White_Space,
 }
 
-func (s *textExtractor) Perform(f *os.File, meta message.FetcherResponse, composite message.CompositeAnalysis) (interface{}, error) {
+func (s *textExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
 	p := bluemonday.StripTagsPolicy()
 	buf := p.SanitizeReader(f)
 
 	if buf.Len() == 0 {
-		return nil, fmt.Errorf("request has no content: %s", meta.RequestID)
+		return nil, fmt.Errorf("request has no content: %s", composite.RequestID)
 	}
 
 	content := html.UnescapeString(buf.String())

@@ -14,10 +14,7 @@ const exampleHtmlFile = "example_html_file.html"
 func TestUrlExtractor(t *testing.T) {
 	extractor := NewUrlExtractor()
 	htmlFile := testutil.TestDataFile(exampleHtmlFile)
-	meta := message.FetcherResponse{}
-	composite := message.CompositeAnalysis{}
-
-	urls, err := extractor.Perform(htmlFile, meta, composite)
+	urls, err := extractor.Perform(htmlFile, message.CompositeAnalysis{})
 
 	assert.NoError(t, err)
 	assert.NotNil(t, urls)

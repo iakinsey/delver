@@ -21,10 +21,11 @@ func prepareAdvTest(origin string, uris []string) (interface{}, error) {
 	inputUris := features.URIs(uris)
 
 	composite := message.CompositeAnalysis{
-		URIs: inputUris,
+		FetcherResponse: meta,
+		URIs:            inputUris,
 	}
 
-	return extractor.Perform(nil, meta, composite)
+	return extractor.Perform(nil, composite)
 }
 
 func TestAdversarialExtractorIsEnumeration(t *testing.T) {

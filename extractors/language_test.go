@@ -19,16 +19,16 @@ var langScenarios = map[string]string{
 
 func TestLanguageExtractor(t *testing.T) {
 	extractor := NewLanguageExtractor()
-	meta := message.FetcherResponse{}
 
 	for text, expectedLang := range langScenarios {
 		textContent := features.TextContent(text)
 
 		composite := message.CompositeAnalysis{
-			TextContent: textContent,
+			FetcherResponse: message.FetcherResponse{},
+			TextContent:     textContent,
 		}
 
-		lang, err := extractor.Perform(nil, meta, composite)
+		lang, err := extractor.Perform(nil, composite)
 		actualLang := lang.(features.Language).Name
 
 		assert.NoError(t, err)

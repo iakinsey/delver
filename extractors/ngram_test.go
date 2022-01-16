@@ -35,13 +35,13 @@ var scenarios = map[string][][]string{
 
 func TestNgramExtractor(t *testing.T) {
 	extractor := NewNgramExtractor()
-	resp := message.FetcherResponse{}
 
 	for basicText, expectedNgrams := range scenarios {
 		composite := message.CompositeAnalysis{
-			TextContent: []byte(basicText),
+			FetcherResponse: message.FetcherResponse{},
+			TextContent:     []byte(basicText),
 		}
-		ngrams, err := extractor.Perform(nil, resp, composite)
+		ngrams, err := extractor.Perform(nil, composite)
 
 		assert.NoError(t, err)
 		assert.NotNil(t, ngrams)

@@ -18,19 +18,19 @@ var sentimentScenarios = map[string]uint8{
 
 func TestSentimentExtractor(t *testing.T) {
 	extractor := NewSentimentExtractor()
-	meta := message.FetcherResponse{}
 
 	for text, expectedScore := range sentimentScenarios {
 		textContent := features.TextContent(text)
 
 		composite := message.CompositeAnalysis{
-			TextContent: textContent,
+			FetcherResponse: message.FetcherResponse{},
+			TextContent:     textContent,
 			Language: &features.Language{
 				Name: features.LangEnglish,
 			},
 		}
 
-		sentiment, err := extractor.Perform(nil, meta, composite)
+		sentiment, err := extractor.Perform(nil, composite)
 		actualScore := (sentiment.(features.Sentiment)).BinaryNaiveBayesContent
 
 		assert.NoError(t, err)
