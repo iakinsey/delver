@@ -5,12 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/elastic/go-elasticsearch"
 	"github.com/elastic/go-elasticsearch/esapi"
 	"github.com/iakinsey/delver/types/message"
+	"github.com/iakinsey/delver/util"
 	"github.com/pkg/errors"
 )
 
@@ -48,13 +48,8 @@ func NewElasticsearchLogger(addresses []string) Logger {
 		Addresses: addresses,
 	})
 
-	if err != nil {
-		log.Panic(errors.Wrap(err, "failed to create elasticsearch client"))
-	}
-
-	if err := initESIndex(client, index); err != nil {
-		log.Panic(errors.Wrap(err, "failed to initialize elasticsearch index"))
-	}
+	util.PanicIfErr(err, "failed to create elasticsearch client")
+	util.PanicIfErr(initESIndex(client, index), "failed to initialize elasticsearch index")
 
 	return &elasticsearchLogger{
 		client: client,

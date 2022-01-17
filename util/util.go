@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/iakinsey/delver/config"
+	"github.com/pkg/errors"
 )
 
 func DedupeStrSlice(slice []string) (deduped []string) {
@@ -91,4 +92,10 @@ func StringInSlice(a string, l []string) bool {
 	}
 
 	return false
+}
+
+func PanicIfErr(err error, msg string) {
+	if err != nil {
+		log.Panic(errors.Wrap(err, msg))
+	}
 }
