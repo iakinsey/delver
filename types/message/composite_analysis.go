@@ -31,6 +31,15 @@ type CompositeAnalysis struct {
 var ParquetSchema = `{
 	"Tag": "name=resource, repetitiontype=REQUIRED",
 	"Fields": [
+		{"Tag": "name=a_string, inname=AString, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
+		{"Tag": "name=request_id, inname=RequestID, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"}
+	]
+}`
+
+/*
+var ParquetSchema = `{
+	"Tag": "name=resource, repetitiontype=REQUIRED",
+	"Fields": [
 		{"Tag": "name=request_id, inname=RequestID, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
 		{"Tag": "name=uri, inname=URI, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
 		{"Tag": "name=host, inname=Host, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
@@ -42,7 +51,7 @@ var ParquetSchema = `{
 		{"Tag": "name=error, inname=Error, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
 		{"Tag": "name=http_code, inname=HTTPCode, type=INT32, convertedtype=UINT_16, repetitiontype=REQUIRED"},
 		{"Tag": "name=success, inname=Success, type=BOOLEAN, repetitiontype=REQUIRED"},
-		{"Tag": "name=timestamp, inname=Timestamp, type=INT64, convertedtype=INT_64, repetitiontype=REQUIRED"},
+		{"Tag": "name=timestamp, inname=Timestamp, type=INT64, convertedtype=INT_64, repetitiontype=REQUIRED"}
 		{
 			"Tag": "name=header, inname=Header, type=MAP, repetitiontype=REQUIRED",
 			"Fields": [
@@ -51,7 +60,8 @@ var ParquetSchema = `{
 					"Tag": "name=value, type=LIST, repetitiontype=REQUIRED",
 					"Fields": [
 						{"Tag": "name=element, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"}
-					]
+			Supports arbitrarily nested schemas.
+Translates		]
 				}
 			]
 		},
@@ -110,3 +120,4 @@ var ParquetSchema = `{
 		}
 	]
 }`
+*/
