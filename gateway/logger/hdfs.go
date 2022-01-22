@@ -33,12 +33,7 @@ func NewHDFSLogger(namenode string) *hdfsLogger {
 	}
 }
 
-type TestResource struct {
-	AString   string
-	RequestID string
-}
-
-func (s *hdfsLogger) LogResource(composite TestResource) error {
+func (s *hdfsLogger) LogResource(composite message.CompositeAnalysis) error {
 	fw, err := mem.NewMemFileWriter(string(composite.RequestID), nil)
 
 	if err != nil {

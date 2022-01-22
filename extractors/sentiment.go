@@ -32,7 +32,7 @@ func (s *sentimentExtractor) Perform(f *os.File, composite message.CompositeAnal
 	}
 
 	analysis := s.model.SentimentAnalysis(string(composite.TextContent), sentiment.English)
-	score := analysis.Score
+	score := int32(analysis.Score)
 
 	return features.Sentiment{
 		BinaryNaiveBayesContent: &score,

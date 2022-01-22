@@ -17,8 +17,7 @@ func TestCountryExtractor(t *testing.T) {
 	extractor := NewCountryExtractor()
 	textContent := features.TextContent(testutil.TestData(testCountryNames))
 	composite := message.CompositeAnalysis{
-		FetcherResponse: message.FetcherResponse{},
-		TextContent:     textContent,
+		TextContent: textContent,
 	}
 
 	countries, err := extractor.Perform(nil, composite)

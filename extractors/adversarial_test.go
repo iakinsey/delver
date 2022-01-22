@@ -11,18 +11,11 @@ import (
 
 func prepareAdvTest(origin string, uris []string) (interface{}, error) {
 	extractor := NewAdversarialExtractor()
-
-	meta := message.FetcherResponse{
-		FetcherRequest: message.FetcherRequest{
-			URI: origin,
-		},
-	}
-
 	inputUris := features.URIs(uris)
 
 	composite := message.CompositeAnalysis{
-		FetcherResponse: meta,
-		URIs:            inputUris,
+		URI:  origin,
+		URIs: inputUris,
 	}
 
 	return extractor.Perform(nil, composite)

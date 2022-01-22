@@ -23,19 +23,18 @@ func TestSentimentExtractor(t *testing.T) {
 		textContent := features.TextContent(text)
 
 		composite := message.CompositeAnalysis{
-			FetcherResponse: message.FetcherResponse{},
-			TextContent:     textContent,
+			TextContent: textContent,
 			Language: &features.Language{
 				Name: features.LangEnglish,
 			},
 		}
 
 		sentiment, err := extractor.Perform(nil, composite)
-		actualScore := (sentiment.(features.Sentiment)).BinaryNaiveBayesContent
+		actualScore := uint8(*(sentiment.(features.Sentiment)).BinaryNaiveBayesContent)
 
 		assert.NoError(t, err)
 		assert.NotNil(t, sentiment)
 		assert.IsType(t, features.Sentiment{}, sentiment)
-		assert.Equal(t, &expectedScore, actualScore)
+		assert.Equal(t, &expectedScore, &actualScore)
 	}
 }

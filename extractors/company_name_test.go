@@ -22,7 +22,6 @@ func TestCompanyNameExtractors(t *testing.T) {
 	extractor := NewCompanyNameExtractor()
 	textContent := features.TextContent(testutil.TestData(testCompanyNames))
 	composite := message.CompositeAnalysis{
-		FetcherResponse: message.FetcherResponse{},
 		TextContent:     textContent,
 	}
 

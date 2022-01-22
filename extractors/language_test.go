@@ -24,8 +24,7 @@ func TestLanguageExtractor(t *testing.T) {
 		textContent := features.TextContent(text)
 
 		composite := message.CompositeAnalysis{
-			FetcherResponse: message.FetcherResponse{},
-			TextContent:     textContent,
+			TextContent: textContent,
 		}
 
 		lang, err := extractor.Perform(nil, composite)

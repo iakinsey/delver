@@ -42,13 +42,9 @@ func TestElasticsearchLogger(t *testing.T) {
 			"example1",
 			"example2",
 		},
-		FetcherResponse: message.FetcherResponse{
-			HTTPCode: 200,
-			FetcherRequest: message.FetcherRequest{
-				URI:  "http://example.com",
-				Host: "example.com",
-			},
-		},
+		HTTPCode: 200,
+		URI:      "http://example.com",
+		Host:     "example.com",
 	}
 	err = l.LogResource(composite)
 
