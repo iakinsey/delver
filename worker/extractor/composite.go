@@ -40,7 +40,9 @@ func NewCompositeExtractorWorker(opts CompositeArgs) worker.Worker {
 }
 
 func (s *compositeExtractor) executeExtractors(path string, meta message.FetcherResponse) (*message.CompositeAnalysis, error) {
-	composite := message.NewComposite(meta)
+	composite := &message.CompositeAnalysis{
+		FetcherResponse: meta,
+	}
 	pending := s.getExtractors()
 	var completed []string
 	var errs []error

@@ -1,7 +1,6 @@
 package message
 
 import (
-	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 )
 
@@ -16,44 +15,15 @@ const (
 )
 
 type CompositeAnalysis struct {
-	RequestID     types.UUID            `json:"request_id,omitempty"`
-	URI           string                `json:"uri,omitempty"`
-	Host          string                `json:"host,omitempty"`
-	Origin        string                `json:"origin,omitempty"`
-	Protocol      types.Protocol        `json:"protocol,omitempty"`
-	StoreKey      types.UUID            `json:"store_key,omitempty"`
-	ContentMD5    string                `json:"content_md5,omitempty"`
-	ElapsedTimeMs int64                 `json:"elapsed_time_ms,omitempty"`
-	Error         string                `json:"error,omitempty"`
-	HTTPCode      int                   `json:"http_code,omitempty"`
-	Success       bool                  `json:"success,omitempty"`
-	Timestamp     int64                 `json:"timestamp,omitempty"`
-	Header        map[string][]string   `json:"header,omitempty"`
-	Adversarial   *features.Adversarial `json:"adversarial,omitempty"`
-	Corporations  features.Corporations `json:"corporations,omitempty"`
-	Countries     features.Countries    `json:"countries,omitempty"`
-	Language      *features.Language    `json:"language,omitempty"`
-	TextContent   features.TextContent  `json:"text_content,omitempty"`
-	Sentiment     *features.Sentiment   `json:"sentiment,omitempty"`
-	URIs          features.URIs         `json:"uris,omitempty"`
-}
+	FetcherResponse
 
-func NewComposite(resp FetcherResponse) *CompositeAnalysis {
-	return &CompositeAnalysis{
-		RequestID:     resp.RequestID,
-		URI:           resp.URI,
-		Host:          resp.Host,
-		Origin:        resp.Origin,
-		Protocol:      resp.Protocol,
-		StoreKey:      resp.StoreKey,
-		ContentMD5:    resp.ContentMD5,
-		ElapsedTimeMs: resp.ElapsedTimeMs,
-		Error:         resp.Error,
-		HTTPCode:      resp.HTTPCode,
-		Success:       resp.Success,
-		Timestamp:     resp.Timestamp,
-		Header:        resp.Header,
-	}
+	Adversarial  *features.Adversarial `json:"adversarial,omitempty"`
+	Corporations features.Corporations `json:"corporations,omitempty"`
+	Countries    features.Countries    `json:"countries,omitempty"`
+	Language     *features.Language    `json:"language,omitempty"`
+	TextContent  features.TextContent  `json:"text_content,omitempty"`
+	Sentiment    *features.Sentiment   `json:"sentiment,omitempty"`
+	URIs         features.URIs         `json:"uris,omitempty"`
 }
 
 var ParquetSchema = `{

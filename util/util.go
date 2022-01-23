@@ -3,6 +3,7 @@ package util
 import (
 	"bufio"
 	"flag"
+	"io"
 	"log"
 	"net/url"
 	"os"
@@ -13,6 +14,9 @@ import (
 
 	"github.com/iakinsey/delver/config"
 	"github.com/pkg/errors"
+	"github.com/xitongsys/parquet-go-source/mem"
+	"github.com/xitongsys/parquet-go/parquet"
+	"github.com/xitongsys/parquet-go/writer"
 )
 
 func DedupeStrSlice(slice []string) (deduped []string) {
@@ -98,4 +102,34 @@ func PanicIfErr(err error, msg string) {
 	if err != nil {
 		log.Panic(errors.Wrap(err, msg))
 	}
+}
+
+func ToParquet(id string, schema string, msg interface{}) (io.Reader, error) {
+	fw, err := mem.NewMemFileWriter(id, nil)
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create parquet mem writer")
+	}
+
+	pw, err := writer.NewParquetWriter(fw, schema, 4)
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create parquet writer")
+	}
+
+	pw.CompressionType = parquet.CompressionCodec_SNAPPY
+
+	if err = pw.Write(msg); err != nil {
+		return nil, errors.Wrap(err, "failed to write parquet file")
+	}
+
+	if err = pw.WriteStop(); err != nil {
+		return nil, errors.Wrap(err, "failed to stop parquet write")
+	}
+
+	if _, err := fw.Seek(0, io.SeekStart); err != nil {
+		return nil, errors.Wrap(err, "failed to seek beginning of parquet file")
+	}
+
+	return fw, nil
 }
