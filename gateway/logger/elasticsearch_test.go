@@ -37,14 +37,18 @@ func TestElasticsearchLogger(t *testing.T) {
 	}
 
 	composite := message.CompositeAnalysis{
+		FetcherResponse: message.FetcherResponse{
+			FetcherRequest: message.FetcherRequest{
+				URI:  "http://example.com",
+				Host: "example.com",
+			},
+			HTTPCode: 200,
+		},
 		TextContent: "Test text content",
 		Corporations: []string{
 			"example1",
 			"example2",
 		},
-		HTTPCode: 200,
-		URI:      "http://example.com",
-		Host:     "example.com",
 	}
 	err = l.LogResource(composite)
 

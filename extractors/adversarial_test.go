@@ -14,7 +14,11 @@ func prepareAdvTest(origin string, uris []string) (interface{}, error) {
 	inputUris := features.URIs(uris)
 
 	composite := message.CompositeAnalysis{
-		URI:  origin,
+		FetcherResponse: message.FetcherResponse{
+			FetcherRequest: message.FetcherRequest{
+				URI: origin,
+			},
+		},
 		URIs: inputUris,
 	}
 

@@ -1,22 +1,17 @@
-package message
+package persist
 
 import (
+	"io"
+
+	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
+	"github.com/iakinsey/delver/types/message"
+	"github.com/iakinsey/delver/util"
 )
 
-const (
-	AdversarialExtractor = "adversarial"
-	CompanyNameExtractor = "company_name"
-	CountryExtractor     = "country"
-	LanguageExtractor    = "language"
-	SentimentExtractor   = "sentiment"
-	TextExtractor        = "text"
-	UrlExtractor         = "url"
-)
-
-type CompositeAnalysis struct {
-	FetcherResponse
-
+type ResourceFeatures struct {
+	RequestID    types.UUID            `json:"request_id,omitempty"`
+	URI          string                `json:"uri,omitempty"`
 	Adversarial  *features.Adversarial `json:"adversarial,omitempty"`
 	Corporations features.Corporations `json:"corporations,omitempty"`
 	Countries    features.Countries    `json:"countries,omitempty"`
@@ -26,33 +21,35 @@ type CompositeAnalysis struct {
 	URIs         features.URIs         `json:"uris,omitempty"`
 }
 
-var ParquetSchema = `{
+func NewResourceFeatures(composite message.CompositeAnalysis) ResourceFeatures {
+	return ResourceFeatures{
+		RequestID:    composite.RequestID,
+		URI:          composite.URI,
+		Adversarial:  composite.Adversarial,
+		Corporations: composite.Corporations,
+		Countries:    composite.Countries,
+		Language:     composite.Language,
+		TextContent:  composite.TextContent,
+		Sentiment:    composite.Sentiment,
+		URIs:         composite.URIs,
+	}
+}
+
+func CompositeToResourceFeaturesParquet(composite message.CompositeAnalysis) (io.Reader, error) {
+	resource := NewResourceFeatures(composite)
+
+	return util.ToParquet(string(composite.RequestID), ResourceFeaturesParquetSchema, resource)
+}
+
+var ResourceFeaturesParquetSchema = `{
 	"Tag": "name=resource, repetitiontype=REQUIRED",
 	"Fields": [
-		{"Tag": "name=request_id, inname=RequestID, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
+		{"Tag": "name=request_id, inname=RequestID, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"}
+	]
+}`
+
+/*
 		{"Tag": "name=uri, inname=URI, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
-		{"Tag": "name=host, inname=Host, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
-		{"Tag": "name=origin, inname=Origin, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
-		{"Tag": "name=protocol, inname=Protocol, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
-		{"Tag": "name=store_key, inname=StoreKey, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
-		{"Tag": "name=content_md5, inname=ContentMD5, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
-		{"Tag": "name=elapsed_time_ms, inname=ElapsedTimeMs, type=INT64, convertedtype=INT_64, repetitiontype=REQUIRED"},
-		{"Tag": "name=error, inname=Error, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
-		{"Tag": "name=http_code, inname=HTTPCode, type=INT32, convertedtype=UINT_16, repetitiontype=REQUIRED"},
-		{"Tag": "name=success, inname=Success, type=BOOLEAN, repetitiontype=REQUIRED"},
-		{"Tag": "name=timestamp, inname=Timestamp, type=INT64, convertedtype=INT_64, repetitiontype=REQUIRED"},
-		{
-			"Tag": "name=header, inname=Header, type=MAP, repetitiontype=REQUIRED",
-			"Fields": [
-				{"Tag": "name=key, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
-				{
-					"Tag": "name=value, type=LIST, repetitiontype=REQUIRED",
-					"Fields": [
-						{"Tag": "name=element, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"}
-					]
-				}
-			]
-		},
 		{
 			"Tag": "name=adversarial, inname=Adversarial, repetitiontype=OPTIONAL",
 			"Fields": [
@@ -88,3 +85,4 @@ var ParquetSchema = `{
 		}
 	]
 }`
+*/

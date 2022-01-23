@@ -16,22 +16,26 @@ func TestHDFSLogger(t *testing.T) {
 	adv := true
 	tu := int32(44)
 	composite := message.CompositeAnalysis{
-		RequestID:     types.NewV4(),
-		URI:           "http://esxample.com",
-		Host:          "example.com",
-		Origin:        "exampleold",
-		Protocol:      types.ProtocolHTTP,
-		StoreKey:      types.NewV4(),
-		ContentMD5:    "an-example-md5",
-		ElapsedTimeMs: 123,
-		Error:         "no error",
-		HTTPCode:      404,
-		Success:       true,
-		Timestamp:     time.Now().Unix(),
-		Header: map[string][]string{
-			"test1": {"test2"},
-			"test3": {"test4"},
-			"test5": {"test6"},
+		FetcherResponse: message.FetcherResponse{
+			FetcherRequest: message.FetcherRequest{
+				RequestID: types.NewV4(),
+				URI:       "http://esxample.com",
+				Host:      "example.com",
+				Origin:    "exampleold",
+				Protocol:  types.ProtocolHTTP,
+			},
+			StoreKey:      types.NewV4(),
+			ContentMD5:    "an-example-md5",
+			ElapsedTimeMs: 123,
+			Error:         "no error",
+			HTTPCode:      404,
+			Success:       true,
+			Timestamp:     time.Now().Unix(),
+			Header: map[string][]string{
+				"test1": {"test2"},
+				"test3": {"test4"},
+				"test5": {"test6"},
+			},
 		},
 		Adversarial: &features.Adversarial{
 			Enumeration:        &adv,
