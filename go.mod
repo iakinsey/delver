@@ -21,6 +21,8 @@ require (
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/golang/snappy v0.0.3 // indirect
 	github.com/gorilla/css v1.0.0 // indirect
+	github.com/hashicorp/errwrap v1.0.0 // indirect
+	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/klauspost/compress v1.13.1 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.17 // indirect
 	github.com/pierrec/lz4/v4 v4.1.8 // indirect

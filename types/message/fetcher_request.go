@@ -8,4 +8,5 @@ type FetcherRequest struct {
 	Host      string         `json:"host,omitempty"`
 	Origin    string         `json:"origin,omitempty"`
 	Protocol  types.Protocol `json:"protocol,omitempty"`
+	Depth     int            `json:"depth,omitempty"`
 }
