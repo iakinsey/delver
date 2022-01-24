@@ -33,9 +33,9 @@ type parquetAndPath struct {
 }
 
 var parquetsToWrite = []parquetToWrite{
-	//{persist.CompositeToResourceParquet, "resource"},
+	{persist.CompositeToResourceParquet, "resource"},
 	{persist.CompositeToResourceFeaturesParquet, "resource_features"},
-	//{persist.CompositeToParquetURI, "uri"},
+	{persist.CompositeToParquetURI, "uri"},
 }
 
 func NewHDFSLogger(namenode string) *hdfsLogger {
@@ -99,7 +99,6 @@ func (s *hdfsLogger) LogResource(composite message.CompositeAnalysis) error {
 		if err := hw.Close(); err != nil {
 			return errors.Wrapf(err, "failed to close hdfs file %s", meta.Path)
 		}
-
 	}
 
 	return nil

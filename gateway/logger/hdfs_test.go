@@ -10,7 +10,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var enableHdfsTest = false
+
 func TestHDFSLogger(t *testing.T) {
+	if !enableHdfsTest {
+		return
+	}
+
 	namenode := "localhost:9000"
 	logger := NewHDFSLogger(namenode)
 	adv := true
