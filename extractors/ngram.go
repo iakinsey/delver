@@ -1,6 +1,5 @@
 package extractors
 
-/*
 import (
 	"bytes"
 	"fmt"
@@ -106,4 +105,3 @@ func (s *ngramExtractor) SetResult(result interface{}, composite *message.Compos
 		return fmt.Errorf("NgramExtractor: attempt to cast unknown type")
 	}
 }
-*/

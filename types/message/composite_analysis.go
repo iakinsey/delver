@@ -11,6 +11,7 @@ const (
 	LanguageExtractor    = "language"
 	SentimentExtractor   = "sentiment"
 	TextExtractor        = "text"
+	NgramExtractor       = "ngram"
 	UrlExtractor         = "url"
 )
 
@@ -23,6 +24,7 @@ type CompositeAnalysis struct {
 	Language     *features.Language    `json:"language,omitempty"`
 	TextContent  features.TextContent  `json:"text_content,omitempty"`
 	Sentiment    *features.Sentiment   `json:"sentiment,omitempty"`
+	Ngrams       *features.Ngrams      `json:"ngrams,omitempty"`
 	URIs         features.URIs         `json:"uris,omitempty"`
 }
 
