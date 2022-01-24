@@ -1,6 +1,5 @@
 package extractors
 
-/*
 import (
 	"testing"
 
@@ -50,4 +49,3 @@ func TestNgramExtractor(t *testing.T) {
 		assert.ElementsMatch(t, expectedNgrams, ngrams.(features.Ngrams)[defaultN])
 	}
 }
-*/
