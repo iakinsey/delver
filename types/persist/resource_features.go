@@ -44,11 +44,7 @@ func CompositeToResourceFeaturesParquet(composite message.CompositeAnalysis) (io
 var ResourceFeaturesParquetSchema = `{
 	"Tag": "name=resource, repetitiontype=REQUIRED",
 	"Fields": [
-		{"Tag": "name=request_id, inname=RequestID, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"}
-	]
-}`
-
-/*
+		{"Tag": "name=request_id, inname=RequestID, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
 		{"Tag": "name=uri, inname=URI, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
 		{
 			"Tag": "name=adversarial, inname=Adversarial, repetitiontype=OPTIONAL",
@@ -85,4 +81,3 @@ var ResourceFeaturesParquetSchema = `{
 		}
 	]
 }`
-*/
