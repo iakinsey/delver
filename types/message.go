@@ -9,3 +9,7 @@ type Message struct {
 	MessageType MessageType     `json:"message_type"`
 	Message     json.RawMessage `json:"message"`
 }
+
+type MultiMessage struct {
+	Values []interface{}
+}
