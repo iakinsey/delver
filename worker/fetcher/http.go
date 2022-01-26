@@ -14,6 +14,7 @@ import (
 
 const defaultUserAgent = "delver"
 
+// TODO put these values into a config module
 type HttpFetcherArgs struct {
 	UserAgent   string
 	MaxRetries  int
@@ -93,6 +94,8 @@ func (s *httpFetcher) doHttpRequest(request message.FetcherRequest, response *me
 	if err != nil {
 		return key, err
 	}
+
+	defer res.Body.Close()
 
 	response.HTTPCode = res.StatusCode
 	response.Header = res.Header
