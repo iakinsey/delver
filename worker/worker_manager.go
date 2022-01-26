@@ -64,6 +64,17 @@ func (s *workerManager) Stop() {
 }
 
 func (s *workerManager) publishResponse(result interface{}) {
+	switch d := result.(type) {
+	case types.MultiMessage:
+		for _, r := range d.Values {
+			s.doPublish(r)
+		}
+	default:
+		s.doPublish(result)
+	}
+}
+
+func (s *workerManager) doPublish(result interface{}) {
 	messageType, err := message.GetMessageTypeMapping(result)
 
 	if err != nil {
