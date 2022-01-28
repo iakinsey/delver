@@ -7,4 +7,5 @@ const (
 	FetcherRequestType
 	FetcherResponseType
 	CompositeAnalysisType
+	TimerType
 )
