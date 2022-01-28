@@ -68,7 +68,7 @@ func (s *memoryRobots) IsAllowed(u string) (bool, error) {
 		return true, nil
 	}
 
-	return info.robots.TestAgent(u, s.userAgent), nil
+	return info.robots.TestAgent(meta.Path, s.userAgent), nil
 }
 
 func (s *memoryRobots) getRobots(meta *url.URL) *robotsInfo {
