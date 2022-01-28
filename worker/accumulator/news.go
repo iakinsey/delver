@@ -5,8 +5,8 @@ import (
 	"log"
 	"net/url"
 
-	"github.com/iakinsey/delver/gateway/logger"
 	"github.com/iakinsey/delver/gateway/robots"
+	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/worker"
@@ -15,16 +15,16 @@ import (
 const maxDepth = 1
 
 type newsAccumulator struct {
-	maxDepth int
-	robots   robots.Robots
-	logger   logger.Logger
+	maxDepth  int
+	robots    robots.Robots
+	newsQueue queue.Queue
 }
 
-func NewNewsAccumulator() worker.Worker {
+func NewNewsAccumulator(newsQueue queue.Queue) worker.Worker {
 	return &newsAccumulator{
-		maxDepth: maxDepth,
-		robots:   robots.NewMemoryRobots(),
-		logger:   logger.NewZmqLogger(),
+		maxDepth:  maxDepth,
+		robots:    robots.NewMemoryRobots(),
+		newsQueue: newsQueue,
 	}
 }
 
@@ -96,7 +96,20 @@ func (s *newsAccumulator) processArticle(composite message.CompositeAnalysis) {
 		return
 	}
 
-	if err := s.logger.LogResource(composite); err != nil {
+	msg, err := json.Marshal(composite)
+
+	if err != nil {
+		log.Printf("failed to serialize message segment for URI: %s", composite.URI)
+		return
+	}
+
+	article := types.Message{
+		ID:          string(types.NewV4()),
+		MessageType: types.CompositeAnalysisType,
+		Message:     json.RawMessage(msg),
+	}
+
+	if err := s.newsQueue.Put(article, 0); err != nil {
 		log.Printf("Failed to log article: %s", composite.URI)
 	}
 }
