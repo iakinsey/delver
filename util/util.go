@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/iakinsey/delver/config"
@@ -132,4 +133,15 @@ func ToParquet(id string, schema string, msg interface{}) (io.Reader, error) {
 	}
 
 	return fw, nil
+}
+
+func CountDecimals(v float64) int {
+	s := strconv.FormatFloat(v, 'f', -1, 64)
+	i := strings.IndexByte(s, '.')
+
+	if i > -1 {
+		return len(s) - i - 1
+	}
+
+	return 0
 }
