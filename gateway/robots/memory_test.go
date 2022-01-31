@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/iakinsey/delver/util"
 	"github.com/stretchr/testify/assert"
@@ -24,6 +25,7 @@ var scenarios = map[string]bool{
 
 func TestMemoryRobots(t *testing.T) {
 	go startRobotsServer()
+	time.Sleep(1)
 
 	memoryRobots := NewMemoryRobots()
 

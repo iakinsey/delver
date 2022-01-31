@@ -65,7 +65,7 @@ func SetupWorkerQueueFolders(prefix string) QueuePaths {
 
 	for i := 0; i < values.NumField(); i++ {
 		name := values.Field(i).Type().Name()
-		path := util.MakeTempFile(prefix + name)
+		path := util.MakeTempFolder(prefix + name)
 
 		values.Field(i).SetString(path)
 	}

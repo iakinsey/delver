@@ -47,7 +47,17 @@ func ReadDirAlphabetized(path string) ([]fs.FileInfo, error) {
 	return files, err
 }
 
-func MakeTempFile(name string) string {
+func MakeTempFile(name string) *os.File {
+	f, err := os.CreateTemp("", name)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return f
+}
+
+func MakeTempFolder(name string) string {
 	path, err := os.MkdirTemp("", name)
 
 	if err != nil {

@@ -1,17 +1,28 @@
-package maps
+package bloom
 
 import (
 	"bufio"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"strconv"
+	"strings"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/iakinsey/delver/util"
 	"github.com/pkg/errors"
 	"github.com/twmb/murmur3"
 )
+
+type BloomFilter interface {
+	SetString(string) error
+	SetBytes([]byte) error
+	SetMany([][]byte) error
+	ContainsString(string) bool
+	ContainsBytes([]byte) bool
+	Save(io.Writer) (int64, error)
+}
 
 type bloomError struct {
 	msg      string
@@ -50,24 +61,28 @@ type bloomFilter struct {
 	bitmap  *roaring64.Bitmap
 }
 
-func LoadBloomFilter(src io.Reader) (Mapper, error) {
-	scanner := bufio.NewScanner(src)
+func LoadBloomFilter(src io.Reader) (BloomFilter, error) {
+	reader := bufio.NewReader(src)
 
-	if ok := scanner.Scan(); !ok {
-		return nil, errors.New("failed to scan for bloom maxN value")
+	text, err := reader.ReadString('\n')
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to scan for bloom maxN value")
 	}
 
-	maxN, err := strconv.ParseUint(scanner.Text(), 10, 64)
+	maxN, err := strconv.ParseUint(strings.Replace(text, "\n", "", 1), 10, 64)
 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse maxN value from bloom file")
 	}
 
-	if ok := scanner.Scan(); !ok {
-		return nil, errors.New("failed to scan for bloom p value")
+	text, err = reader.ReadString('\n')
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to scan for bloom p value")
 	}
 
-	p, err := strconv.ParseFloat(scanner.Text(), 64)
+	p, err := strconv.ParseFloat(strings.Replace(text, "\n", "", 1), 64)
 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse p value from bloom file")
@@ -75,18 +90,18 @@ func LoadBloomFilter(src io.Reader) (Mapper, error) {
 
 	bitmap := roaring64.New()
 
-	if _, err := bitmap.ReadFrom(src); err != nil {
+	if _, err := bitmap.ReadFrom(reader); err != nil {
 		return nil, errors.Wrap(err, "failed to parse bloom filter")
 	}
 
 	return newBloomFilter(maxN, p, bitmap), nil
 }
 
-func NewBloomFilter(maxN uint64, p float64) Mapper {
+func NewBloomFilter(maxN uint64, p float64) BloomFilter {
 	return newBloomFilter(maxN, p, roaring64.New())
 }
 
-func newBloomFilter(maxN uint64, p float64, bitmap *roaring64.Bitmap) Mapper {
+func newBloomFilter(maxN uint64, p float64, bitmap *roaring64.Bitmap) BloomFilter {
 	mFloat := getOptimalBloomM(maxN, p)
 	m := uint64(mFloat)
 	kFloat := getOptimalBloomK(m, maxN, p)
@@ -106,17 +121,35 @@ func newBloomFilter(maxN uint64, p float64, bitmap *roaring64.Bitmap) Mapper {
 
 }
 
-func (s *bloomFilter) AddString(val string) error {
-	return s.AddBytes([]byte(val))
+func (s *bloomFilter) SetString(val string) error {
+	return s.SetBytes([]byte(val))
 }
 
-func (s *bloomFilter) AddBytes(val []byte) error {
+func (s *bloomFilter) SetBytes(val []byte) error {
 	if err := s.checkBounds(); err != nil {
 		return errors.Wrap(err, "failed bounds check when adding element")
 	}
 
 	s.bitmap.AddMany(s.getHashes(val))
 	s.n += 1
+
+	return nil
+}
+
+func (s *bloomFilter) SetMany(vals [][]byte) error {
+	if err := s.checkBounds(); err != nil {
+		return errors.Wrap(err, "failed bounds check when adding element")
+	}
+
+	var hashes []uint64
+
+	for _, val := range vals {
+		hashes = append(hashes, s.getHashes(val)...)
+	}
+
+	s.bitmap.AddMany(hashes)
+
+	s.n += uint64(len(vals))
 
 	return nil
 }
@@ -135,15 +168,28 @@ func (s *bloomFilter) ContainsBytes(val []byte) bool {
 	return true
 }
 
-func (s *bloomFilter) Size() uint64 {
-	return s.bitmap.GetSizeInBytes()
-}
-
 func (s *bloomFilter) Save(dst io.Writer) (int64, error) {
-	fmt.Fprintln(dst, strconv.FormatUint(s.maxN, 10))
-	fmt.Fprintln(dst, strconv.FormatFloat(s.p, 'f', s.pDigits, 64))
+	n, err := fmt.Fprintln(dst, strconv.FormatUint(s.maxN, 10))
+
+	if err != nil {
+		return int64(n), errors.Wrap(err, "failed to write maxN when persisting bloom filter")
+	} else if n == 0 {
+		return 0, errors.New("did not write maxN to bloom filter")
+	}
+
+	n, err = fmt.Fprintln(dst, strconv.FormatFloat(s.p, 'f', s.pDigits, 64))
+
+	if err != nil {
+		return int64(n), errors.Wrap(err, "failed to write p when persisting bloom filter")
+	} else if n == 0 {
+		return 0, errors.New("did not write p to bloom filter")
+	}
 
 	return s.bitmap.WriteTo(dst)
+}
+
+func (s *bloomFilter) IterateKeys(func(string) error) {
+	log.Fatalf("bloomFilter.IterateKeys not implemented")
 }
 
 func (s *bloomFilter) getHashes(in []byte) (result []uint64) {
