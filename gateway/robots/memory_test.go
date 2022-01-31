@@ -25,7 +25,7 @@ var scenarios = map[string]bool{
 
 func TestMemoryRobots(t *testing.T) {
 	go startRobotsServer()
-	time.Sleep(1)
+	time.Sleep(1 * time.Second)
 
 	memoryRobots := NewMemoryRobots()
 
