@@ -6,6 +6,7 @@ import (
 	"flag"
 	"io"
 	"log"
+	"math/rand"
 	"net/url"
 	"os"
 	"path"
@@ -155,4 +156,14 @@ func CountDecimals(v float64) int {
 	}
 
 	return 0
+}
+
+func RandomString(n int) string {
+	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+
+	s := make([]rune, n)
+	for i := range s {
+		s[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(s)
 }
