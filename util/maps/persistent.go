@@ -11,6 +11,7 @@ import (
 const gcInterval = 5 * time.Minute
 const gcDiscardRatio = 0.7
 const gcErrThreshold = 2
+const defaultPrefetchSize = 64
 
 type persistentMap struct {
 	db        *badger.DB
@@ -39,7 +40,9 @@ func (s *persistentMap) Get(key []byte) ([]byte, error) {
 	err := s.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(key)
 
-		if err != nil {
+		if err == badger.ErrKeyNotFound {
+			return ErrKeyNotFound
+		} else if err != nil {
 			return errors.Wrap(err, "failed to get key")
 		}
 
@@ -56,8 +59,10 @@ func (s *persistentMap) Get(key []byte) ([]byte, error) {
 		return nil
 	})
 
-	if err != nil {
-		return nil, errors.Wrap(err, "failed get transaction")
+	if err == ErrKeyNotFound {
+		return nil, err
+	} else if err != nil {
+		return nil, errors.Wrap(err, "failed Get transaction")
 	}
 
 	return result, nil
@@ -65,21 +70,11 @@ func (s *persistentMap) Get(key []byte) ([]byte, error) {
 
 func (s *persistentMap) Set(key []byte, val []byte) error {
 	err := s.db.Update(func(txn *badger.Txn) error {
-		err := txn.Set(key, val)
-
-		if err != nil {
-			return errors.Wrap(err, "failed set operation")
-		}
-
-		if err := txn.Commit(); err != nil {
-			return errors.Wrap(err, "failed to commit set operaiton")
-		}
-
-		return nil
+		return txn.Set(key, val)
 	})
 
 	if err != nil {
-		return errors.Wrap(err, "failed set transaction")
+		return errors.Wrap(err, "failed Set transaction")
 	}
 
 	return nil
@@ -97,21 +92,42 @@ func (s *persistentMap) SetMany(pairs [][2][]byte) error {
 			}
 		}
 
-		if err := txn.Commit(); err != nil {
-			return errors.Wrap(err, "failed to commit set operaiton")
-		}
-
 		return nil
 	})
 
 	if err != nil {
-		return errors.Wrap(err, "failed set transaction")
+		return errors.Wrap(err, "failed SetMany transaction")
 	}
 
 	return nil
 }
 
-func (s *persistentMap) IterKeys(func([]byte) error) error {
+func (s *persistentMap) Iter(fn func([]byte, []byte) error) error {
+	err := s.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchSize = defaultPrefetchSize
+
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Rewind(); it.Valid(); it.Next() {
+			item := it.Item()
+			k := item.Key()
+			err := item.Value(func(v []byte) error {
+				return fn(k, v)
+			})
+
+			if err != nil {
+				return errors.Wrap(err, "failed to get value")
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return errors.Wrap(err, "failed IterKeys transaction")
+	}
+
 	return nil
 }
 

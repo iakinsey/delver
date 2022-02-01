@@ -2,6 +2,7 @@ package util
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"io"
 	"log"
@@ -92,6 +93,16 @@ func DataFilePath(name string) string {
 func StringInSlice(a string, l []string) bool {
 	for _, b := range l {
 		if a == b {
+			return true
+		}
+	}
+
+	return false
+}
+
+func ByteArrayInSlice(a []byte, l [][]byte) bool {
+	for _, b := range l {
+		if bytes.Equal(a, b) {
 			return true
 		}
 	}
