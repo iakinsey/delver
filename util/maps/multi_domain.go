@@ -5,26 +5,34 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"sync"
 	"time"
 
 	"github.com/iakinsey/delver/util"
 	"github.com/pkg/errors"
 )
 
+var pruneInterval = 5 * time.Minute
+var mapKeepAliveTime = 5 * time.Minute
+
 type multiHostMap struct {
-	basePath string
-	maps     map[string]*hostMap
+	basePath  string
+	maps      map[string]*hostMap
+	terminate chan bool
+	mapLock   sync.RWMutex
 }
 
 type hostMap struct {
 	mapper  Map
-	created int64
+	expires time.Time
 }
 
 func NewMultiHostMap(basePath string) Map {
 	m := &multiHostMap{
-		basePath: basePath,
-		maps:     make(map[string]*hostMap),
+		basePath:  basePath,
+		maps:      make(map[string]*hostMap),
+		terminate: make(chan bool),
+		mapLock:   sync.RWMutex{},
 	}
 
 	go m.clearMaps()
@@ -87,6 +95,8 @@ func (s *multiHostMap) Iter(fn func([]byte, []byte) error) error {
 }
 
 func (s *multiHostMap) Close() {
+	s.terminate <- true
+
 	for _, m := range s.maps {
 		m.mapper.Close()
 	}
@@ -100,20 +110,56 @@ func (s *multiHostMap) getOrSetHostMap(key []byte) (*hostMap, error) {
 		return nil, errors.Wrap(err, "getOrSetHostMap: failed to parse url")
 	}
 
+	s.mapLock.RLock()
+
 	val, ok := s.maps[meta.Host]
+
+	s.mapLock.RUnlock()
 
 	if !ok {
 		sld := []byte(util.GetSLD(meta.Host))
 		fName := base64.StdEncoding.EncodeToString(sld)
 		val = &hostMap{
-			created: time.Now().Unix(),
+			expires: time.Now().Add(mapKeepAliveTime),
 			mapper:  NewPersistentMap(path.Join(s.basePath, fName)),
 		}
 
+		s.mapLock.Lock()
+
 		s.maps[meta.Host] = val
+
+		s.mapLock.Unlock()
 	}
 
 	return val, nil
 }
 
-func (s *multiHostMap) clearMaps() {}
+func (s *multiHostMap) clearMaps() {
+	for {
+		select {
+		case <-time.After(pruneInterval):
+			var toDelete []string
+			now := time.Now()
+
+			s.mapLock.RLock()
+
+			for key, val := range s.maps {
+				if val.expires.After(now) {
+					toDelete = append(toDelete, key)
+					val.mapper.Close()
+				}
+			}
+
+			s.mapLock.RUnlock()
+
+			s.mapLock.Lock()
+			for _, key := range toDelete {
+				delete(s.maps, key)
+			}
+			s.mapLock.Unlock()
+
+		case <-s.terminate:
+			return
+		}
+	}
+}
