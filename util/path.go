@@ -66,3 +66,11 @@ func MakeTempFolder(name string) string {
 
 	return path
 }
+
+func NewTempPath(name string) string {
+	f := MakeTempFile(name)
+
+	defer f.Close()
+
+	return f.Name()
+}
