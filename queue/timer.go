@@ -70,3 +70,7 @@ func (s *timerQueue) Prepare() error {
 func (s *timerQueue) EndTransaction(types.Message, bool) error {
 	return nil
 }
+
+func (s *timerQueue) Len() int64 {
+	return -1
+}

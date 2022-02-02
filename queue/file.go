@@ -163,6 +163,17 @@ func (s *fileQueue) EndTransaction(message types.Message, success bool) error {
 	return os.Rename(messagePath, filepath.Join(s.path, message.ID))
 }
 
+func (s *fileQueue) Len() int64 {
+	files, err := ioutil.ReadDir(s.path)
+
+	if err != nil {
+		log.Printf("failed to read queue directory: %s", s.path)
+		return -1
+	}
+
+	return int64(len(files))
+}
+
 func (s *fileQueue) perform() {
 	for {
 		sleepTime := time.Duration(rand.Intn(int(s.maxPollDelayMs)))
