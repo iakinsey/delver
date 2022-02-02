@@ -9,4 +9,5 @@ type Queue interface {
 	Put(types.Message, int) error
 	Prepare() error
 	EndTransaction(types.Message, bool) error
+	Len() int64
 }
