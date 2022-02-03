@@ -47,16 +47,14 @@ func TestBloomPersist(t *testing.T) {
 		assert.NoError(t, bloomFilter.SetString(value))
 	}
 
-	f := util.MakeTempFile("bloom")
-	bloomPath := f.Name()
+	bloomPath := util.NewTempPath("bloom")
 
 	defer os.Remove(bloomPath)
 
-	n, err := bloomFilter.Save(f)
+	n, err := bloomFilter.Save(bloomPath)
 
 	assert.NoError(t, err)
 	assert.Greater(t, n, int64(0))
-	assert.NoError(t, f.Close())
 
 	f2, err := os.Open(bloomPath)
 

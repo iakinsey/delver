@@ -33,6 +33,14 @@ func CreateFileOrFail(path string) (*os.File, error) {
 	return os.Create(path)
 }
 
+func CreateEmptyFile(path string) (*os.File, error) {
+	if err := os.Remove(path); !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	return os.Create(path)
+}
+
 func ReadDirAlphabetized(path string) ([]fs.FileInfo, error) {
 	files, err := ioutil.ReadDir(path)
 
@@ -68,9 +76,5 @@ func MakeTempFolder(name string) string {
 }
 
 func NewTempPath(name string) string {
-	f := MakeTempFile(name)
-
-	defer f.Close()
-
-	return f.Name()
+	return fmt.Sprintf("%s/%s%s", os.TempDir(), name, RandomString(8))
 }
