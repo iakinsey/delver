@@ -36,8 +36,10 @@ func LoadRollingBloomFilter(bloomCount int, src io.Reader) (BloomFilter, error) 
 	}, nil
 }
 
-func NewRollingBloomFilter(path string, bloomCount int, maxN uint64, p float64) BloomFilter {
+func NewRollingBloomFilter(bloomCount int, maxN uint64, p float64) BloomFilter {
 	return &rollingBloomFilter{
+		blooms:     []BloomFilter{NewBloomFilter(maxN, p)},
+		rwLock:     sync.RWMutex{},
 		bloomCount: bloomCount,
 		maxN:       maxN,
 		p:          p,

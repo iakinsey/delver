@@ -24,10 +24,11 @@ type dfsBasicAccumulator struct {
 
 const defaultBloomN = 10000000
 const defaultBloomP = 0.1
+const defaultBloomCount = 3
 
 func NewDfsBasicAccumulator(urlStorePath string, visitedUrlsPath string, maxDepth int) worker.Worker {
 	urlStore := maps.NewMultiHostMap(urlStorePath)
-	visitedUrls := bloom.NewBloomFilter(defaultBloomN, defaultBloomP)
+	visitedUrls := bloom.NewRollingBloomFilter(defaultBloomCount, defaultBloomN, defaultBloomP)
 	w := &dfsBasicAccumulator{
 		urlStorePath:    urlStorePath,
 		visitedUrlsPath: visitedUrlsPath,
