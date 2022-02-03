@@ -21,7 +21,7 @@ type BloomFilter interface {
 	SetMany([][]byte) error
 	ContainsString(string) bool
 	ContainsBytes([]byte) bool
-	Save(io.Writer) (int64, error)
+	Save(string) (int64, error)
 }
 
 type bloomError struct {
@@ -168,7 +168,13 @@ func (s *bloomFilter) ContainsBytes(val []byte) bool {
 	return true
 }
 
-func (s *bloomFilter) Save(dst io.Writer) (int64, error) {
+func (s *bloomFilter) Save(path string) (int64, error) {
+	dst, err := util.CreateEmptyFile(path)
+
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to open bloom file for writing")
+	}
+
 	n, err := fmt.Fprintln(dst, strconv.FormatUint(s.maxN, 10))
 
 	if err != nil {

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/url"
-	"os"
 
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
@@ -123,11 +122,7 @@ func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysi
 func (s *dfsBasicAccumulator) OnComplete() {
 	s.urlStore.Close()
 
-	if f, err := os.Open(s.visitedUrlsPath); err == nil {
-		if _, err := s.visitedUrls.Save(f); err != nil {
-			log.Printf("error when saving bloom filter: %s", err)
-		}
-	} else {
+	if _, err := s.visitedUrls.Save(s.visitedUrlsPath); err != nil {
 		log.Printf("error when saving bloom filter: %s", err)
 	}
 }
