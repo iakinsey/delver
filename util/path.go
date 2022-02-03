@@ -34,11 +34,15 @@ func CreateFileOrFail(path string) (*os.File, error) {
 }
 
 func CreateEmptyFile(path string) (*os.File, error) {
-	if err := os.Remove(path); !os.IsNotExist(err) {
-		return nil, err
-	}
+	return os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0644)
 
-	return os.Create(path)
+	/*
+			if err := os.Remove(path); !os.IsNotExist(err) {
+				return nil, err
+			}
+		return os.Create(path)
+
+	*/
 }
 
 func GetOrCreateFile(path string) (*os.File, error) {

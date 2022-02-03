@@ -36,13 +36,15 @@ func NewPersistentRollingBloomFilter(bloomCount int, maxN uint64, p float64, pat
 	if path == "" {
 		rbf.blooms = []BloomFilter{NewBloomFilter(maxN, p)}
 		return rbf, nil
-	} else if _, err := os.Stat(path); err != nil {
-		return nil, errors.Wrap(err, "failed to check if bloom file exists")
-	} else if errors.Is(err, os.ErrNotExist) {
+	} else if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		rbf.blooms = []BloomFilter{NewBloomFilter(maxN, p)}
+	} else if err != nil {
+		return nil, errors.Wrap(err, "failed to check if bloom file exists")
 	} else if f, err := os.Open(path); err != nil {
 		return nil, errors.Wrap(err, "failed to open existing bloom file")
 	} else if bloom, err := LoadBloomFilter(f); err != nil {
+		return nil, errors.Wrap(err, "failed to load bloom filter")
+	} else {
 		defer f.Close()
 		if bloomStruct, ok := bloom.(*bloomFilter); !ok {
 			log.Fatalf("failed to cast bloom filter to struct form")
@@ -157,7 +159,7 @@ func (s *rollingBloomFilter) writeTransaction(fn func(BloomFilter) error) error 
 
 func (s *rollingBloomFilter) readTransaction(fn func(BloomFilter) bool) bool {
 	s.rwLock.RLock()
-	defer s.rwLock.Unlock()
+	defer s.rwLock.RUnlock()
 
 	for _, bloom := range s.blooms {
 		if fn(bloom) {
