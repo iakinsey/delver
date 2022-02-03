@@ -33,7 +33,11 @@ type bloomError struct {
 }
 
 func (e *bloomError) Error() string {
-	return fmt.Sprintf("%#v", e)
+	return fmt.Sprintf("BloomError: %#v", e)
+}
+
+func IsBloomError(err error) bool {
+	return strings.HasPrefix(err.Error(), "BloomError")
 }
 
 func NewBloomError(b *bloomFilter, msg string) error {
