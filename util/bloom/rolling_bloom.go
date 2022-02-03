@@ -1,49 +1,74 @@
 package bloom
 
 import (
-	"io"
 	"log"
+	"os"
 	"sync"
+	"time"
+
+	"github.com/pkg/errors"
 )
 
+const defaultSaveInterval = 10 * time.Minute
+
 type rollingBloomFilter struct {
-	blooms     []BloomFilter
-	rwLock     sync.RWMutex
-	bloomCount int
-	maxN       uint64
-	p          float64
+	blooms       []BloomFilter
+	rwLock       sync.RWMutex
+	saveInterval time.Duration
+	terminate    chan bool
+	bloomCount   int
+	maxN         uint64
+	p            float64
+	path         string
 }
 
-func LoadRollingBloomFilter(bloomCount int, src io.Reader) (BloomFilter, error) {
-	bloom, err := LoadBloomFilter(src)
-
-	if err != nil {
-		return nil, err
+func NewPersistentRollingBloomFilter(bloomCount int, maxN uint64, p float64, path string) (BloomFilter, error) {
+	rbf := &rollingBloomFilter{
+		rwLock:       sync.RWMutex{},
+		saveInterval: defaultSaveInterval,
+		terminate:    make(chan bool),
+		bloomCount:   bloomCount,
+		maxN:         maxN,
+		p:            p,
+		path:         path,
 	}
 
-	bloomStruct, ok := bloom.(*bloomFilter)
-
-	if !ok {
-		log.Fatalf("failed to cast bloom filter to struct form")
+	if path == "" {
+		rbf.blooms = []BloomFilter{NewBloomFilter(maxN, p)}
+		return rbf, nil
+	} else if _, err := os.Stat(path); err != nil {
+		return nil, errors.Wrap(err, "failed to check if bloom file exists")
+	} else if errors.Is(err, os.ErrNotExist) {
+		rbf.blooms = []BloomFilter{NewBloomFilter(maxN, p)}
+	} else if f, err := os.Open(path); err != nil {
+		return nil, errors.Wrap(err, "failed to open existing bloom file")
+	} else if bloom, err := LoadBloomFilter(f); err != nil {
+		defer f.Close()
+		if bloomStruct, ok := bloom.(*bloomFilter); !ok {
+			log.Fatalf("failed to cast bloom filter to struct form")
+		} else {
+			rbf.blooms = []BloomFilter{bloom}
+			rbf.maxN = bloomStruct.maxN
+			rbf.p = bloomStruct.p
+		}
 	}
 
-	return &rollingBloomFilter{
-		blooms:     []BloomFilter{bloom},
-		rwLock:     sync.RWMutex{},
-		bloomCount: bloomCount,
-		maxN:       bloomStruct.maxN,
-		p:          bloomStruct.p,
-	}, nil
+	go rbf.handleSave()
+
+	return rbf, nil
 }
 
 func NewRollingBloomFilter(bloomCount int, maxN uint64, p float64) BloomFilter {
-	return &rollingBloomFilter{
+	rbf := &rollingBloomFilter{
 		blooms:     []BloomFilter{NewBloomFilter(maxN, p)},
 		rwLock:     sync.RWMutex{},
+		terminate:  make(chan bool),
 		bloomCount: bloomCount,
 		maxN:       maxN,
 		p:          p,
 	}
+
+	return rbf
 }
 
 func (s *rollingBloomFilter) SetString(val string) error {
@@ -78,6 +103,20 @@ func (s *rollingBloomFilter) Save(path string) (int64, error) {
 	bf := s.blooms[0]
 
 	return bf.Save(path)
+}
+
+func (s *rollingBloomFilter) Close() {
+	if s.path != "" {
+		if _, err := s.Save(s.path); err != nil {
+			log.Printf("failed to save bloom filter while closing")
+		}
+	}
+
+	for _, bloom := range s.blooms {
+		bloom.Close()
+	}
+
+	s.terminate <- true
 }
 
 func (s *rollingBloomFilter) rotate() {
@@ -127,4 +166,21 @@ func (s *rollingBloomFilter) readTransaction(fn func(BloomFilter) bool) bool {
 	}
 
 	return false
+}
+
+func (s *rollingBloomFilter) handleSave() {
+	if s.path == "" {
+		return
+	}
+
+	for {
+		select {
+		case <-time.After(s.saveInterval):
+			s.rwLock.Lock()
+			s.blooms[0].Save(s.path)
+			s.rwLock.Unlock()
+		case <-s.terminate:
+			return
+		}
+	}
 }

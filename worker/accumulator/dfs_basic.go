@@ -28,7 +28,17 @@ const defaultBloomCount = 3
 
 func NewDfsBasicAccumulator(urlStorePath string, visitedUrlsPath string, maxDepth int) worker.Worker {
 	urlStore := maps.NewMultiHostMap(urlStorePath)
-	visitedUrls := bloom.NewRollingBloomFilter(defaultBloomCount, defaultBloomN, defaultBloomP)
+	visitedUrls, err := bloom.NewPersistentRollingBloomFilter(
+		defaultBloomCount,
+		defaultBloomN,
+		defaultBloomP,
+		visitedUrlsPath,
+	)
+
+	if err != nil {
+		log.Fatalf("failed to create dfs basic visited url bloom filter %s", err)
+	}
+
 	w := &dfsBasicAccumulator{
 		urlStorePath:    urlStorePath,
 		visitedUrlsPath: visitedUrlsPath,
@@ -122,8 +132,5 @@ func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysi
 
 func (s *dfsBasicAccumulator) OnComplete() {
 	s.urlStore.Close()
-
-	if _, err := s.visitedUrls.Save(s.visitedUrlsPath); err != nil {
-		log.Printf("error when saving bloom filter: %s", err)
-	}
+	s.visitedUrls.Close()
 }
