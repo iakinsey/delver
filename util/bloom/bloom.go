@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"strconv"
 	"strings"
@@ -22,6 +21,7 @@ type BloomFilter interface {
 	ContainsString(string) bool
 	ContainsBytes([]byte) bool
 	Save(string) (int64, error)
+	Close()
 }
 
 type bloomError struct {
@@ -198,9 +198,7 @@ func (s *bloomFilter) Save(path string) (int64, error) {
 	return s.bitmap.WriteTo(dst)
 }
 
-func (s *bloomFilter) IterateKeys(func(string) error) {
-	log.Fatalf("bloomFilter.IterateKeys not implemented")
-}
+func (s *bloomFilter) Close() {}
 
 func (s *bloomFilter) getHashes(in []byte) (result []uint64) {
 	hasher := murmur3.New128()

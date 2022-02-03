@@ -41,6 +41,16 @@ func CreateEmptyFile(path string) (*os.File, error) {
 	return os.Create(path)
 }
 
+func GetOrCreateFile(path string) (*os.File, error) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return os.Create(path)
+	} else if err != nil {
+		return nil, err
+	}
+
+	return os.Open(path)
+}
+
 func ReadDirAlphabetized(path string) ([]fs.FileInfo, error) {
 	files, err := ioutil.ReadDir(path)
 
