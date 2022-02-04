@@ -57,6 +57,17 @@ func TestDfsBasic(t *testing.T) {
 		assert.True(t, ok)
 		assert.Contains(t, req.Host, "example.com")
 	}
+
+	out2, err := accumulator.OnMessage(msg1)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, out2)
+	assert.IsType(t, types.MultiMessage{}, out)
+
+	mm2, ok := out2.(types.MultiMessage)
+
+	assert.True(t, ok)
+	assert.Len(t, mm2.Values, 0)
 }
 
 func TestDfsBasicMaxDepthExceeded(t *testing.T) {}
