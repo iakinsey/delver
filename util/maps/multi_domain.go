@@ -119,7 +119,8 @@ func (s *multiHostMap) getOrSetHostMap(key []byte) (*hostMap, error) {
 	s.mapLock.RUnlock()
 
 	if !ok {
-		fName := base64.StdEncoding.EncodeToString([]byte(mapKey))
+
+		fName := base64.URLEncoding.EncodeToString([]byte(mapKey))
 		val = &hostMap{
 			expires: time.Now().Add(mapKeepAliveTime),
 			mapper:  NewPersistentMap(path.Join(s.basePath, fName)),

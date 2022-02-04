@@ -23,22 +23,23 @@ type dfsBasicPublisher struct {
 	outputQueue      queue.Queue
 	urlStorePath     string
 	visitedHostsPath string
-	urlStore         maps.Map
 	visitedHosts     maps.Map
 	rotateAfter      time.Duration
 	timeSinceEmpty   *time.Time
 	lock             sync.Mutex
+	firstPass        bool
 }
 
 func NewDfsBasicPublisher(inputQueue queue.Queue, outputQueue queue.Queue, urlStorePath string, visitedDomainsPath string, rotateAfter time.Duration) worker.Worker {
 	return &dfsBasicPublisher{
 		inputQueue:       inputQueue,
+		outputQueue:      outputQueue,
 		urlStorePath:     urlStorePath,
 		visitedHostsPath: visitedDomainsPath,
-		urlStore:         maps.NewMultiHostMap(urlStorePath),
 		visitedHosts:     maps.NewPersistentMap(visitedDomainsPath),
 		rotateAfter:      rotateAfter,
 		lock:             sync.Mutex{},
+		firstPass:        true,
 	}
 }
 
@@ -47,8 +48,12 @@ func (s *dfsBasicPublisher) OnMessage(msg types.Message) (interface{}, error) {
 
 	now := time.Now()
 	queueEmpty := s.inputQueue.Len() == 0
+	noEmptyTime := s.timeSinceEmpty != nil
+	atRotateTime := noEmptyTime && s.timeSinceEmpty.Add(s.rotateAfter).Before(now)
+	shouldFill := (queueEmpty && atRotateTime) || s.firstPass
+	s.firstPass = false
 
-	if queueEmpty && s.timeSinceEmpty != nil && s.timeSinceEmpty.Add(s.rotateAfter).Before(now) {
+	if shouldFill {
 		if err := s.fillQueue(); err != nil {
 			return nil, errors.Wrap(err, "failed to fill queue")
 		} else {
@@ -79,7 +84,7 @@ func (s *dfsBasicPublisher) fillQueue() error {
 	}
 
 	for _, encodedHost := range encodedHosts {
-		host, err := base64.RawStdEncoding.DecodeString(encodedHost)
+		host, err := base64.URLEncoding.DecodeString(encodedHost)
 
 		if err != nil {
 			log.Printf("Unable to decode host: %s", encodedHost)
@@ -89,7 +94,7 @@ func (s *dfsBasicPublisher) fillQueue() error {
 		}
 
 		if _, err := s.visitedHosts.Get(host); err == maps.ErrKeyNotFound {
-			err := s.publishUrls(string(host), encodedHost)
+			err := s.publishUrls(string(host), path.Join(s.urlStorePath, encodedHost))
 			os.RemoveAll(path.Join(s.urlStorePath, encodedHost))
 			return err
 		} else if err != nil {
@@ -150,6 +155,5 @@ func (s *dfsBasicPublisher) publishUrls(host string, hostDbPath string) error {
 }
 
 func (s *dfsBasicPublisher) OnComplete() {
-	s.urlStore.Close()
 	s.visitedHosts.Close()
 }
