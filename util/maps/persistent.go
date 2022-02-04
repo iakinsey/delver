@@ -26,7 +26,8 @@ func NewPersistentMap(path string) Map {
 	}
 
 	m := &persistentMap{
-		db: db,
+		db:        db,
+		terminate: make(chan bool),
 	}
 
 	go m.handleGc()
@@ -132,6 +133,9 @@ func (s *persistentMap) Iter(fn func([]byte, []byte) error) error {
 }
 
 func (s *persistentMap) Close() {
+	if err := s.db.Close(); err != nil {
+		log.Printf("error when closing persistentMap: %s", err)
+	}
 	s.terminate <- true
 }
 
