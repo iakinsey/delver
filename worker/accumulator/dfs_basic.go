@@ -44,6 +44,7 @@ func NewDfsBasicAccumulator(urlStorePath string, visitedUrlsPath string, maxDept
 		visitedUrlsPath: visitedUrlsPath,
 		urlStore:        urlStore,
 		visitedUrls:     visitedUrls,
+		maxDepth:        maxDepth,
 	}
 
 	return w
@@ -73,7 +74,7 @@ func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysi
 	var result []interface{}
 	var urlPairs [][2][]byte
 	var toVisit [][]byte
-	sourceSLD := util.GetSLD(composite.Host)
+	source := util.GetSLDAndTLD(composite.Host)
 
 	for _, u := range composite.URIs {
 		meta, err := url.Parse(u)
@@ -83,9 +84,9 @@ func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysi
 			continue
 		}
 
-		targetSLD := util.GetSLD(meta.Host)
+		target := util.GetSLDAndTLD(meta.Host)
 
-		if sourceSLD == targetSLD && composite.Depth < s.maxDepth {
+		if source == target && composite.Depth < s.maxDepth {
 			// do not fall back after bloom filter check
 			if !s.visitedUrls.ContainsString(u) {
 				result = append(result, message.FetcherRequest{
@@ -98,7 +99,7 @@ func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysi
 				})
 				toVisit = append(toVisit, []byte(u))
 			}
-		} else if sourceSLD != targetSLD {
+		} else if source != target {
 			// TODO
 			// Consider whether or not to remove the if condition and allow matching hosts to
 			// propagate to the urlStore.

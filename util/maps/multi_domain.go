@@ -110,15 +110,16 @@ func (s *multiHostMap) getOrSetHostMap(key []byte) (*hostMap, error) {
 		return nil, errors.Wrap(err, "getOrSetHostMap: failed to parse url")
 	}
 
+	mapKey := util.GetSLDAndTLD(meta.Host)
+
 	s.mapLock.RLock()
 
-	val, ok := s.maps[meta.Host]
+	val, ok := s.maps[mapKey]
 
 	s.mapLock.RUnlock()
 
 	if !ok {
-		sld := []byte(util.GetSLD(meta.Host))
-		fName := base64.StdEncoding.EncodeToString(sld)
+		fName := base64.StdEncoding.EncodeToString([]byte(mapKey))
 		val = &hostMap{
 			expires: time.Now().Add(mapKeepAliveTime),
 			mapper:  NewPersistentMap(path.Join(s.basePath, fName)),
@@ -126,7 +127,7 @@ func (s *multiHostMap) getOrSetHostMap(key []byte) (*hostMap, error) {
 
 		s.mapLock.Lock()
 
-		s.maps[meta.Host] = val
+		s.maps[mapKey] = val
 
 		s.mapLock.Unlock()
 	}

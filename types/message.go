@@ -13,3 +13,17 @@ type Message struct {
 type MultiMessage struct {
 	Values []interface{}
 }
+
+func NewMessage(in interface{}, t MessageType) (Message, error) {
+	jsonMessage, err := json.Marshal(in)
+
+	if err != nil {
+		return Message{}, err
+	}
+
+	return Message{
+		ID:          "0-0-0-TestName",
+		MessageType: t,
+		Message:     json.RawMessage(jsonMessage),
+	}, nil
+}
