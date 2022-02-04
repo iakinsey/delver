@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"math/rand"
@@ -69,6 +70,17 @@ func GetSLD(host string) string {
 	}
 
 	return tokens[len(tokens)-2]
+}
+
+func GetSLDAndTLD(host string) string {
+	tokens := strings.Split(host, ".")
+	size := len(tokens)
+
+	if size == 1 {
+		return host
+	}
+
+	return fmt.Sprintf("%s.%s", tokens[size-2], tokens[size-1])
 }
 
 func DataFilePath(name string) string {

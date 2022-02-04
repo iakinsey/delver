@@ -109,7 +109,7 @@ func newBloomFilter(maxN uint64, p float64, bitmap *roaring64.Bitmap) BloomFilte
 	mFloat := getOptimalBloomM(maxN, p)
 	m := uint64(mFloat)
 	kFloat := getOptimalBloomK(m, maxN, p)
-	k := uint64(kFloat)
+	k := uint64(math.Ceil(kFloat))
 
 	return &bloomFilter{
 		maxN:    maxN,
