@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/iakinsey/delver/gateway/robots"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
@@ -46,11 +47,11 @@ func TestDfsBasic(t *testing.T) {
 	mapper.Close()
 
 	publisher := NewDfsBasicPublisher(
-		queues.Inbox,
 		queues.Outbox,
 		urlStorePath,
 		visitedDomainsPath,
 		rotateAfter,
+		robots.NewMemoryRobots(util.NewHTTPClient(util.HTTPClientParams{})),
 	)
 	out, err := publisher.OnMessage(types.Message{})
 

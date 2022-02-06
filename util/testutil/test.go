@@ -83,8 +83,8 @@ func TeardownWorkerQueueFolders(paths QueuePaths) {
 }
 
 func CreateQueueTriad(paths QueuePaths) (queues TestQueues) {
-	queues.Inbox = createTestQueue(paths.Inbox, paths.InboxDLQ)
-	queues.Outbox = createTestQueue(paths.Outbox, paths.OutboxDLQ)
+	queues.Inbox = CreateTestQueue(paths.Inbox, paths.InboxDLQ)
+	queues.Outbox = CreateTestQueue(paths.Outbox, paths.OutboxDLQ)
 	streamStore, err := streamstore.NewFilesystemStreamStore(paths.StreamStore)
 
 	if err != nil {
@@ -94,6 +94,13 @@ func CreateQueueTriad(paths QueuePaths) (queues TestQueues) {
 	queues.StreamStore = streamStore
 
 	return queues
+}
+
+func CreateFileQueue(name string) (queue.Queue, string, string) {
+	inbox := util.MakeTempFolder(name)
+	dlq := util.MakeTempFolder(name)
+
+	return CreateTestQueue(inbox, dlq), inbox, dlq
 }
 
 func TestDataFile(name string) *os.File {
@@ -125,7 +132,7 @@ func TestData(name string) []byte {
 	return data
 }
 
-func createTestQueue(path string, dlq string) queue.Queue {
+func CreateTestQueue(path string, dlq string) queue.Queue {
 	queue, err := queue.NewFileQueue("TestInboxQueue", path, dlq, 100, 100, false)
 
 	if err != nil {

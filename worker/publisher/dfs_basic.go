@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/iakinsey/delver/gateway/robots"
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
@@ -19,7 +20,6 @@ import (
 )
 
 type dfsBasicPublisher struct {
-	inputQueue       queue.Queue
 	outputQueue      queue.Queue
 	urlStorePath     string
 	visitedHostsPath string
@@ -28,11 +28,11 @@ type dfsBasicPublisher struct {
 	timeSinceEmpty   *time.Time
 	lock             sync.Mutex
 	firstPass        bool
+	robots           robots.Robots
 }
 
-func NewDfsBasicPublisher(inputQueue queue.Queue, outputQueue queue.Queue, urlStorePath string, visitedDomainsPath string, rotateAfter time.Duration) worker.Worker {
+func NewDfsBasicPublisher(outputQueue queue.Queue, urlStorePath string, visitedDomainsPath string, rotateAfter time.Duration, r robots.Robots) worker.Worker {
 	return &dfsBasicPublisher{
-		inputQueue:       inputQueue,
 		outputQueue:      outputQueue,
 		urlStorePath:     urlStorePath,
 		visitedHostsPath: visitedDomainsPath,
@@ -40,6 +40,7 @@ func NewDfsBasicPublisher(inputQueue queue.Queue, outputQueue queue.Queue, urlSt
 		rotateAfter:      rotateAfter,
 		lock:             sync.Mutex{},
 		firstPass:        true,
+		robots:           r,
 	}
 }
 
@@ -47,7 +48,7 @@ func (s *dfsBasicPublisher) OnMessage(msg types.Message) (interface{}, error) {
 	s.lock.Lock()
 
 	now := time.Now()
-	queueEmpty := s.inputQueue.Len() == 0
+	queueEmpty := s.outputQueue.Len() == 0
 	noEmptyTime := s.timeSinceEmpty != nil
 	atRotateTime := noEmptyTime && s.timeSinceEmpty.Add(s.rotateAfter).Before(now)
 	shouldFill := (queueEmpty && atRotateTime) || s.firstPass
@@ -95,7 +96,9 @@ func (s *dfsBasicPublisher) fillQueue() error {
 
 		if _, err := s.visitedHosts.Get(host); err == maps.ErrKeyNotFound {
 			err := s.publishUrls(string(host), path.Join(s.urlStorePath, encodedHost))
-			os.RemoveAll(path.Join(s.urlStorePath, encodedHost))
+			if err := os.RemoveAll(path.Join(s.urlStorePath, encodedHost)); err != nil {
+				log.Printf("Failed to delete host folder: %s", string(host))
+			}
 			return err
 		} else if err != nil {
 			log.Printf("Error reading key from visitedDomains: %s", string(host))
@@ -110,6 +113,7 @@ func (s *dfsBasicPublisher) fillQueue() error {
 
 func (s *dfsBasicPublisher) publishUrls(host string, hostDbPath string) error {
 	m := maps.NewPersistentMap(hostDbPath)
+
 	err := m.Iter(func(k, v []byte) error {
 		req := message.FetcherRequest{}
 
@@ -117,6 +121,14 @@ func (s *dfsBasicPublisher) publishUrls(host string, hostDbPath string) error {
 		if err := json.Unmarshal(v, &req); err != nil {
 			log.Printf("unable to parse json for url: %s", string(k))
 			return nil
+		}
+
+		if s.robots != nil {
+			if allowed, err := s.robots.IsAllowed(req.URI); err != nil {
+				log.Printf("unable to request robots.txt status for url: %s", err)
+			} else if !allowed {
+				return nil
+			}
 		}
 
 		meta, err := url.Parse(req.URI)

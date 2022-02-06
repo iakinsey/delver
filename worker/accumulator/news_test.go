@@ -20,8 +20,7 @@ func TestNewsAccumulator(t *testing.T) {
 
 	queues := testutil.CreateQueueTriad(paths)
 	newsQueue := queues.Outbox
-	client := util.NewHTTPClient(util.HTTPClientParams{})
-	memoryRobots := robots.NewMemoryRobots(client)
+	memoryRobots := robots.NewMemoryRobots(util.NewHTTPClient(util.HTTPClientParams{}))
 	accumulator := NewNewsAccumulator(newsQueue, memoryRobots)
 	composite, _ := json.Marshal(message.CompositeAnalysis{
 		FetcherResponse: message.FetcherResponse{
