@@ -12,14 +12,9 @@ import (
 	"github.com/iakinsey/delver/worker"
 )
 
-const defaultUserAgent = "delver"
-
 // TODO put these values into a config module
 type HttpFetcherArgs struct {
 	MaxRetries  int
-	Timeout     time.Duration
-	ProxyHost   string
-	ProxyPort   string
 	StreamStore streamstore.StreamStore
 	Client      *util.DelverHTTPClient
 }
