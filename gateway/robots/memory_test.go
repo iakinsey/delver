@@ -27,7 +27,8 @@ func TestMemoryRobots(t *testing.T) {
 	go startRobotsServer()
 	time.Sleep(1 * time.Second)
 
-	memoryRobots := NewMemoryRobots()
+	client := util.NewHTTPClient(util.HTTPClientParams{})
+	memoryRobots := NewMemoryRobots(client)
 
 	for uri, expectedState := range scenarios {
 		u := fmt.Sprintf("http://localhost:%d%s", testHttpServerPort, uri)

@@ -7,6 +7,7 @@ import (
 
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
+	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/util/testutil"
 	"github.com/iakinsey/delver/worker"
 )
@@ -19,8 +20,8 @@ func TestComposeFetcher(t *testing.T) {
 	queues := testutil.CreateQueueTriad(paths)
 
 	fetcher := NewHttpFetcher(HttpFetcherArgs{
-		UserAgent:   "test",
 		StreamStore: queues.StreamStore,
+		Client:      util.NewHTTPClient(util.HTTPClientParams{}),
 	})
 
 	message, _ := json.Marshal(message.FetcherRequest{

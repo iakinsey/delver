@@ -57,6 +57,4 @@ func TestDfsBasic(t *testing.T) {
 	assert.Nil(t, out)
 	assert.NoError(t, err)
 	testutil.AssertFolderSize(t, paths.Outbox, len(urls))
-
-	
 }

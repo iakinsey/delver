@@ -3,12 +3,12 @@ package fetcher
 import (
 	"encoding/json"
 	"log"
-	"net/http"
 	"time"
 
 	"github.com/iakinsey/delver/gateway/streamstore"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
+	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/worker"
 )
 
@@ -16,12 +16,12 @@ const defaultUserAgent = "delver"
 
 // TODO put these values into a config module
 type HttpFetcherArgs struct {
-	UserAgent   string
 	MaxRetries  int
 	Timeout     time.Duration
 	ProxyHost   string
 	ProxyPort   string
 	StreamStore streamstore.StreamStore
+	Client      *util.DelverHTTPClient
 }
 
 type httpFetcher struct {
@@ -29,10 +29,6 @@ type httpFetcher struct {
 }
 
 func NewHttpFetcher(args HttpFetcherArgs) worker.Worker {
-	if args.UserAgent == "" {
-		args.UserAgent = defaultUserAgent
-	}
-
 	return &httpFetcher{args}
 }
 
@@ -80,16 +76,7 @@ func (s *httpFetcher) doHttpRequestWithRetry(request message.FetcherRequest, res
 }
 
 func (s *httpFetcher) doHttpRequest(request message.FetcherRequest, response *message.FetcherResponse) (key types.UUID, err error) {
-	client := &http.Client{Timeout: s.Timeout}
-	req, err := http.NewRequest("GET", string(request.URI), nil)
-
-	if err != nil {
-		return key, err
-	}
-
-	req.Header.Set("User-Agent", s.UserAgent)
-
-	res, err := client.Do(req)
+	res, err := s.Client.Perform(request.URI)
 
 	if err != nil {
 		return key, err

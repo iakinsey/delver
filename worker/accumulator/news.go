@@ -20,10 +20,10 @@ type newsAccumulator struct {
 	newsQueue queue.Queue
 }
 
-func NewNewsAccumulator(newsQueue queue.Queue) worker.Worker {
+func NewNewsAccumulator(newsQueue queue.Queue, r robots.Robots) worker.Worker {
 	return &newsAccumulator{
 		maxDepth:  maxDepth,
-		robots:    robots.NewMemoryRobots(),
+		robots:    r,
 		newsQueue: newsQueue,
 	}
 }

@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/iakinsey/delver/gateway/robots"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
+	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/util/testutil"
 	"github.com/stretchr/testify/assert"
 )
@@ -18,7 +20,9 @@ func TestNewsAccumulator(t *testing.T) {
 
 	queues := testutil.CreateQueueTriad(paths)
 	newsQueue := queues.Outbox
-	accumulator := NewNewsAccumulator(newsQueue)
+	client := util.NewHTTPClient(util.HTTPClientParams{})
+	memoryRobots := robots.NewMemoryRobots(client)
+	accumulator := NewNewsAccumulator(newsQueue, memoryRobots)
 	composite, _ := json.Marshal(message.CompositeAnalysis{
 		FetcherResponse: message.FetcherResponse{
 			FetcherRequest: message.FetcherRequest{
