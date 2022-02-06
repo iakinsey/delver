@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/iakinsey/delver/util"
 	"github.com/pkg/errors"
 	"github.com/temoto/robotstxt"
 )
@@ -19,6 +20,7 @@ const defaultExpiration = 1 * time.Hour
 const defaultClearExpiredDelay = 1 * time.Hour
 
 type memoryRobots struct {
+	client            *util.DelverHTTPClient
 	timeout           time.Duration
 	userAgent         string
 	expiration        time.Duration
@@ -32,8 +34,9 @@ type robotsInfo struct {
 	created time.Time
 }
 
-func NewMemoryRobots() Robots {
+func NewMemoryRobots(client *util.DelverHTTPClient) Robots {
 	job := &memoryRobots{
+		client:            client,
 		timeout:           defaultTimeout,
 		userAgent:         defaultUserAgent,
 		expiration:        defaultExpiration,
