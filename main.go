@@ -24,9 +24,9 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU() * 8)
 
 	urlStorePath := util.MakeTempFolder("urlStorePath")
-	visitedUrlsPath := util.NewTempPath("visitedurls")
-	streamStorePath := util.MakeTempFolder("streamstore")
-	visitedDomainsPath := util.MakeTempFolder("streamstore")
+	visitedUrlsPath := util.NewTempPath("visitedUrls")
+	streamStorePath := util.MakeTempFolder("streamStore")
+	visitedDomainsPath := util.MakeTempFolder("visitedDomains")
 	maxDepth := 2
 	rotateAfter := 5 * time.Minute
 

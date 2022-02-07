@@ -91,5 +91,6 @@ func (s *httpFetcher) doHttpRequest(request message.FetcherRequest, response *me
 		response.ContentMD5 = hash
 	}
 
+
 	return key, err
 }
