@@ -38,6 +38,8 @@ func (s *newsAccumulator) OnMessage(msg types.Message) (interface{}, error) {
 	urls := s.processUrls(composite)
 	s.processArticle(composite)
 
+	log.Printf("published %d requests for uri %s", len(urls), composite.URI)
+
 	return types.MultiMessage{
 		Values: urls,
 	}, nil

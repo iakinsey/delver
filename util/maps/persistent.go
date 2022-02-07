@@ -19,7 +19,9 @@ type persistentMap struct {
 }
 
 func NewPersistentMap(path string) Map {
-	db, err := badger.Open(badger.DefaultOptions(path))
+	opts := badger.DefaultOptions(path)
+	opts.Logger = nil
+	db, err := badger.Open(opts)
 
 	if err != nil {
 		log.Fatal(err)

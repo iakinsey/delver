@@ -47,6 +47,8 @@ func (s *compositeExtractor) executeExtractors(path string, meta message.Fetcher
 	var completed []string
 	var errs []error
 
+	log.Printf("executing %d extractors for uri %s", len(pending), meta.URI)
+
 	for len(pending) > 0 {
 		var toExecute []extractors.Extractor
 
@@ -68,6 +70,8 @@ func (s *compositeExtractor) executeExtractors(path string, meta message.Fetcher
 		errs = append(errs, newErrs...)
 		pending = s.getNextPending(pending, toExecute)
 	}
+
+	log.Printf("executed %d extractors from uri %s", len(pending), meta.URI)
 
 	return composite, getCompositeError(composite, errs)
 }
