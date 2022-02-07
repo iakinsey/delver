@@ -74,7 +74,11 @@ func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysi
 	var result []interface{}
 	var urlPairs [][2][]byte
 	var toVisit [][]byte
-	source := util.GetSLDAndTLD(composite.Host)
+	var source string
+
+	if meta, err := url.Parse(composite.URI); err == nil {
+		source = util.GetSLDAndTLD(meta.Host)
+	}
 
 	for _, u := range composite.URIs {
 		meta, err := url.Parse(u)

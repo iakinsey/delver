@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"os"
 	"runtime"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/iakinsey/delver/gateway/robots"
 	"github.com/iakinsey/delver/gateway/streamstore"
+	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/util/testutil"
@@ -88,8 +90,25 @@ func main() {
 	accumManager := worker.NewWorkerManager(accum, compositeOutputQueue, fetcherInputQueue)
 	pubManager := worker.NewJobManager(pub, fetcherInputQueue, 1*time.Minute)
 
+	message, _ := json.Marshal(message.FetcherRequest{
+		RequestID: types.NewV4(),
+		URI:       "http://en.wikipedia.org/wiki",
+		Protocol:  types.ProtocolHTTP,
+	})
+
+	fetcherInputQueue.Put(types.Message{
+		ID:          "0-0-0-TestName",
+		MessageType: types.FetcherRequestType,
+		Message:     json.RawMessage(message),
+	}, 0)
+
+	go fetcherInputQueue.Start()
+	go fetcherOutputQueue.Start()
+	go compositeOutputQueue.Start()
 	go fetchManager.Start()
 	go compManager.Start()
 	go accumManager.Start()
 	go pubManager.Start()
+
+	select {}
 }

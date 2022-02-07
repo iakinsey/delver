@@ -1,5 +1,5 @@
 default:
-	GODEBUG=asyncpreemptoff=1 go build .
+	go build .
 
 test:
 	go clean -testcache
