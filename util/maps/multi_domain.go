@@ -5,59 +5,39 @@ import (
 	"fmt"
 	"net/url"
 	"path"
-	"sync"
-	"time"
 
 	"github.com/iakinsey/delver/util"
 	"github.com/pkg/errors"
 )
 
-var pruneInterval = 1 * time.Second
-var mapKeepAliveTime = 5 * time.Second
-
 type multiHostMap struct {
 	basePath  string
-	maps      map[string]*hostMap
 	terminate chan bool
-	mapLock   sync.RWMutex
-}
-
-type hostMap struct {
-	mapper  Map
-	expires time.Time
+	mapLock   util.KeyedMutex
 }
 
 func NewMultiHostMap(basePath string) Map {
 	m := &multiHostMap{
 		basePath:  basePath,
-		maps:      make(map[string]*hostMap),
 		terminate: make(chan bool),
-		mapLock:   sync.RWMutex{},
+		mapLock:   *util.NewKeyedMutex(),
 	}
-
-	go m.clearMaps()
 
 	return m
 }
 
 func (s *multiHostMap) Get(key []byte) ([]byte, error) {
-	m, err := s.getOrSetHostMap(key)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return m.mapper.Get(key)
+	return s.transaction(key, func(m Map) ([]byte, error) {
+		return m.Get(key)
+	})
 }
 
-func (s *multiHostMap) Set(key []byte, val []byte) error {
-	m, err := s.getOrSetHostMap(key)
+func (s *multiHostMap) Set(key []byte, val []byte) (err error) {
+	_, err = s.transaction(key, func(m Map) ([]byte, error) {
+		return nil, m.Set(key, val)
+	})
 
-	if err != nil {
-		return err
-	}
-
-	return m.mapper.Set(key, val)
+	return
 }
 
 func (s *multiHostMap) SetMany(pairs [][2][]byte) error {
@@ -75,15 +55,14 @@ func (s *multiHostMap) SetMany(pairs [][2][]byte) error {
 	}
 
 	for key, pairs := range pairMap {
-		u := fmt.Sprintf("http://%s/", key)
-		m, err := s.getOrSetHostMap([]byte(u))
+		u := []byte(fmt.Sprintf("http://%s/", key))
+
+		_, err := s.transaction(u, func(m Map) ([]byte, error) {
+			return nil, m.SetMany(pairs)
+		})
 
 		if err != nil {
-			return err
-		}
-
-		if err := m.mapper.SetMany(pairs); err != nil {
-			return err
+			return errors.Wrap(err, "failed to write pairs")
 		}
 	}
 
@@ -95,74 +74,27 @@ func (s *multiHostMap) Iter(fn func([]byte, []byte) error) error {
 }
 
 func (s *multiHostMap) Close() {
+	// TODO find a way to close existing connections before exiting
 	s.terminate <- true
-
-	for _, m := range s.maps {
-		m.mapper.Close()
-	}
 }
 
-func (s *multiHostMap) getOrSetHostMap(key []byte) (*hostMap, error) {
+func (s *multiHostMap) transaction(key []byte, fn func(m Map) ([]byte, error)) ([]byte, error) {
 	u := string(key)
 	meta, err := url.Parse(u)
 
 	if err != nil {
-		return nil, errors.Wrap(err, "getOrSetHostMap: failed to parse url")
+		return nil, errors.Wrap(err, "transaction: failed to parse url")
 	}
-
 	mapKey := util.GetSLDAndTLD(meta.Host)
+	fName := base64.URLEncoding.EncodeToString([]byte(mapKey))
 
-	s.mapLock.RLock()
+	s.mapLock.Lock(mapKey)
+	defer s.mapLock.Unlock(mapKey)
 
-	val, ok := s.maps[mapKey]
+	mapper := NewPersistentMap(path.Join(s.basePath, fName))
+	res, err := fn(mapper)
 
-	s.mapLock.RUnlock()
+	mapper.Close()
 
-	if !ok {
-		fName := base64.URLEncoding.EncodeToString([]byte(mapKey))
-		val = &hostMap{
-			expires: time.Now().Add(mapKeepAliveTime),
-			mapper:  NewPersistentMap(path.Join(s.basePath, fName)),
-		}
-
-		s.mapLock.Lock()
-
-		s.maps[mapKey] = val
-
-		s.mapLock.Unlock()
-	} else {
-		val.expires = time.Now().Add(mapKeepAliveTime)
-	}
-
-	return val, nil
-}
-
-func (s *multiHostMap) clearMaps() {
-	for {
-		select {
-		case <-time.After(pruneInterval):
-			var toDelete []string
-			now := time.Now()
-
-			s.mapLock.RLock()
-
-			for key, val := range s.maps {
-				if val.expires.After(now) {
-					toDelete = append(toDelete, key)
-					val.mapper.Close()
-
-				}
-			}
-
-			s.mapLock.RUnlock()
-
-			s.mapLock.Lock()
-			for _, key := range toDelete {
-				delete(s.maps, key)
-			}
-			s.mapLock.Unlock()
-		case <-s.terminate:
-			return
-		}
-	}
+	return res, err
 }
