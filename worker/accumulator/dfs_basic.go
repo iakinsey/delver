@@ -59,9 +59,11 @@ func (s *dfsBasicAccumulator) OnMessage(msg types.Message) (interface{}, error) 
 
 	s.markVisited(composite)
 
-	return types.MultiMessage{
-		Values: s.prepareRequests(composite),
-	}, nil
+	requests := s.prepareRequests(composite)
+
+	log.Printf("published %d requests from uri %s", len(requests), composite.URI)
+
+	return types.MultiMessage{Values: requests}, nil
 }
 
 func (s *dfsBasicAccumulator) markVisited(composite message.CompositeAnalysis) {

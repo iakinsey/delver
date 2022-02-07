@@ -96,9 +96,11 @@ func (s *dfsBasicPublisher) fillQueue() error {
 
 		if _, err := s.visitedHosts.Get(host); err == maps.ErrKeyNotFound {
 			err := s.publishUrls(string(host), path.Join(s.urlStorePath, encodedHost))
-			if err := os.RemoveAll(path.Join(s.urlStorePath, encodedHost)); err != nil {
+
+			if os.RemoveAll(path.Join(s.urlStorePath, encodedHost)) != nil {
 				log.Printf("Failed to delete host folder: %s", string(host))
 			}
+
 			return err
 		} else if err != nil {
 			log.Printf("Error reading key from visitedDomains: %s", string(host))
@@ -113,6 +115,7 @@ func (s *dfsBasicPublisher) fillQueue() error {
 
 func (s *dfsBasicPublisher) publishUrls(host string, hostDbPath string) error {
 	m := maps.NewPersistentMap(hostDbPath)
+	count := 0
 
 	err := m.Iter(func(k, v []byte) error {
 		req := message.FetcherRequest{}
@@ -159,6 +162,9 @@ func (s *dfsBasicPublisher) publishUrls(host string, hostDbPath string) error {
 			log.Printf("unable to queue url: %s", req.URI)
 			return nil
 		}
+
+		count += 1
+		log.Printf("published %d requests for host %s", count, host)
 
 		return nil
 	})
