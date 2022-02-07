@@ -12,8 +12,8 @@ import (
 	"github.com/pkg/errors"
 )
 
-var pruneInterval = 5 * time.Minute
-var mapKeepAliveTime = 5 * time.Minute
+var pruneInterval = 1 * time.Second
+var mapKeepAliveTime = 5 * time.Second
 
 type multiHostMap struct {
 	basePath  string
@@ -119,7 +119,6 @@ func (s *multiHostMap) getOrSetHostMap(key []byte) (*hostMap, error) {
 	s.mapLock.RUnlock()
 
 	if !ok {
-
 		fName := base64.URLEncoding.EncodeToString([]byte(mapKey))
 		val = &hostMap{
 			expires: time.Now().Add(mapKeepAliveTime),
@@ -131,6 +130,8 @@ func (s *multiHostMap) getOrSetHostMap(key []byte) (*hostMap, error) {
 		s.maps[mapKey] = val
 
 		s.mapLock.Unlock()
+	} else {
+		val.expires = time.Now().Add(mapKeepAliveTime)
 	}
 
 	return val, nil
@@ -149,6 +150,7 @@ func (s *multiHostMap) clearMaps() {
 				if val.expires.After(now) {
 					toDelete = append(toDelete, key)
 					val.mapper.Close()
+
 				}
 			}
 
@@ -159,7 +161,6 @@ func (s *multiHostMap) clearMaps() {
 				delete(s.maps, key)
 			}
 			s.mapLock.Unlock()
-
 		case <-s.terminate:
 			return
 		}
