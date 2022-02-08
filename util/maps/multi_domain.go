@@ -89,12 +89,12 @@ func (s *multiHostMap) transaction(key []byte, fn func(m Map) ([]byte, error)) (
 	fName := base64.URLEncoding.EncodeToString([]byte(mapKey))
 
 	s.mapLock.Lock(mapKey)
-	defer s.mapLock.Unlock(mapKey)
 
 	mapper := NewPersistentMap(path.Join(s.basePath, fName))
 	res, err := fn(mapper)
 
 	mapper.Close()
+	s.mapLock.Unlock(mapKey)
 
 	return res, err
 }
