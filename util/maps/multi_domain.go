@@ -12,14 +12,12 @@ import (
 
 type multiHostMap struct {
 	basePath  string
-	terminate chan bool
 	mapLock   util.KeyedMutex
 }
 
 func NewMultiHostMap(basePath string) Map {
 	m := &multiHostMap{
 		basePath:  basePath,
-		terminate: make(chan bool),
 		mapLock:   *util.NewKeyedMutex(),
 	}
 
@@ -75,7 +73,6 @@ func (s *multiHostMap) Iter(fn func([]byte, []byte) error) error {
 
 func (s *multiHostMap) Close() {
 	// TODO find a way to close existing connections before exiting
-	s.terminate <- true
 }
 
 func (s *multiHostMap) transaction(key []byte, fn func(m Map) ([]byte, error)) ([]byte, error) {

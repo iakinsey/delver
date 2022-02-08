@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/iakinsey/delver/gateway/streamstore"
+	"github.com/iakinsey/delver/gateway/objectstore"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
@@ -15,7 +15,7 @@ import (
 // TODO put these values into a config module
 type HttpFetcherArgs struct {
 	MaxRetries  int
-	StreamStore streamstore.StreamStore
+	ObjectStore objectstore.ObjectStore
 	Client      *util.DelverHTTPClient
 }
 
@@ -85,12 +85,11 @@ func (s *httpFetcher) doHttpRequest(request message.FetcherRequest, response *me
 
 	log.Printf("GET %d %s", response.HTTPCode, request.URI)
 
-	hash, err := s.StreamStore.Put(key, res.Body)
+	hash, err := s.ObjectStore.Put(key, res.Body)
 
 	if err == nil {
 		response.ContentMD5 = hash
 	}
-
 
 	return key, err
 }
