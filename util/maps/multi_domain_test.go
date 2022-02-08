@@ -39,7 +39,7 @@ func TestMultiMapHostSetMany(t *testing.T) {
 	defer os.RemoveAll(path)
 
 	m := NewMultiHostMap(path)
-	count := 10
+	count := 5
 	var pairs [][2][]byte
 
 	for i := 0; i < count; i++ {

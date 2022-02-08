@@ -7,8 +7,8 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/iakinsey/delver/gateway/objectstore"
 	"github.com/iakinsey/delver/gateway/robots"
-	"github.com/iakinsey/delver/gateway/streamstore"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
@@ -26,17 +26,17 @@ func main() {
 
 	urlStorePath := util.MakeTempFolder("urlStorePath")
 	visitedUrlsPath := util.NewTempPath("visitedUrls")
-	streamStorePath := util.MakeTempFolder("streamStore")
+	objectStorePath := util.MakeTempFolder("objectStore")
 	visitedDomainsPath := util.MakeTempFolder("visitedDomains")
 	maxDepth := 2
 	rotateAfter := 5 * time.Minute
 
 	defer os.RemoveAll(urlStorePath)
-	defer os.RemoveAll(streamStorePath)
+	defer os.RemoveAll(objectStorePath)
 	defer os.RemoveAll(visitedDomainsPath)
 	defer os.Remove(visitedUrlsPath)
 
-	streamStore, err := streamstore.NewFilesystemStreamStore(streamStorePath)
+	objectStore, err := objectstore.NewFilesystemObjectStore(objectStorePath)
 
 	if err != nil {
 		log.Fatalf(err.Error())
@@ -62,11 +62,11 @@ func main() {
 
 	fetch := fetcher.NewHttpFetcher(fetcher.HttpFetcherArgs{
 		MaxRetries:  2,
-		StreamStore: streamStore,
+		ObjectStore: objectStore,
 		Client:      httpClient,
 	})
 	comp := extractor.NewCompositeExtractorWorker(extractor.CompositeArgs{
-		StreamStore: streamStore,
+		ObjectStore: objectStore,
 		Enabled: []string{
 			message.UrlExtractor,
 			message.AdversarialExtractor,

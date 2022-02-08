@@ -20,7 +20,7 @@ func TestComposeFetcher(t *testing.T) {
 	queues := testutil.CreateQueueTriad(paths)
 
 	fetcher := NewHttpFetcher(HttpFetcherArgs{
-		StreamStore: queues.StreamStore,
+		ObjectStore: queues.ObjectStore,
 		Client:      util.NewHTTPClient(util.HTTPClientParams{}),
 	})
 
@@ -48,7 +48,7 @@ func TestComposeFetcher(t *testing.T) {
 	testutil.AssertFolderSize(t, paths.InboxDLQ, 0)
 	testutil.AssertFolderSize(t, paths.Outbox, 1)
 	testutil.AssertFolderSize(t, paths.OutboxDLQ, 0)
-	testutil.AssertFolderSize(t, paths.StreamStore, 1)
+	testutil.AssertFolderSize(t, paths.ObjectStore, 1)
 
 	manager.Stop()
 	queues.Inbox.Stop()

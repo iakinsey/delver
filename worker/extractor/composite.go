@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/iakinsey/delver/extractors"
-	"github.com/iakinsey/delver/gateway/streamstore"
+	"github.com/iakinsey/delver/gateway/objectstore"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
@@ -24,18 +24,18 @@ type compositeResult struct {
 
 type compositeExtractor struct {
 	Enabled     []string
-	StreamStore streamstore.StreamStore
+	ObjectStore objectstore.ObjectStore
 }
 
 type CompositeArgs struct {
 	Enabled     []string
-	StreamStore streamstore.StreamStore
+	ObjectStore objectstore.ObjectStore
 }
 
 func NewCompositeExtractorWorker(opts CompositeArgs) worker.Worker {
 	return &compositeExtractor{
 		Enabled:     opts.Enabled,
-		StreamStore: opts.StreamStore,
+		ObjectStore: opts.ObjectStore,
 	}
 }
 
@@ -163,7 +163,7 @@ func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 		return nil, err
 	}
 
-	f, err := s.StreamStore.Get(meta.StoreKey)
+	f, err := s.ObjectStore.Get(meta.StoreKey)
 
 	if err != nil {
 		return nil, err
@@ -181,8 +181,8 @@ func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 		result = *composite
 	}
 
-	if streamStoreErr := s.StreamStore.Delete(meta.StoreKey); err != nil {
-		log.Printf("failed to delete stream store object after extraction: %s", streamStoreErr)
+	if objectStoreErr := s.ObjectStore.Delete(meta.StoreKey); err != nil {
+		log.Printf("failed to delete object in store after extraction: %s", objectStoreErr)
 	}
 
 	if delErr := os.Remove(f.Name()); !os.IsNotExist(delErr) {

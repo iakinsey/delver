@@ -1,4 +1,4 @@
-package streamstore
+package objectstore
 
 import (
 	"crypto/md5"
@@ -11,19 +11,19 @@ import (
 	"github.com/iakinsey/delver/util"
 )
 
-type filesystemStreamStore struct {
+type filesystemObjectStore struct {
 	Path string
 }
 
-func NewFilesystemStreamStore(path string) (StreamStore, error) {
-	return &filesystemStreamStore{Path: path}, nil
+func NewFilesystemObjectStore(path string) (ObjectStore, error) {
+	return &filesystemObjectStore{Path: path}, nil
 }
 
-func (s *filesystemStreamStore) Get(uuid types.UUID) (*os.File, error) {
+func (s *filesystemObjectStore) Get(uuid types.UUID) (*os.File, error) {
 	return os.Open(path.Join(s.Path, string(uuid)))
 }
 
-func (s *filesystemStreamStore) Put(uuid types.UUID, source io.Reader) (string, error) {
+func (s *filesystemObjectStore) Put(uuid types.UUID, source io.Reader) (string, error) {
 	md5sum := md5.New()
 	path := path.Join(s.Path, string(uuid))
 	file, err := util.CreateFileOrFail(path)
@@ -41,6 +41,6 @@ func (s *filesystemStreamStore) Put(uuid types.UUID, source io.Reader) (string, 
 	return fmt.Sprintf("%x", md5sum.Sum(nil)), err
 }
 
-func (s *filesystemStreamStore) Delete(uuid types.UUID) error {
+func (s *filesystemObjectStore) Delete(uuid types.UUID) error {
 	return os.Remove(path.Join(s.Path, string(uuid)))
 }

@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/iakinsey/delver/config"
-	"github.com/iakinsey/delver/gateway/streamstore"
+	"github.com/iakinsey/delver/gateway/objectstore"
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/util"
 	"github.com/stretchr/testify/assert"
@@ -23,13 +23,13 @@ type QueuePaths struct {
 	InboxDLQ    string
 	Outbox      string
 	OutboxDLQ   string
-	StreamStore string
+	ObjectStore string
 }
 
 type TestQueues struct {
 	Inbox       queue.Queue
 	Outbox      queue.Queue
-	StreamStore streamstore.StreamStore
+	ObjectStore objectstore.ObjectStore
 }
 
 func AssertFolderSize(t *testing.T, path string, length int) {
@@ -85,13 +85,13 @@ func TeardownWorkerQueueFolders(paths QueuePaths) {
 func CreateQueueTriad(paths QueuePaths) (queues TestQueues) {
 	queues.Inbox = CreateTestQueue(paths.Inbox, paths.InboxDLQ)
 	queues.Outbox = CreateTestQueue(paths.Outbox, paths.OutboxDLQ)
-	streamStore, err := streamstore.NewFilesystemStreamStore(paths.StreamStore)
+	objectStore, err := objectstore.NewFilesystemObjectStore(paths.ObjectStore)
 
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
 
-	queues.StreamStore = streamStore
+	queues.ObjectStore = objectStore
 
 	return queues
 }

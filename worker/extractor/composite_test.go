@@ -22,14 +22,14 @@ func TestCompositeExtractorUrlOnly(t *testing.T) {
 	queues := testutil.CreateQueueTriad(paths)
 	htmlFile := testutil.TestDataFile(exampleHtmlFile)
 	storeKey := types.NewV4()
-	md5sum, err := queues.StreamStore.Put(storeKey, htmlFile)
+	md5sum, err := queues.ObjectStore.Put(storeKey, htmlFile)
 
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
 
 	extractor := NewCompositeExtractorWorker(CompositeArgs{
-		StreamStore: queues.StreamStore,
+		ObjectStore: queues.ObjectStore,
 		Enabled: []string{
 			message.TextExtractor,
 			message.LanguageExtractor,
