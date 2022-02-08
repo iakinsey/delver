@@ -16,14 +16,21 @@ func NewKeyedMutex() *KeyedMutex {
 }
 
 func (s *KeyedMutex) Lock(key interface{}) {
-	mut, _ := s.mutexes.LoadOrStore(key, &sync.RWMutex{})
+	mut := sync.Mutex{}
+	mut_, _ := s.mutexes.LoadOrStore(key, &mut)
+	mutCast := mut_.(*sync.Mutex)
 
-	mut.(*sync.RWMutex).Lock()
+	mutCast.Lock()
+
+	if mutCast != &mut {
+		mutCast.Unlock()
+		s.Lock(key)
+	}
 }
 
 func (s *KeyedMutex) Unlock(key interface{}) {
 	if mut, ok := s.mutexes.Load(key); ok {
-		mut.(*sync.RWMutex).Unlock()
+		mut.(*sync.Mutex).Unlock()
 		s.mutexes.Delete(key)
 	} else {
 		log.Panicf("attempted to unlock mutex with no key loaded %s", key)

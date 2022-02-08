@@ -78,12 +78,20 @@ func (s *adversarialExtractor) detectEnumeration(urls []*url.URL) bool {
 	for _, u1 := range urls {
 		d1 := util.GetSLD(u1.Host)
 
+		if d1 == "" {
+			continue
+		}
+
 		for _, u2 := range urls {
 			if u1 == u2 {
 				continue
 			}
 
 			d2 := util.GetSLD(u2.Host)
+
+			if d2 == "" {
+				continue
+			}
 
 			if d1[len(d1)-1] != d2[len(d2)-1]+1 {
 				continue

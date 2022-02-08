@@ -21,7 +21,8 @@ import (
 )
 
 func main() {
-	runtime.GOMAXPROCS(runtime.NumCPU() * 8)
+	//runtime.GOMAXPROCS(runtime.NumCPU() * 8)
+	workerCounts := runtime.NumCPU() * 8
 
 	urlStorePath := util.MakeTempFolder("urlStorePath")
 	visitedUrlsPath := util.NewTempPath("visitedUrls")
@@ -105,10 +106,13 @@ func main() {
 	go fetcherInputQueue.Start()
 	go fetcherOutputQueue.Start()
 	go compositeOutputQueue.Start()
-	go fetchManager.Start()
-	go compManager.Start()
-	go accumManager.Start()
-	go pubManager.Start()
+
+	for i := 0; i < workerCounts; i++ {
+		go fetchManager.Start()
+		go compManager.Start()
+		go accumManager.Start()
+		go pubManager.Start()
+	}
 
 	select {}
 }

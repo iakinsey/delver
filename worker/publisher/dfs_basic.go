@@ -95,7 +95,11 @@ func (s *dfsBasicPublisher) fillQueue() error {
 		}
 
 		if _, err := s.visitedHosts.Get(host); err == maps.ErrKeyNotFound {
-			err := s.publishUrls(string(host), path.Join(s.urlStorePath, encodedHost))
+			n, err := s.publishUrls(string(host), path.Join(s.urlStorePath, encodedHost))
+
+			if n == 0 {
+				continue
+			}
 
 			if os.RemoveAll(path.Join(s.urlStorePath, encodedHost)) != nil {
 				log.Printf("Failed to delete host folder: %s", string(host))
@@ -113,7 +117,7 @@ func (s *dfsBasicPublisher) fillQueue() error {
 	return nil
 }
 
-func (s *dfsBasicPublisher) publishUrls(host string, hostDbPath string) error {
+func (s *dfsBasicPublisher) publishUrls(host string, hostDbPath string) (int, error) {
 	m := maps.NewPersistentMap(hostDbPath)
 	count := 0
 
@@ -169,7 +173,7 @@ func (s *dfsBasicPublisher) publishUrls(host string, hostDbPath string) error {
 		return nil
 	})
 
-	return errors.Wrapf(err, "failed to enumerate host: %s", host)
+	return count, errors.Wrapf(err, "failed to enumerate host: %s", host)
 }
 
 func (s *dfsBasicPublisher) OnComplete() {
