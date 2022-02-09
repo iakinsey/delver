@@ -2,7 +2,6 @@ package queue
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/util"
+	"github.com/pkg/errors"
 )
 
 const claimedSuffix = ".claimed"
@@ -26,10 +26,10 @@ const identifierRegex = `^\d+-\d+-\d+-` + nameRegex + "$"
 var errQueueEmpty = errors.New("queue is empty")
 
 type fileQueue struct {
-	name           string
-	path           string
-	dlqPath        string
-	maxPollDelayMs time.Duration
+	name         string
+	path         string
+	dlqPath      string
+	maxPollDelay time.Duration
 	// TODO
 	maxSize        int
 	channel        chan types.Message
@@ -38,9 +38,10 @@ type fileQueue struct {
 	resilient      bool
 	messageCounter uint64
 	entityRegex    *regexp.Regexp
+	reset          bool
 }
 
-func NewFileQueue(name string, path string, dlqPath string, maxPollDelayMs int, maxSize int, resilient bool) (Queue, error) {
+func NewFileQueue(name string, path string, dlqPath string, maxPollDelayMs int, maxSize int, reset bool, resilient bool) (Queue, error) {
 	nameRegexp, err := regexp.Compile(nameRegex)
 
 	if err != nil {
@@ -69,7 +70,7 @@ func NewFileQueue(name string, path string, dlqPath string, maxPollDelayMs int, 
 		name:           name,
 		path:           path,
 		dlqPath:        dlqPath,
-		maxPollDelayMs: time.Duration(maxPollDelayMs) * time.Millisecond,
+		maxPollDelay:   time.Duration(maxPollDelayMs) * time.Millisecond,
 		maxSize:        maxSize,
 		channel:        make(chan types.Message),
 		terminate:      make(chan bool),
@@ -77,6 +78,7 @@ func NewFileQueue(name string, path string, dlqPath string, maxPollDelayMs int, 
 		resilient:      resilient,
 		messageCounter: 0,
 		entityRegex:    entityRegex,
+		reset:          reset,
 	}, nil
 }
 
@@ -114,21 +116,29 @@ func (s *fileQueue) Put(message types.Message, priority int) error {
 	f, err := os.Create(writingPath)
 
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to create path for queue put")
 	}
 
 	if _, err = f.Write(payload); err != nil {
-		return err
+		return errors.Wrap(err, "failed to write payload for queue put")
 	}
 
 	if err = f.Close(); err != nil {
-		return err
+		return errors.Wrap(err, "failed to close file for queue put")
 	}
 
-	return os.Rename(writingPath, finalPath)
+	if os.Rename(writingPath, finalPath); err != nil {
+		return errors.Wrap(err, "failed to rename file for queue put")
+	}
+
+	return nil
 }
 
 func (s *fileQueue) Prepare() error {
+	if !s.reset {
+		return nil
+	}
+
 	files, err := ioutil.ReadDir(s.path)
 
 	if err != nil {
@@ -146,7 +156,7 @@ func (s *fileQueue) Prepare() error {
 		newPath := filepath.Join(s.path, strings.TrimSuffix(oldName, claimedSuffix))
 
 		if err := os.Rename(oldPath, newPath); err != nil {
-			return err
+			return errors.Wrap(err, "failed to rename file for queue prepare")
 		}
 	}
 
@@ -176,7 +186,7 @@ func (s *fileQueue) Len() int64 {
 
 func (s *fileQueue) perform() {
 	for {
-		sleepTime := time.Duration(rand.Intn(int(s.maxPollDelayMs)))
+		sleepTime := time.Duration(rand.Intn(int(s.maxPollDelay)))
 
 		select {
 		case <-time.After(sleepTime):
@@ -244,5 +254,5 @@ func (s *fileQueue) getFileMessage(path string) (*types.Message, error) {
 	message := types.Message{}
 	err = json.Unmarshal(contents, &message)
 
-	return &message, err
+	return &message, errors.Wrap(err, "error while parsing message json")
 }
