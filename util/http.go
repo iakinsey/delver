@@ -1,9 +1,10 @@
 package util
 
 import (
-	"log"
 	"net/http"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"golang.org/x/net/proxy"
 )

@@ -50,6 +50,7 @@ require (
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.8 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/spf13/afero v1.2.2 // indirect
 	github.com/twmb/murmur3 v1.1.6 // indirect
 	go.opencensus.io v0.22.5 // indirect

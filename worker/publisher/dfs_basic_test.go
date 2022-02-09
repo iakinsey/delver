@@ -2,9 +2,10 @@ package publisher
 
 import (
 	"encoding/json"
-	"log"
 	"testing"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/gateway/robots"
 	"github.com/iakinsey/delver/types"

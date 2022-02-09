@@ -3,11 +3,12 @@ package robots
 import (
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"testing"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/util"
 	"github.com/stretchr/testify/assert"

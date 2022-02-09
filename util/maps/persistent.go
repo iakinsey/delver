@@ -1,8 +1,9 @@
 package maps
 
 import (
-	"log"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	badger "github.com/dgraph-io/badger/v3"
 	"github.com/pkg/errors"
@@ -136,7 +137,7 @@ func (s *persistentMap) Iter(fn func([]byte, []byte) error) error {
 
 func (s *persistentMap) Close() {
 	if err := s.db.Close(); err != nil {
-		log.Printf("error when closing persistentMap: %s", err)
+		log.Errorf("error when closing persistentMap: %s", err)
 	}
 	s.terminate <- true
 }
@@ -148,7 +149,7 @@ func (s *persistentMap) handleGc() {
 		select {
 		case <-time.After(gcInterval):
 			if err := s.db.RunValueLogGC(gcDiscardRatio); err != nil {
-				log.Println(errors.Wrap(err, "persistentMap gc error").Error())
+				log.Error(errors.Wrap(err, "persistentMap gc error"))
 				errs += 1
 			}
 		case <-s.terminate:

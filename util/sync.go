@@ -1,8 +1,9 @@
 package util
 
 import (
-	"log"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type KeyedMutex struct {

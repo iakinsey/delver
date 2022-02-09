@@ -2,8 +2,9 @@ package extractors
 
 import (
 	"fmt"
-	"log"
 	"os"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/cdipaolo/sentiment"
 	"github.com/iakinsey/delver/types/features"

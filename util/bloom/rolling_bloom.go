@@ -1,10 +1,11 @@
 package bloom
 
 import (
-	"log"
 	"os"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/pkg/errors"
 )
@@ -110,7 +111,7 @@ func (s *rollingBloomFilter) Save(path string) (int64, error) {
 func (s *rollingBloomFilter) Close() {
 	if s.path != "" {
 		if _, err := s.Save(s.path); err != nil {
-			log.Printf("failed to save bloom filter while closing")
+			log.Errorln("failed to save bloom filter while closing")
 		}
 	}
 

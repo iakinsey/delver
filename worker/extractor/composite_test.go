@@ -2,9 +2,10 @@ package extractor
 
 import (
 	"encoding/json"
-	"log"
 	"testing"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"

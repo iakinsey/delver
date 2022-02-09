@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"reflect"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/extractors"
 	"github.com/iakinsey/delver/gateway/objectstore"
@@ -140,13 +141,13 @@ func (s *compositeExtractor) executeExtractor(ext extractors.Extractor, path str
 	f, err := os.Open(path)
 
 	if err != nil {
-		log.Printf("failed to open file for extractor %s %s: %s", ext.Name(), path, err)
+		log.Errorf("failed to open file for extractor %s %s: %s", ext.Name(), path, err)
 	}
 
 	result, err := ext.Perform(f, composite)
 
 	if err != nil {
-		log.Printf("failed to execute extractor %s: %s", ext.Name(), err)
+		log.Errorf("failed to execute extractor %s: %s", ext.Name(), err)
 	}
 
 	results <- compositeResult{
@@ -182,16 +183,16 @@ func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 	}
 
 	if objectStoreErr := s.ObjectStore.Delete(meta.StoreKey); err != nil {
-		log.Printf("failed to delete object in store after extraction: %s", objectStoreErr)
+		log.Errorf("failed to delete object in store after extraction: %s", objectStoreErr)
 	}
 
 	if exists, err := util.PathExists(path); exists {
 		if delErr := os.Remove(path); err != nil {
-			log.Printf("failed to delete file after extraction: %s", delErr)
+			log.Errorf("failed to delete file after extraction: %s", delErr)
 		}
 
 	} else if err != nil {
-		log.Printf("failed to stat file for deletion: %s", err)
+		log.Errorf("failed to stat file for deletion: %s", err)
 	}
 
 	return result, err
@@ -246,7 +247,7 @@ func getCompositeError(composite *message.CompositeAnalysis, errors []error) err
 	if noAnalysis && hasErrors {
 		return fmt.Errorf("fatal error during extraction\n%s", errStr)
 	} else if hasErrors {
-		log.Printf("errors during extraction:\n%s", errStr)
+		log.Errorf("errors during extraction:\n%s", errStr)
 	}
 
 	return nil

@@ -2,7 +2,8 @@ package worker
 
 import (
 	"encoding/json"
-	"log"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/types"
@@ -43,11 +44,11 @@ func (s *workerManager) Start() {
 			if success {
 				s.publishResponse(result)
 			} else {
-				log.Printf("Error occured while processing message: %s", err)
+				log.Errorf("Error occured while processing message: %s", err)
 			}
 
 			if err := s.inbox.EndTransaction(message, err == nil); err != nil {
-				log.Print(err.Error())
+				log.Error(err)
 			}
 		case <-s.terminate:
 			s.terminated <- true
@@ -78,14 +79,14 @@ func (s *workerManager) doPublish(result interface{}) {
 	messageType, err := message.GetMessageTypeMapping(result)
 
 	if err != nil {
-		log.Printf("Unknown message type attempted to publish")
+		log.Errorln("Unknown message type attempted to publish")
 		return
 	}
 
 	msg, err := json.Marshal(result)
 
 	if err != nil {
-		log.Printf("Failed to serialize message segment")
+		log.Errorln("Failed to serialize message segment")
 		return
 	}
 

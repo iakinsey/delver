@@ -2,10 +2,11 @@ package robots
 
 import (
 	"fmt"
-	"log"
 	"net/url"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/util"
 	"github.com/pkg/errors"
@@ -105,7 +106,7 @@ func (s *memoryRobots) getRobotsInfo(meta *url.URL) *robotsInfo {
 	res, err := s.client.Perform(robotsUrl)
 
 	if err != nil {
-		log.Printf("failed to perform http request: %s", err)
+		log.Errorf("failed to perform http request: %s", err)
 		return info
 	}
 
@@ -116,7 +117,7 @@ func (s *memoryRobots) getRobotsInfo(meta *url.URL) *robotsInfo {
 	robots, err := robotstxt.FromResponse(res)
 
 	if err != nil {
-		log.Printf("failed to parse robots file: %s", err)
+		log.Errorf("failed to parse robots file: %s", err)
 
 		return info
 	}

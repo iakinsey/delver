@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"io/fs"
 	"io/ioutil"
-	"log"
 	"os"
 	"sort"
+
+	log "github.com/sirupsen/logrus"
 )
 
 const folderQueueDefaultPerms = 0755

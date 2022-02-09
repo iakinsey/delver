@@ -2,7 +2,6 @@ package testutil
 
 import (
 	"io/ioutil"
-	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -10,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/gateway/objectstore"

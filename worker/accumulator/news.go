@@ -2,8 +2,9 @@ package accumulator
 
 import (
 	"encoding/json"
-	"log"
 	"net/url"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/gateway/robots"
 	"github.com/iakinsey/delver/queue"
@@ -54,7 +55,7 @@ func (s *newsAccumulator) processUrls(composite message.CompositeAnalysis) []int
 	originParsed, err := url.Parse(composite.URI)
 
 	if err != nil {
-		log.Printf("Unable to parse URI %s", composite.URI)
+		log.Errorf("Unable to parse URI %s", composite.URI)
 		return nil
 	}
 
@@ -69,7 +70,7 @@ func (s *newsAccumulator) processUrls(composite message.CompositeAnalysis) []int
 		}
 
 		if allowed, err := s.robots.IsAllowed(u); err != nil {
-			log.Printf("Failed to get robots info for URL %s: %s", u, err)
+			log.Errorf("Failed to get robots info for URL %s: %s", u, err)
 			continue
 		} else if !allowed {
 			continue
@@ -101,7 +102,7 @@ func (s *newsAccumulator) processArticle(composite message.CompositeAnalysis) {
 	msg, err := json.Marshal(composite)
 
 	if err != nil {
-		log.Printf("failed to serialize message segment for URI: %s", composite.URI)
+		log.Errorf("failed to serialize message segment for URI: %s", composite.URI)
 		return
 	}
 
@@ -112,7 +113,7 @@ func (s *newsAccumulator) processArticle(composite message.CompositeAnalysis) {
 	}
 
 	if err := s.newsQueue.Put(article, 0); err != nil {
-		log.Printf("Failed to log article: %s", composite.URI)
+		log.Errorf("Failed to log article: %s", composite.URI)
 	}
 }
 
