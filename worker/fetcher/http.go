@@ -53,13 +53,10 @@ func (s *httpFetcher) doHttpRequestWithRetry(request message.FetcherRequest, res
 	start := time.Now()
 	response.Timestamp = start.Unix()
 
-	for i := 0; i < s.MaxRetries+1; i++ {
-		key, err = s.doHttpRequest(request, response)
+	key, err = s.doHttpRequest(request, response)
 
-		if err == nil {
-			response.StoreKey = key
-			break
-		}
+	if err == nil {
+		response.StoreKey = key
 	}
 
 	response.Success = err == nil
@@ -77,7 +74,9 @@ func (s *httpFetcher) doHttpRequest(request message.FetcherRequest, response *me
 		return key, err
 	}
 
-	defer res.Body.Close()
+	if res != nil {
+		defer res.Body.Close()
+	}
 
 	response.HTTPCode = res.StatusCode
 	response.Header = res.Header

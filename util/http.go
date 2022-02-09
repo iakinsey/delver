@@ -11,30 +11,40 @@ import (
 const defaultUserAgent = "delver"
 
 type HTTPClientParams struct {
-	Timeout   time.Duration
-	UserAgent string
-	Socks5Url string
+	Timeout    time.Duration
+	UserAgent  string
+	Socks5Url  string
+	MaxRetries int
 }
 
 type DelverHTTPClient struct {
-	HTTP      *http.Client
-	UserAgent string
+	HTTP       *http.Client
+	UserAgent  string
+	MaxRetries int
 }
 
-func (s *DelverHTTPClient) Perform(url string) (*http.Response, error) {
-	req, err := http.NewRequest("GET", url, nil)
+func (s *DelverHTTPClient) Perform(url string) (resp *http.Response, err error) {
+	for i := 0; i < s.MaxRetries+1; i++ {
+		req, err := http.NewRequest("GET", url, nil)
 
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
+
+		if s.UserAgent != "" {
+			req.Header.Set("User-Agent", s.UserAgent)
+		} else {
+			req.Header.Set("User-Agent", defaultUserAgent)
+		}
+
+		resp, err = s.HTTP.Do(req)
+
+		if err == nil {
+			break
+		}
 	}
 
-	if s.UserAgent != "" {
-		req.Header.Set("User-Agent", s.UserAgent)
-	} else {
-		req.Header.Set("User-Agent", defaultUserAgent)
-	}
-
-	return s.HTTP.Do(req)
+	return
 }
 
 func NewHTTPClient(params HTTPClientParams) *DelverHTTPClient {
@@ -57,7 +67,8 @@ func NewHTTPClient(params HTTPClientParams) *DelverHTTPClient {
 	}
 
 	return &DelverHTTPClient{
-		HTTP:      client,
-		UserAgent: params.UserAgent,
+		HTTP:       client,
+		UserAgent:  params.UserAgent,
+		MaxRetries: params.MaxRetries,
 	}
 }
