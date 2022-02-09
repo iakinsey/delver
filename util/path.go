@@ -35,14 +35,6 @@ func CreateFileOrFail(path string) (*os.File, error) {
 
 func CreateEmptyFile(path string) (*os.File, error) {
 	return os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0644)
-
-	/*
-			if err := os.Remove(path); !os.IsNotExist(err) {
-				return nil, err
-			}
-		return os.Create(path)
-
-	*/
 }
 
 func GetOrCreateFile(path string) (*os.File, error) {
@@ -91,4 +83,16 @@ func MakeTempFolder(name string) string {
 
 func NewTempPath(name string) string {
 	return fmt.Sprintf("%s/%s%s", os.TempDir(), name, RandomString(8))
+}
+
+func PathExists(path string) (bool, error) {
+	if path == "" {
+		return false, nil
+	} else if _, err := os.Stat(path); os.IsNotExist(err) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+
+	return true, nil
 }

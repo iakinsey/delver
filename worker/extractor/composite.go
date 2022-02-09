@@ -185,8 +185,13 @@ func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 		log.Printf("failed to delete object in store after extraction: %s", objectStoreErr)
 	}
 
-	if delErr := os.Remove(f.Name()); !os.IsNotExist(delErr) {
-		log.Printf("failed to delete file after extraction: %s", delErr)
+	if exists, err := util.PathExists(path); exists {
+		if delErr := os.Remove(path); err != nil {
+			log.Printf("failed to delete file after extraction: %s", delErr)
+		}
+
+	} else if err != nil {
+		log.Printf("failed to stat file for deletion: %s", err)
 	}
 
 	return result, err
