@@ -17,11 +17,11 @@ const maxDepth = 1
 
 type newsAccumulator struct {
 	maxDepth  int
-	robots    frontier.FrontierFilter
+	robots    frontier.Filter
 	newsQueue queue.Queue
 }
 
-func NewNewsAccumulator(newsQueue queue.Queue, r frontier.FrontierFilter) worker.Worker {
+func NewNewsAccumulator(newsQueue queue.Queue, r frontier.Filter) worker.Worker {
 	return &newsAccumulator{
 		maxDepth:  maxDepth,
 		robots:    r,
