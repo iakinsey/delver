@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -12,6 +11,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/util"
@@ -177,7 +178,7 @@ func (s *fileQueue) Len() int64 {
 	files, err := ioutil.ReadDir(s.path)
 
 	if err != nil {
-		log.Printf("failed to read queue directory: %s", s.path)
+		log.Errorf("failed to read queue directory: %s", s.path)
 		return -1
 	}
 
@@ -197,11 +198,11 @@ func (s *fileQueue) perform() {
 			} else if err != nil && !s.resilient {
 				log.Fatalf(err.Error())
 			} else if err != nil {
-				log.Println(err.Error())
+				log.Error(err)
 			} else if message == nil && !s.resilient {
-				log.Fatalf(fmt.Sprintf("Queue %s got nil message", s.name))
+				log.Errorf("Queue %s got nil message", s.name)
 			} else if message == nil {
-				log.Println(fmt.Errorf("Queue %s got nil message", s.name))
+				log.Errorf("Queue %s got nil message", s.name)
 			} else {
 				s.channel <- *message
 			}

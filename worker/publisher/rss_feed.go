@@ -1,10 +1,11 @@
 package publisher
 
 import (
-	"log"
 	"net/http"
 	"net/url"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
@@ -39,7 +40,7 @@ func (s *rssFeedPublisher) OnMessage(msg types.Message) (interface{}, error) {
 		messages = append(messages, <-done...)
 	}
 
-	log.Printf("published %d requests from RSS feeds", len(messages))
+	log.Errorf("published %d requests from RSS feeds", len(messages))
 
 	return types.MultiMessage{
 		Values: messages,
@@ -52,7 +53,7 @@ func (s *rssFeedPublisher) getRssUrls(feedUri string, done chan []interface{}) {
 	req, err := http.NewRequest("GET", feedUri, nil)
 
 	if err != nil {
-		log.Printf("failed to create http client: %s", err)
+		log.Errorf("failed to create http client: %s", err)
 		done <- result
 		return
 	}
@@ -60,7 +61,7 @@ func (s *rssFeedPublisher) getRssUrls(feedUri string, done chan []interface{}) {
 	res, err := client.Do(req)
 
 	if err != nil {
-		log.Printf("failed to perform http request: %s", err)
+		log.Errorf("failed to perform http request: %s", err)
 		done <- result
 		return
 	}
@@ -69,7 +70,7 @@ func (s *rssFeedPublisher) getRssUrls(feedUri string, done chan []interface{}) {
 	feed, err := parser.Parse(res.Body)
 
 	if err != nil {
-		log.Printf("failed to parse RSS feed: %s", err)
+		log.Errorf("failed to parse RSS feed: %s", err)
 		done <- result
 		return
 	}
@@ -79,7 +80,7 @@ func (s *rssFeedPublisher) getRssUrls(feedUri string, done chan []interface{}) {
 			meta, err := url.Parse(uri)
 
 			if err != nil {
-				log.Printf("failed to parse url: %s for feed %s", uri, feedUri)
+				log.Errorf("failed to parse url: %s for feed %s", uri, feedUri)
 				continue
 			}
 

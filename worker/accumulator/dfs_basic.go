@@ -3,8 +3,9 @@ package accumulator
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/url"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
@@ -68,7 +69,7 @@ func (s *dfsBasicAccumulator) OnMessage(msg types.Message) (interface{}, error) 
 
 func (s *dfsBasicAccumulator) markVisited(composite message.CompositeAnalysis) {
 	if err := s.visitedUrls.SetBytes([]byte(composite.URI)); err != nil {
-		log.Printf("failed to mark url as visited: %s", composite.URI)
+		log.Errorf("failed to mark url as visited: %s", composite.URI)
 	}
 }
 
@@ -86,7 +87,7 @@ func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysi
 		meta, err := url.Parse(u)
 
 		if err != nil {
-			log.Printf("failed to parse url: %s", u)
+			log.Errorf("failed to parse url: %s", u)
 			continue
 		}
 
@@ -116,7 +117,7 @@ func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysi
 			}
 
 			if val, err := json.Marshal(req); err != nil {
-				log.Printf("error preparing request: %s", err)
+				log.Errorf("error preparing request: %s", err)
 			} else {
 				urlPairs = append(urlPairs, [2][]byte{
 					[]byte(u),

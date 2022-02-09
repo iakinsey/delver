@@ -3,12 +3,13 @@ package publisher
 import (
 	"encoding/base64"
 	"encoding/json"
-	"log"
 	"net/url"
 	"os"
 	"path"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/gateway/robots"
 	"github.com/iakinsey/delver/queue"
@@ -88,7 +89,7 @@ func (s *dfsBasicPublisher) fillQueue() error {
 		host, err := base64.URLEncoding.DecodeString(encodedHost)
 
 		if err != nil {
-			log.Printf("Unable to decode host: %s", encodedHost)
+			log.Errorf("Unable to decode host: %s", encodedHost)
 			// TODO maybe move this somewhere for inspection later?
 			os.RemoveAll(path.Join(s.urlStorePath, encodedHost))
 			continue
@@ -102,12 +103,12 @@ func (s *dfsBasicPublisher) fillQueue() error {
 			}
 
 			if os.RemoveAll(path.Join(s.urlStorePath, encodedHost)) != nil {
-				log.Printf("Failed to delete host folder: %s", string(host))
+				log.Errorf("Failed to delete host folder: %s", string(host))
 			}
 
 			return err
 		} else if err != nil {
-			log.Printf("Error reading key from visitedDomains: %s", string(host))
+			log.Errorf("Error reading key from visitedDomains: %s", string(host))
 		} else {
 			// TODO maybe dont delete already visited domains
 			os.RemoveAll(path.Join(s.urlStorePath, encodedHost))
@@ -126,13 +127,13 @@ func (s *dfsBasicPublisher) publishUrls(host string, hostDbPath string) (int, er
 
 		// Populate URI + Origin
 		if err := json.Unmarshal(v, &req); err != nil {
-			log.Printf("unable to parse json for url: %s", string(k))
+			log.Errorf("unable to parse json for url: %s", string(k))
 			return nil
 		}
 
 		if s.robots != nil {
 			if allowed, err := s.robots.IsAllowed(req.URI); err != nil {
-				log.Printf("unable to request robots.txt status for url: %s", err)
+				log.Errorf("unable to request robots.txt status for url: %s", err)
 			} else if !allowed {
 				return nil
 			}
@@ -141,7 +142,7 @@ func (s *dfsBasicPublisher) publishUrls(host string, hostDbPath string) (int, er
 		meta, err := url.Parse(req.URI)
 
 		if err != nil {
-			log.Printf("unable to parse url: %s", req.URI)
+			log.Errorf("unable to parse url: %s", req.URI)
 			return nil
 		}
 
@@ -152,7 +153,7 @@ func (s *dfsBasicPublisher) publishUrls(host string, hostDbPath string) (int, er
 		reqPayload, err := json.Marshal(req)
 
 		if err != nil {
-			log.Printf("unable to serialize request to JSON for url: %s", req.URI)
+			log.Errorf("unable to serialize request to JSON for url: %s", req.URI)
 			return nil
 		}
 
@@ -163,7 +164,7 @@ func (s *dfsBasicPublisher) publishUrls(host string, hostDbPath string) (int, er
 		}
 
 		if err = s.outputQueue.Put(msg, 0); err != nil {
-			log.Printf("unable to queue url: %s", req.URI)
+			log.Errorf("unable to queue url: %s", req.URI)
 			return nil
 		}
 
