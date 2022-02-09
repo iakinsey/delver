@@ -7,7 +7,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/iakinsey/delver/gateway/robots"
+	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
@@ -52,7 +52,7 @@ func TestDfsBasic(t *testing.T) {
 		urlStorePath,
 		visitedDomainsPath,
 		rotateAfter,
-		robots.NewMemoryRobots(util.NewHTTPClient(util.HTTPClientParams{})),
+		frontier.NewMemoryRobots(util.NewHTTPClient(util.HTTPClientParams{})),
 	)
 	out, err := publisher.OnMessage(types.Message{})
 

@@ -1,4 +1,4 @@
-package robots
+package frontier
 
 import (
 	"fmt"

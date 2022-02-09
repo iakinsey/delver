@@ -8,8 +8,8 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/gateway/objectstore"
-	"github.com/iakinsey/delver/gateway/robots"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
@@ -47,7 +47,7 @@ func main() {
 		Timeout:   2 * time.Minute,
 		UserAgent: "delver-pre-alpha",
 	})
-	r := robots.NewMemoryRobots(httpClient)
+	r := frontier.NewMemoryRobots(httpClient)
 
 	fetcherInputQueue, inbox, dlq := testutil.CreateFileQueue("fetcherInput")
 	defer os.RemoveAll(inbox)
