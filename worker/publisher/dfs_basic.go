@@ -29,10 +29,10 @@ type dfsBasicPublisher struct {
 	timeSinceEmpty   *time.Time
 	lock             sync.Mutex
 	firstPass        bool
-	robots           frontier.FrontierFilter
+	robots           frontier.Filter
 }
 
-func NewDfsBasicPublisher(outputQueue queue.Queue, urlStorePath string, visitedDomainsPath string, rotateAfter time.Duration, r frontier.FrontierFilter) worker.Worker {
+func NewDfsBasicPublisher(outputQueue queue.Queue, urlStorePath string, visitedDomainsPath string, rotateAfter time.Duration, r frontier.Filter) worker.Worker {
 	return &dfsBasicPublisher{
 		outputQueue:      outputQueue,
 		urlStorePath:     urlStorePath,

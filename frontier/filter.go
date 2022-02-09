@@ -1,5 +1,5 @@
 package frontier
 
-type FrontierFilter interface {
+type Filter interface {
 	IsAllowed(url string) (bool, error)
 }

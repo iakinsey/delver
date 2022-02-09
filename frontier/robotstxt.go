@@ -34,7 +34,7 @@ type robotsInfo struct {
 	created time.Time
 }
 
-func NewMemoryRobots(client *util.DelverHTTPClient) FrontierFilter {
+func NewMemoryRobots(client *util.DelverHTTPClient) Filter {
 	job := &memoryRobots{
 		client:            client,
 		timeout:           defaultTimeout,
@@ -63,7 +63,7 @@ func (s *memoryRobots) IsAllowed(u string) (bool, error) {
 		info, err = s.setRobots(meta)
 
 		if err != nil {
-			return false, errors.Wrap(err, "unable to parse robots file")
+			return true, errors.Wrap(err, "unable to parse robots file")
 		}
 	}
 
