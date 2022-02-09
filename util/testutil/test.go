@@ -133,7 +133,7 @@ func TestData(name string) []byte {
 }
 
 func CreateTestQueue(path string, dlq string) queue.Queue {
-	queue, err := queue.NewFileQueue("TestInboxQueue", path, dlq, 100, 100, false)
+	queue, err := queue.NewFileQueue("TestInboxQueue", path, dlq, 100, 100, false, false)
 
 	if err != nil {
 		log.Fatalf(err.Error())

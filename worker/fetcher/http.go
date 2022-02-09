@@ -10,6 +10,7 @@ import (
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/worker"
+	"github.com/pkg/errors"
 )
 
 // TODO put these values into a config module
@@ -32,7 +33,7 @@ func (s *httpFetcher) OnMessage(msg types.Message) (interface{}, error) {
 	response := message.FetcherResponse{}
 
 	if err := json.Unmarshal(msg.Message, &request); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "error parsing fetcher request")
 	}
 
 	response.RequestID = request.RequestID
@@ -90,5 +91,5 @@ func (s *httpFetcher) doHttpRequest(request message.FetcherRequest, response *me
 		response.ContentMD5 = hash
 	}
 
-	return key, err
+	return key, errors.Wrap(err, "store object failure")
 }
