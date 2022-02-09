@@ -6,7 +6,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/iakinsey/delver/gateway/robots"
+	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
@@ -17,11 +17,11 @@ const maxDepth = 1
 
 type newsAccumulator struct {
 	maxDepth  int
-	robots    robots.Robots
+	robots    frontier.FrontierFilter
 	newsQueue queue.Queue
 }
 
-func NewNewsAccumulator(newsQueue queue.Queue, r robots.Robots) worker.Worker {
+func NewNewsAccumulator(newsQueue queue.Queue, r frontier.FrontierFilter) worker.Worker {
 	return &newsAccumulator{
 		maxDepth:  maxDepth,
 		robots:    r,

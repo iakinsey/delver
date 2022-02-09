@@ -1,4 +1,4 @@
-package robots
+package frontier
 
 import (
 	"fmt"
@@ -34,7 +34,7 @@ type robotsInfo struct {
 	created time.Time
 }
 
-func NewMemoryRobots(client *util.DelverHTTPClient) Robots {
+func NewMemoryRobots(client *util.DelverHTTPClient) FrontierFilter {
 	job := &memoryRobots{
 		client:            client,
 		timeout:           defaultTimeout,

@@ -11,7 +11,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/iakinsey/delver/gateway/robots"
+	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
@@ -29,10 +29,10 @@ type dfsBasicPublisher struct {
 	timeSinceEmpty   *time.Time
 	lock             sync.Mutex
 	firstPass        bool
-	robots           robots.Robots
+	robots           frontier.FrontierFilter
 }
 
-func NewDfsBasicPublisher(outputQueue queue.Queue, urlStorePath string, visitedDomainsPath string, rotateAfter time.Duration, r robots.Robots) worker.Worker {
+func NewDfsBasicPublisher(outputQueue queue.Queue, urlStorePath string, visitedDomainsPath string, rotateAfter time.Duration, r frontier.FrontierFilter) worker.Worker {
 	return &dfsBasicPublisher{
 		outputQueue:      outputQueue,
 		urlStorePath:     urlStorePath,
