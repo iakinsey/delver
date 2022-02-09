@@ -72,7 +72,7 @@ func (s *compositeExtractor) executeExtractors(path string, meta message.Fetcher
 		pending = s.getNextPending(pending, toExecute)
 	}
 
-	log.Printf("executed %d extractors from uri %s", len(pending), meta.URI)
+	log.Printf("executed %d extractors from uri %s", len(completed), meta.URI)
 
 	return composite, getCompositeError(composite, errs)
 }
