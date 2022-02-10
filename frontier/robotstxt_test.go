@@ -10,6 +10,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/util"
 	"github.com/stretchr/testify/assert"
 )
@@ -28,8 +29,9 @@ func TestMemoryRobots(t *testing.T) {
 	go startRobotsServer()
 	time.Sleep(1 * time.Second)
 
-	client := util.NewHTTPClient(util.HTTPClientParams{})
-	memoryRobots := NewMemoryRobots(client)
+	conf := config.Get()
+	client := util.NewHTTPClient(config.HTTPClientConfig{})
+	memoryRobots := NewMemoryRobots(conf.Robots, client)
 
 	for uri, expectedState := range scenarios {
 		u := fmt.Sprintf("http://localhost:%d%s", testHttpServerPort, uri)
@@ -52,7 +54,7 @@ func startRobotsServer() {
 }
 
 func RobotsHandler(w http.ResponseWriter, r *http.Request) {
-	robots, err := os.Open(util.DataFilePath(robotsFileName))
+	robots, err := os.Open(config.DataFilePath("data/test", robotsFileName))
 
 	if err != nil {
 		log.Fatalf(err.Error())

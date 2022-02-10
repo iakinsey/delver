@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/stretchr/testify/assert"
@@ -39,8 +40,9 @@ func TestAdversarialExtractorIsEnumeration(t *testing.T) {
 
 func TestAdversarialExtractorIsSubdomainExplosion(t *testing.T) {
 	var explodedSubdomains []string
+	conf := config.Get()
 
-	for i := 0; i < subdomainThreshold; i++ {
+	for i := 0; i < conf.Adversarial.SubdomainThreshold; i++ {
 		url := fmt.Sprintf("http://test%c.example.com", rune(i+65))
 		explodedSubdomains = append(explodedSubdomains, url)
 	}

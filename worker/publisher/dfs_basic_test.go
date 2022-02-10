@@ -7,6 +7,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
@@ -47,12 +48,13 @@ func TestDfsBasic(t *testing.T) {
 
 	mapper.Close()
 
+	conf := config.Get()
 	publisher := NewDfsBasicPublisher(
 		queues.Outbox,
 		urlStorePath,
 		visitedDomainsPath,
 		rotateAfter,
-		frontier.NewMemoryRobots(util.NewHTTPClient(util.HTTPClientParams{})),
+		frontier.NewMemoryRobots(conf.Robots, util.NewHTTPClient(config.HTTPClientConfig{})),
 	)
 	out, err := publisher.OnMessage(types.Message{})
 

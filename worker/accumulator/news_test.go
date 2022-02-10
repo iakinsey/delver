@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
@@ -20,7 +21,8 @@ func TestNewsAccumulator(t *testing.T) {
 
 	queues := testutil.CreateQueueTriad(paths)
 	newsQueue := queues.Outbox
-	memoryRobots := frontier.NewMemoryRobots(util.NewHTTPClient(util.HTTPClientParams{}))
+	conf := config.Get()
+	memoryRobots := frontier.NewMemoryRobots(conf.Robots, util.NewHTTPClient(config.HTTPClientConfig{}))
 	accumulator := NewNewsAccumulator(newsQueue, memoryRobots)
 	composite, _ := json.Marshal(message.CompositeAnalysis{
 		FetcherResponse: message.FetcherResponse{

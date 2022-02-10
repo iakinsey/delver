@@ -6,20 +6,20 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
 )
 
-const companiesFileName = "companies.json"
-
 type companyNameExtractor struct {
 	companies []*types.Company
 }
 
 func NewCompanyNameExtractor() Extractor {
-	companies, err := types.GetCompanies(util.DataFilePath(companiesFileName))
+	conf := config.Get()
+	companies, err := types.GetCompanies(conf.CompaniesPath)
 
 	if err != nil {
 		log.Fatalf(err.Error())

@@ -8,20 +8,14 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/util"
 	"github.com/pkg/errors"
 	"github.com/temoto/robotstxt"
 )
 
-// TODO put these values into a config module
-const defaultTimeout = 10 * time.Second
-const defaultUserAgent = "delver"
-const defaultExpiration = 1 * time.Hour
-const defaultClearExpiredDelay = 1 * time.Hour
-
 type memoryRobots struct {
 	client            *util.DelverHTTPClient
-	timeout           time.Duration
 	userAgent         string
 	expiration        time.Duration
 	clearExpiredDelay time.Duration
@@ -34,13 +28,12 @@ type robotsInfo struct {
 	created time.Time
 }
 
-func NewMemoryRobots(client *util.DelverHTTPClient) Filter {
+func NewMemoryRobots(conf config.RobotsConfig, client *util.DelverHTTPClient) Filter {
 	job := &memoryRobots{
 		client:            client,
-		timeout:           defaultTimeout,
-		userAgent:         defaultUserAgent,
-		expiration:        defaultExpiration,
-		clearExpiredDelay: defaultClearExpiredDelay,
+		userAgent:         client.UserAgent,
+		expiration:        conf.Expiration,
+		clearExpiredDelay: conf.ClearExpiredDelay,
 		robotsMap:         make(map[string]robotsInfo),
 		mapMutex:          sync.RWMutex{},
 	}

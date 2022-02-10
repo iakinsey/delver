@@ -5,24 +5,22 @@ import (
 	"net/url"
 	"os"
 
+	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
 )
 
-const subdomainThreshold = 25
-const enumerationThreshold = 1
-
 type adversarialExtractor struct {
-	subdomainThreshold   int32
-	enumerationThreshold int32
+	config.AdversarialConfig
 }
 
 // TODO turn these into matrix operations
 func NewAdversarialExtractor() Extractor {
+	conf := config.Get()
+
 	return &adversarialExtractor{
-		subdomainThreshold:   subdomainThreshold,
-		enumerationThreshold: enumerationThreshold,
+		conf.Adversarial,
 	}
 }
 
@@ -99,7 +97,7 @@ func (s *adversarialExtractor) detectEnumeration(urls []*url.URL) bool {
 
 			counter += 1
 
-			if counter >= int(s.enumerationThreshold) {
+			if counter >= int(s.EnumerationThreshold) {
 				return true
 			}
 		}
@@ -123,7 +121,7 @@ func (s *adversarialExtractor) detectSubdomainExplosion(origin *url.URL, urls []
 
 		counter += 1
 
-		if counter >= int(s.subdomainThreshold) {
+		if counter >= int(s.SubdomainThreshold) {
 			return true
 		}
 

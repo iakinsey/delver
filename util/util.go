@@ -3,21 +3,16 @@ package util
 import (
 	"bufio"
 	"bytes"
-	"flag"
 	"fmt"
 	"io"
 	"math/rand"
 	"net/url"
 	"os"
-	"path"
-	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/iakinsey/delver/config"
 	"github.com/pkg/errors"
 	"github.com/xitongsys/parquet-go-source/mem"
 	"github.com/xitongsys/parquet-go/parquet"
@@ -82,26 +77,6 @@ func GetSLDAndTLD(host string) string {
 	}
 
 	return fmt.Sprintf("%s.%s", tokens[size-2], tokens[size-1])
-}
-
-func DataFilePath(name string) string {
-	_, b, _, ok := runtime.Caller(0)
-
-	if !ok {
-		log.Fatalf("failed to get base path for data file")
-	}
-
-	basepath := ""
-
-	if flag.Lookup("test.v") != nil {
-		basepath = path.Dir(path.Dir(b))
-	} else if p, err := os.Executable(); err != nil {
-		log.Fatalf(err.Error())
-	} else {
-		basepath = path.Dir(p)
-	}
-
-	return filepath.Join(basepath, config.DataPath, name)
 }
 
 func StringInSlice(a string, l []string) bool {

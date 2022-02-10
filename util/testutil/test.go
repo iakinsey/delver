@@ -3,10 +3,8 @@ package testutil
 import (
 	"io/ioutil"
 	"os"
-	"path"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -105,14 +103,8 @@ func CreateFileQueue(name string) (queue.Queue, string, string) {
 }
 
 func TestDataFile(name string) *os.File {
-	_, b, _, ok := runtime.Caller(0)
-
-	if !ok {
-		log.Fatalf("failed to get base path for test data file")
-	}
-
-	basepath := path.Dir(path.Dir(path.Dir(b)))
-	p := filepath.Join(basepath, config.TestDataPath, name)
+	testDataPath := config.DataFilePath("data", "test")
+	p := filepath.Join(testDataPath, name)
 	file, err := os.Open(p)
 
 	if err != nil {
