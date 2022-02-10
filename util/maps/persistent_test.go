@@ -3,14 +3,13 @@ package maps
 import (
 	"testing"
 
-	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/util"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestPersistentMapGetAndSet(t *testing.T) {
-	m := NewPersistentMap(util.MakeTempFolder("mapgetset"), config.Get().PersistentMap)
+	m := NewPersistentMap(util.MakeTempFolder("mapgetset"))
 	count := 100
 	var pairs [][2][]byte
 
@@ -32,14 +31,14 @@ func TestPersistentMapGetAndSet(t *testing.T) {
 	}
 }
 func TestPersistentMapGetNoValue(t *testing.T) {
-	m := NewPersistentMap(util.MakeTempFolder("getnovalue"), config.Get().PersistentMap)
+	m := NewPersistentMap(util.MakeTempFolder("getnovalue"))
 	val, err := m.Get([]byte(types.NewV4()))
 
 	assert.Nil(t, val)
 	assert.EqualError(t, err, ErrKeyNotFound.Error())
 }
 func TestPersistentMapSetManyAndIter(t *testing.T) {
-	m := NewPersistentMap(util.MakeTempFolder("setmanyiter"), config.Get().PersistentMap)
+	m := NewPersistentMap(util.MakeTempFolder("setmanyiter"))
 	count := 100
 	var keys [][]byte
 	var vals [][]byte

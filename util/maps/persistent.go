@@ -16,7 +16,7 @@ type persistentMap struct {
 	conf      config.PersistentMapConfig
 }
 
-func NewPersistentMap(path string, conf config.PersistentMapConfig) Map {
+func NewPersistentMap(path string) Map {
 	opts := badger.DefaultOptions(path)
 	opts.Logger = nil
 	db, err := badger.Open(opts)
@@ -28,6 +28,7 @@ func NewPersistentMap(path string, conf config.PersistentMapConfig) Map {
 	m := &persistentMap{
 		db:        db,
 		terminate: make(chan bool),
+		conf:      config.Get().PersistentMap,
 	}
 
 	go m.handleGc()

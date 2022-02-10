@@ -49,10 +49,11 @@ func TestDfsBasic(t *testing.T) {
 	mapper.Close()
 
 	conf := config.Get()
+	visitedHosts := maps.NewPersistentMap(visitedDomainsPath)
 	publisher := NewDfsBasicPublisher(
 		queues.Outbox,
 		urlStorePath,
-		visitedDomainsPath,
+		visitedHosts,
 		rotateAfter,
 		frontier.NewMemoryRobots(conf.Robots, util.NewHTTPClient(config.HTTPClientConfig{})),
 	)
