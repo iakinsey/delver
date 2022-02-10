@@ -2,21 +2,14 @@ package util
 
 import (
 	"net/http"
-	"time"
 
+	"github.com/iakinsey/delver/config"
 	log "github.com/sirupsen/logrus"
 
 	"golang.org/x/net/proxy"
 )
 
 const defaultUserAgent = "delver"
-
-type HTTPClientParams struct {
-	Timeout    time.Duration
-	UserAgent  string
-	Socks5Url  string
-	MaxRetries int
-}
 
 type DelverHTTPClient struct {
 	HTTP       *http.Client
@@ -48,7 +41,7 @@ func (s *DelverHTTPClient) Perform(url string) (resp *http.Response, err error) 
 	return
 }
 
-func NewHTTPClient(params HTTPClientParams) *DelverHTTPClient {
+func NewHTTPClient(params config.HTTPClientConfig) *DelverHTTPClient {
 	client := &http.Client{Timeout: params.Timeout}
 
 	if params.Socks5Url != "" {

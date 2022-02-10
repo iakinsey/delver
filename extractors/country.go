@@ -6,6 +6,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
@@ -19,7 +20,8 @@ type countryExtractor struct {
 }
 
 func NewCountryExtractor() Extractor {
-	countries, err := types.GetCountryRegexes(util.DataFilePath(countriesFileName))
+	conf := config.Get()
+	countries, err := types.GetCountryRegexes(conf.CountriesPath)
 
 	if err != nil {
 		log.Fatalf(err.Error())

@@ -3,11 +3,11 @@ package main
 import (
 	"encoding/json"
 	"os"
-	"runtime"
 	"time"
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/gateway/objectstore"
 	"github.com/iakinsey/delver/types"
@@ -23,8 +23,7 @@ import (
 
 func main() {
 	//runtime.GOMAXPROCS(runtime.NumCPU() * 8)
-	workerCounts := runtime.NumCPU() * 8
-
+	conf := config.Get()
 	urlStorePath := util.MakeTempFolder("urlStorePath")
 	visitedUrlsPath := util.NewTempPath("visitedUrls")
 	objectStorePath := util.MakeTempFolder("objectStore")
@@ -43,11 +42,8 @@ func main() {
 		log.Fatalf(err.Error())
 	}
 
-	httpClient := util.NewHTTPClient(util.HTTPClientParams{
-		Timeout:   2 * time.Minute,
-		UserAgent: "delver-pre-alpha",
-	})
-	r := frontier.NewMemoryRobots(httpClient)
+	httpClient := util.NewHTTPClient(conf.HTTPClient)
+	r := frontier.NewMemoryRobots(conf.Robots, httpClient)
 
 	fetcherInputQueue, inbox, dlq := testutil.CreateFileQueue("fetcherInput")
 	defer os.RemoveAll(inbox)
@@ -108,7 +104,7 @@ func main() {
 	go fetcherOutputQueue.Start()
 	go compositeOutputQueue.Start()
 
-	for i := 0; i < workerCounts; i++ {
+	for i := 0; i < conf.WorkerCounts; i++ {
 		go fetchManager.Start()
 		go compManager.Start()
 		go accumManager.Start()
