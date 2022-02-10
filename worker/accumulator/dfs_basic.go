@@ -7,6 +7,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
@@ -34,6 +35,7 @@ func NewDfsBasicAccumulator(urlStorePath string, visitedUrlsPath string, maxDept
 		defaultBloomN,
 		defaultBloomP,
 		visitedUrlsPath,
+		config.Get().DefaultSaveInterval,
 	)
 
 	if err != nil {

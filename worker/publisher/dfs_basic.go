@@ -11,6 +11,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/types"
@@ -37,11 +38,12 @@ func NewDfsBasicPublisher(outputQueue queue.Queue, urlStorePath string, visitedD
 		outputQueue:      outputQueue,
 		urlStorePath:     urlStorePath,
 		visitedHostsPath: visitedDomainsPath,
-		visitedHosts:     maps.NewPersistentMap(visitedDomainsPath),
-		rotateAfter:      rotateAfter,
-		lock:             sync.Mutex{},
-		firstPass:        true,
-		robots:           r,
+		// TODO this value should be passed in instead of being instantiated
+		visitedHosts: maps.NewPersistentMap(visitedDomainsPath, config.Get().PersistentMap),
+		rotateAfter:  rotateAfter,
+		lock:         sync.Mutex{},
+		firstPass:    true,
+		robots:       r,
 	}
 }
 
@@ -119,7 +121,7 @@ func (s *dfsBasicPublisher) fillQueue() error {
 }
 
 func (s *dfsBasicPublisher) publishUrls(host string, hostDbPath string) (int, error) {
-	m := maps.NewPersistentMap(hostDbPath)
+	m := maps.NewPersistentMap(hostDbPath, config.Get().PersistentMap)
 	count := 0
 
 	err := m.Iter(func(k, v []byte) error {

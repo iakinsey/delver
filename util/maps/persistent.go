@@ -3,23 +3,20 @@ package maps
 import (
 	"time"
 
+	"github.com/iakinsey/delver/config"
 	log "github.com/sirupsen/logrus"
 
 	badger "github.com/dgraph-io/badger/v3"
 	"github.com/pkg/errors"
 )
 
-const gcInterval = 5 * time.Minute
-const gcDiscardRatio = 0.7
-const gcErrThreshold = 2
-const defaultPrefetchSize = 64
-
 type persistentMap struct {
 	db        *badger.DB
 	terminate chan bool
+	conf      config.PersistentMapConfig
 }
 
-func NewPersistentMap(path string) Map {
+func NewPersistentMap(path string, conf config.PersistentMapConfig) Map {
 	opts := badger.DefaultOptions(path)
 	opts.Logger = nil
 	db, err := badger.Open(opts)
@@ -109,7 +106,7 @@ func (s *persistentMap) SetMany(pairs [][2][]byte) error {
 func (s *persistentMap) Iter(fn func([]byte, []byte) error) error {
 	err := s.db.View(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
-		opts.PrefetchSize = defaultPrefetchSize
+		opts.PrefetchSize = s.conf.DefaultPrefetchSize
 
 		it := txn.NewIterator(opts)
 		defer it.Close()
@@ -147,8 +144,8 @@ func (s *persistentMap) handleGc() {
 
 	for {
 		select {
-		case <-time.After(gcInterval):
-			if err := s.db.RunValueLogGC(gcDiscardRatio); err != nil {
+		case <-time.After(s.conf.GCInterval):
+			if err := s.db.RunValueLogGC(s.conf.GCDiscardRatio); err != nil {
 				log.Error(errors.Wrap(err, "persistentMap gc error"))
 				errs += 1
 			}
@@ -156,7 +153,7 @@ func (s *persistentMap) handleGc() {
 			return
 		}
 
-		if errs == gcErrThreshold {
+		if errs == s.conf.GCErrThreshold {
 			return
 		}
 	}

@@ -10,8 +10,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-const defaultSaveInterval = 10 * time.Minute
-
 type rollingBloomFilter struct {
 	blooms       []BloomFilter
 	rwLock       sync.RWMutex
@@ -23,10 +21,10 @@ type rollingBloomFilter struct {
 	path         string
 }
 
-func NewPersistentRollingBloomFilter(bloomCount int, maxN uint64, p float64, path string) (BloomFilter, error) {
+func NewPersistentRollingBloomFilter(bloomCount int, maxN uint64, p float64, path string, saveInterval time.Duration) (BloomFilter, error) {
 	rbf := &rollingBloomFilter{
 		rwLock:       sync.RWMutex{},
-		saveInterval: defaultSaveInterval,
+		saveInterval: saveInterval,
 		terminate:    make(chan bool),
 		bloomCount:   bloomCount,
 		maxN:         maxN,
@@ -172,7 +170,7 @@ func (s *rollingBloomFilter) readTransaction(fn func(BloomFilter) bool) bool {
 }
 
 func (s *rollingBloomFilter) handleSave() {
-	if s.path == "" {
+	if s.path == "" || s.saveInterval <= 0 {
 		return
 	}
 

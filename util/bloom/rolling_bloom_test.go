@@ -4,11 +4,13 @@ import (
 	"os"
 	"testing"
 
+	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/util"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestCreateRollingBloomFileExists(t *testing.T) {
+	conf := config.Get()
 	path := util.NewTempPath("rolling-bloom-exist")
 
 	defer os.RemoveAll(path)
@@ -24,7 +26,7 @@ func TestCreateRollingBloomFileExists(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	pBloom, err := NewPersistentRollingBloomFilter(3, maxN, p, path)
+	pBloom, err := NewPersistentRollingBloomFilter(3, maxN, p, path, conf.DefaultSaveInterval)
 
 	assert.NotNil(t, pBloom)
 	assert.NoError(t, err)
@@ -39,7 +41,7 @@ func TestCreateRollingBloomFileDoesntExist(t *testing.T) {
 	maxN := uint64(10000)
 	p := 0.1
 
-	pBloom, err := NewPersistentRollingBloomFilter(3, maxN, p, path)
+	pBloom, err := NewPersistentRollingBloomFilter(3, maxN, p, path, config.Get().DefaultSaveInterval)
 
 	assert.NotNil(t, pBloom)
 	assert.NoError(t, err)
@@ -78,7 +80,7 @@ func TestRollingBloomClose(t *testing.T) {
 
 	maxN := uint64(10000)
 	p := 0.1
-	pBloom, err := NewPersistentRollingBloomFilter(3, maxN, p, path)
+	pBloom, err := NewPersistentRollingBloomFilter(3, maxN, p, path, config.Get().DefaultSaveInterval)
 
 	assert.NotNil(t, pBloom)
 	assert.NoError(t, err)

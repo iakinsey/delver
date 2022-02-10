@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"path"
 
+	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/util"
 	"github.com/pkg/errors"
 )
@@ -87,7 +88,7 @@ func (s *multiHostMap) transaction(key []byte, fn func(m Map) ([]byte, error)) (
 
 	s.mapLock.Lock(mapKey)
 
-	mapper := NewPersistentMap(path.Join(s.basePath, fName))
+	mapper := NewPersistentMap(path.Join(s.basePath, fName), config.Get().PersistentMap)
 	res, err := fn(mapper)
 
 	mapper.Close()

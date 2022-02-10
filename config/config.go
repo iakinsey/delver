@@ -22,23 +22,33 @@ type RobotsConfig struct {
 	ClearExpiredDelay time.Duration
 }
 
+type PersistentMapConfig struct {
+	GCInterval          time.Duration
+	GCDiscardRatio      float64
+	GCErrThreshold      int
+	DefaultPrefetchSize int
+}
+
 type AppConfig struct {
-	Loaded        bool
-	WorkerCounts  int
-	CountriesPath string
-	CompaniesPath string
-	Adversarial   AdversarialConfig
-	HTTPClient    HTTPClientConfig
-	Robots        RobotsConfig
+	Loaded              bool
+	WorkerCounts        int
+	DefaultSaveInterval time.Duration
+	CountriesPath       string
+	CompaniesPath       string
+	Adversarial         AdversarialConfig
+	HTTPClient          HTTPClientConfig
+	Robots              RobotsConfig
+	PersistentMap       PersistentMapConfig
 }
 
 func LoadConfig() AppConfig {
 	// Put defaults here
 	return AppConfig{
-		Loaded:        true,
-		WorkerCounts:  runtime.NumCPU() * 8,
-		CompaniesPath: DataFilePath("data", "companies.json"),
-		CountriesPath: DataFilePath("data", "countries.json"),
+		Loaded:              true,
+		WorkerCounts:        runtime.NumCPU() * 8,
+		DefaultSaveInterval: 2 * time.Minute,
+		CompaniesPath:       DataFilePath("data", "companies.json"),
+		CountriesPath:       DataFilePath("data", "countries.json"),
 		Adversarial: AdversarialConfig{
 			SubdomainThreshold:   25,
 			EnumerationThreshold: 1,
@@ -51,6 +61,12 @@ func LoadConfig() AppConfig {
 		Robots: RobotsConfig{
 			Expiration:        1 * time.Hour,
 			ClearExpiredDelay: 1 * time.Hour,
+		},
+		PersistentMap: PersistentMapConfig{
+			GCInterval:          5 * time.Minute,
+			GCDiscardRatio:      0.7,
+			GCErrThreshold:      2,
+			DefaultPrefetchSize: 64,
 		},
 	}
 }
