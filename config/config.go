@@ -6,45 +6,43 @@ import (
 )
 
 type AdversarialConfig struct {
-	SubdomainThreshold   int
-	EnumerationThreshold int
+	SubdomainThreshold   int `json:"subdomain_threshold"`
+	EnumerationThreshold int `json:"enumeration_threshold"`
 }
 
 type HTTPClientConfig struct {
-	Timeout    time.Duration
-	UserAgent  string
-	Socks5Url  string
-	MaxRetries int
+	Timeout    time.Duration `json:"timeout"`
+	UserAgent  string        `json:"user_agent"`
+	Socks5Url  string        `json:"socks5_url"`
+	MaxRetries int           `json:"max_retries"`
 }
 
 type RobotsConfig struct {
-	Expiration        time.Duration
-	ClearExpiredDelay time.Duration
+	Expiration        time.Duration `json:"expiration"`
+	ClearExpiredDelay time.Duration `json:"clear_expired_day"`
 }
 
 type PersistentMapConfig struct {
-	GCInterval          time.Duration
-	GCDiscardRatio      float64
-	GCErrThreshold      int
-	DefaultPrefetchSize int
+	GCInterval          time.Duration `json:"gc_interval"`
+	GCDiscardRatio      float64       `json:"gc_discard_ratio"`
+	GCErrThreshold      int           `json:"gc_err_threshold"`
+	DefaultPrefetchSize int           `json:"default_prefetch_size"`
 }
 
-type AppConfig struct {
-	Loaded              bool
-	WorkerCounts        int
-	DefaultSaveInterval time.Duration
-	CountriesPath       string
-	CompaniesPath       string
-	Adversarial         AdversarialConfig
-	HTTPClient          HTTPClientConfig
-	Robots              RobotsConfig
-	PersistentMap       PersistentMapConfig
+type Config struct {
+	WorkerCounts        int                 `json:"worker_counts"`
+	DefaultSaveInterval time.Duration       `json:"default_save_interval"`
+	CountriesPath       string              `json:"countries_path"`
+	CompaniesPath       string              `json:"companies_path"`
+	Adversarial         AdversarialConfig   `json:"adversarial"`
+	HTTPClient          HTTPClientConfig    `json:"http_client"`
+	Robots              RobotsConfig        `json:"robots"`
+	PersistentMap       PersistentMapConfig `json:"persistent_map"`
 }
 
-func LoadConfig() AppConfig {
+func LoadConfig() Config {
 	// Put defaults here
-	return AppConfig{
-		Loaded:              true,
+	return Config{
 		WorkerCounts:        runtime.NumCPU() * 8,
 		DefaultSaveInterval: 2 * time.Minute,
 		CompaniesPath:       DataFilePath("data", "companies.json"),
@@ -71,8 +69,8 @@ func LoadConfig() AppConfig {
 	}
 }
 
-var config AppConfig = LoadConfig()
+var config Config = LoadConfig()
 
-func Get() AppConfig {
+func Get() Config {
 	return config
 }
