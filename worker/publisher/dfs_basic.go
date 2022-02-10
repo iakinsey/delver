@@ -11,7 +11,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/types"
@@ -22,24 +21,21 @@ import (
 )
 
 type dfsBasicPublisher struct {
-	outputQueue      queue.Queue
-	urlStorePath     string
-	visitedHostsPath string
-	visitedHosts     maps.Map
-	rotateAfter      time.Duration
-	timeSinceEmpty   *time.Time
-	lock             sync.Mutex
-	firstPass        bool
-	robots           frontier.Filter
+	outputQueue    queue.Queue
+	urlStorePath   string
+	visitedHosts   maps.Map
+	rotateAfter    time.Duration
+	timeSinceEmpty *time.Time
+	lock           sync.Mutex
+	firstPass      bool
+	robots         frontier.Filter
 }
 
-func NewDfsBasicPublisher(outputQueue queue.Queue, urlStorePath string, visitedDomainsPath string, rotateAfter time.Duration, r frontier.Filter) worker.Worker {
+func NewDfsBasicPublisher(outputQueue queue.Queue, urlStorePath string, visitedHosts maps.Map, rotateAfter time.Duration, r frontier.Filter) worker.Worker {
 	return &dfsBasicPublisher{
-		outputQueue:      outputQueue,
-		urlStorePath:     urlStorePath,
-		visitedHostsPath: visitedDomainsPath,
-		// TODO this value should be passed in instead of being instantiated
-		visitedHosts: maps.NewPersistentMap(visitedDomainsPath, config.Get().PersistentMap),
+		outputQueue:  outputQueue,
+		urlStorePath: urlStorePath,
+		visitedHosts: visitedHosts,
 		rotateAfter:  rotateAfter,
 		lock:         sync.Mutex{},
 		firstPass:    true,
@@ -121,7 +117,7 @@ func (s *dfsBasicPublisher) fillQueue() error {
 }
 
 func (s *dfsBasicPublisher) publishUrls(host string, hostDbPath string) (int, error) {
-	m := maps.NewPersistentMap(hostDbPath, config.Get().PersistentMap)
+	m := maps.NewPersistentMap(hostDbPath)
 	count := 0
 
 	err := m.Iter(func(k, v []byte) error {

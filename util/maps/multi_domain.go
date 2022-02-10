@@ -6,20 +6,19 @@ import (
 	"net/url"
 	"path"
 
-	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/util"
 	"github.com/pkg/errors"
 )
 
 type multiHostMap struct {
-	basePath  string
-	mapLock   util.KeyedMutex
+	basePath string
+	mapLock  util.KeyedMutex
 }
 
 func NewMultiHostMap(basePath string) Map {
 	m := &multiHostMap{
-		basePath:  basePath,
-		mapLock:   *util.NewKeyedMutex(),
+		basePath: basePath,
+		mapLock:  *util.NewKeyedMutex(),
 	}
 
 	return m
@@ -88,7 +87,7 @@ func (s *multiHostMap) transaction(key []byte, fn func(m Map) ([]byte, error)) (
 
 	s.mapLock.Lock(mapKey)
 
-	mapper := NewPersistentMap(path.Join(s.basePath, fName), config.Get().PersistentMap)
+	mapper := NewPersistentMap(path.Join(s.basePath, fName))
 	res, err := fn(mapper)
 
 	mapper.Close()

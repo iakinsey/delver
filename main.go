@@ -13,6 +13,7 @@ import (
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
+	"github.com/iakinsey/delver/util/maps"
 	"github.com/iakinsey/delver/util/testutil"
 	"github.com/iakinsey/delver/worker"
 	"github.com/iakinsey/delver/worker/accumulator"
@@ -75,10 +76,11 @@ func main() {
 		},
 	})
 	accum := accumulator.NewDfsBasicAccumulator(urlStorePath, visitedUrlsPath, maxDepth)
+	visitedDomains := maps.NewPersistentMap(visitedDomainsPath)
 	pub := publisher.NewDfsBasicPublisher(
 		fetcherInputQueue,
 		urlStorePath,
-		visitedDomainsPath,
+		visitedDomains,
 		rotateAfter,
 		r,
 	)
