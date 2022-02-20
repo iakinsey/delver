@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/hashicorp/go-multierror"
-	"github.com/iakinsey/delver/gateway/logger"
+	"github.com/iakinsey/delver/resource/logger"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/worker"
@@ -14,9 +14,13 @@ type resourceAccumulator struct {
 	loggers []logger.Logger
 }
 
-func NewResourceAccumulator(loggers []logger.Logger) worker.Worker {
+type ResourceAccumulatorParams struct {
+	Loggers []logger.Logger `json:"-" resource:"loggers"`
+}
+
+func NewResourceAccumulator(params ResourceAccumulatorParams) worker.Worker {
 	return &resourceAccumulator{
-		loggers: loggers,
+		loggers: params.Loggers,
 	}
 }
 

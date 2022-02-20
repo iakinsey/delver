@@ -3,17 +3,21 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"reflect"
 	"time"
 
 	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/frontier"
-	"github.com/iakinsey/delver/gateway/objectstore"
+	"github.com/iakinsey/delver/queue"
+	"github.com/iakinsey/delver/resource/bloom"
+	"github.com/iakinsey/delver/resource/logger"
+	"github.com/iakinsey/delver/resource/maps"
+	"github.com/iakinsey/delver/resource/objectstore"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
-	"github.com/iakinsey/delver/util/maps"
 	"github.com/iakinsey/delver/util/testutil"
 	"github.com/iakinsey/delver/worker"
 	"github.com/iakinsey/delver/worker/accumulator"
@@ -23,7 +27,6 @@ import (
 )
 
 func main() {
-	//runtime.GOMAXPROCS(runtime.NumCPU() * 8)
 	conf := config.Get()
 	urlStorePath := util.MakeTempFolder("urlStorePath")
 	visitedUrlsPath := util.NewTempPath("visitedUrls")
@@ -37,12 +40,8 @@ func main() {
 	defer os.RemoveAll(visitedDomainsPath)
 	defer os.Remove(visitedUrlsPath)
 
-	objectStore, err := objectstore.NewFilesystemObjectStore(objectStorePath)
-
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
-
+	osp := objectstore.FilesystemObjectStoreParams{Path: objectStorePath}
+	objectStore := objectstore.NewFilesystemObjectStore(osp)
 	httpClient := util.NewHTTPClient(conf.HTTPClient)
 	r := frontier.NewMemoryRobots(conf.Robots, httpClient)
 
@@ -58,7 +57,7 @@ func main() {
 	defer os.RemoveAll(inbox)
 	defer os.RemoveAll(dlq)
 
-	fetch := fetcher.NewHttpFetcher(fetcher.HttpFetcherArgs{
+	fetch := fetcher.NewHttpFetcher(fetcher.HttpFetcherParams{
 		MaxRetries:  2,
 		ObjectStore: objectStore,
 		Client:      httpClient,
@@ -75,15 +74,30 @@ func main() {
 			message.TextExtractor,
 		},
 	})
-	accum := accumulator.NewDfsBasicAccumulator(urlStorePath, visitedUrlsPath, maxDepth)
-	visitedDomains := maps.NewPersistentMap(visitedDomainsPath)
-	pub := publisher.NewDfsBasicPublisher(
-		fetcherInputQueue,
-		urlStorePath,
-		visitedDomains,
-		rotateAfter,
-		r,
-	)
+	urlStore := maps.NewMultiHostMap(maps.MultiHostMapParams{
+		BasePath: urlStorePath,
+	})
+	visitedUrls := bloom.NewRollingBloomFilter(bloom.RollingBloomFilterParams{
+		BloomCount: 3,
+		MaxN:       10000,
+		P:          1,
+		Path:       visitedUrlsPath,
+	})
+
+	dbap := accumulator.DfsBasicAccumulatorParams{
+		UrlStore:    urlStore,
+		VisitedUrls: visitedUrls,
+		MaxDepth:    maxDepth,
+	}
+	accum := accumulator.NewDfsBasicAccumulator(dbap)
+	visitedDomains := maps.NewPersistentMap(maps.PersistentMapParams{Path: visitedDomainsPath})
+	pub := publisher.NewDfsBasicPublisher(publisher.DfsBasicPublisherParams{
+		OutputQueue:  fetcherInputQueue,
+		UrlStorePath: urlStorePath,
+		VisitedHosts: visitedDomains,
+		RotateAfter:  rotateAfter,
+		Robots:       r,
+	})
 
 	fetchManager := worker.NewWorkerManager(fetch, fetcherInputQueue, fetcherOutputQueue)
 	compManager := worker.NewWorkerManager(comp, fetcherOutputQueue, compositeOutputQueue)
@@ -114,4 +128,162 @@ func main() {
 	}
 
 	select {}
+}
+
+func FromApplication(app config.Application) {
+}
+
+func CreateQueues(queueConfigs []config.Resource) map[string]queue.Queue {
+	result := make(map[string]queue.Queue)
+
+	for _, qc := range queueConfigs {
+		switch qc.Type {
+		case "file":
+			fqp := queue.FileQueueParams{}
+			parseParam(qc.Parameters, &fqp)
+			result[qc.Name] = queue.NewFileQueue(fqp)
+		case "timer":
+			tp := queue.TimerQueueParams{}
+			parseParam(qc.Parameters, &tp)
+			result[qc.Name] = queue.NewTimerQueue(tp)
+		default:
+			log.Fatalf("unknown queue type %s", qc.Type)
+		}
+	}
+
+	return result
+}
+
+func CreateWorkers(workerConfigs []config.Worker, resources map[string]interface{}) map[string]worker.Worker {
+	result := make(map[string]worker.Worker)
+
+	for _, wc := range workerConfigs {
+		switch wc.Type {
+		case "dfs_basic_accumulator":
+			dbap := accumulator.DfsBasicAccumulatorParams{}
+			parseParamWithResources(wc.Parameters, &dbap, resources)
+			result[wc.Name] = accumulator.NewDfsBasicAccumulator(dbap)
+		case "news_accumulator":
+			nap := accumulator.NewsAccumulatorParams{}
+			parseParamWithResources(wc.Parameters, &nap, resources)
+			result[wc.Name] = accumulator.NewNewsAccumulator(nap)
+		case "resource_accumulator":
+			rap := accumulator.ResourceAccumulatorParams{}
+			parseParamWithResources(wc.Parameters, &rap, resources)
+			result[wc.Name] = accumulator.NewResourceAccumulator(rap)
+		case "composite_extractor":
+			cap := extractor.CompositeArgs{}
+			parseParamWithResources(wc.Parameters, &cap, resources)
+			result[wc.Name] = extractor.NewCompositeExtractorWorker(cap)
+		case "http_fetcher":
+			hfp := fetcher.HttpFetcherParams{}
+			parseParamWithResources(wc.Parameters, &hfp, resources)
+			result[wc.Name] = fetcher.NewHttpFetcher(hfp)
+		case "dfs_basic_publisher":
+			dbp := publisher.DfsBasicPublisherParams{}
+			parseParamWithResources(wc.Parameters, &dbp, resources)
+			result[wc.Name] = publisher.NewDfsBasicPublisher(dbp)
+		case "rss_feed_publisher":
+			rfp := publisher.RssFeedPublisherParams{}
+			parseParamWithResources(wc.Parameters, &rfp, resources)
+			result[wc.Name] = publisher.NewRssFeedPublisher(rfp)
+		default:
+			log.Fatalf("unknown worker type %s", wc.Type)
+		}
+	}
+
+	return result
+}
+
+func CreateResources(configs []config.Resource) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	for _, c := range configs {
+		switch c.Type {
+		case "bloom_filter":
+			bfp := bloom.BloomFilterParams{}
+			parseParam(c.Parameters, &bfp)
+			result[c.Name] = bloom.NewBloomFilter(bfp)
+		case "rolling_bloom_filter":
+			rbfp := bloom.RollingBloomFilterParams{}
+			parseParam(c.Parameters, &rbfp)
+			result[c.Name] = bloom.NewRollingBloomFilter(rbfp)
+		case "persistent_map":
+			pmp := maps.PersistentMapParams{}
+			parseParam(c.Parameters, &pmp)
+			result[c.Name] = maps.NewPersistentMap(pmp)
+		case "multi_host_map":
+			mhmp := maps.MultiHostMapParams{}
+			parseParam(c.Parameters, &mhmp)
+			result[c.Name] = maps.NewMultiHostMap(mhmp)
+		case "filesystem_object_store":
+			fosp := objectstore.FilesystemObjectStoreParams{}
+			parseParam(c.Parameters, &fosp)
+			result[c.Name] = objectstore.NewFilesystemObjectStore(fosp)
+		case "hdfs_logger":
+			hlp := logger.HDFSLoggerParams{}
+			parseParam(c.Parameters, &hlp)
+			result[c.Name] = logger.NewHDFSLogger(hlp)
+		case "elasticsearch_logger":
+			elp := logger.ElasticsearchLoggerParams{}
+			parseParam(c.Parameters, &elp)
+			result[c.Name] = logger.NewElasticsearchLogger(elp)
+		default:
+			log.Fatalf("unknown resource %s", c.Type)
+		}
+	}
+
+	return result
+}
+
+func parseParam(data []byte, config interface{}) {
+	if err := json.Unmarshal(data, config); err != nil {
+		log.Fatalf("failed to parse queue object ")
+	}
+}
+
+func parseParamWithResources(data []byte, config interface{}, resources map[string]interface{}) {
+	parseParam(data, config)
+
+	values := reflect.TypeOf(config)
+	elem := reflect.ValueOf(config).Elem()
+
+	for i := 0; i < values.NumField(); i++ {
+		field := values.Field(i)
+
+		if resourceTag, ok := field.Tag.Lookup("resource"); ok && resourceTag != "" {
+			resource := getResource(data, config, resourceTag, resources)
+			field := reflect.New(reflect.TypeOf(resource))
+
+			field.Elem().Set(reflect.ValueOf(resource))
+			elem.Field(i).Set(field)
+		}
+	}
+}
+
+func getResource(data []byte, config interface{}, resourceKey string, resources map[string]interface{}) interface{} {
+	resourceName := getResourceName(data, resourceKey)
+	resource, ok := resources[resourceName]
+
+	if !ok {
+		log.Fatalf("resource %s not defined", resourceName)
+	}
+
+	return resource
+}
+
+func getResourceName(data []byte, key string) string {
+	m := make(map[string]json.RawMessage)
+
+	if err := json.Unmarshal(data, &m); err != nil {
+		log.Fatalf("failed to parse resource json")
+	}
+
+	r, ok := m[key]
+
+	if !ok {
+		log.Fatalf("failed to find resource key %s", key)
+	}
+
+	return string(r)
 }

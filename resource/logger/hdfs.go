@@ -38,8 +38,12 @@ var parquetsToWrite = []parquetToWrite{
 	{persist.CompositeToParquetURI, "uri"},
 }
 
-func NewHDFSLogger(namenode string) *hdfsLogger {
-	client, err := hdfs.New(namenode)
+type HDFSLoggerParams struct {
+	Namenode string `json:"namenode"`
+}
+
+func NewHDFSLogger(params HDFSLoggerParams) *hdfsLogger {
+	client, err := hdfs.New(params.Namenode)
 
 	util.PanicIfErr(err, "failed to create hdfs client")
 

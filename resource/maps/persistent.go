@@ -16,8 +16,12 @@ type persistentMap struct {
 	conf      config.PersistentMapConfig
 }
 
-func NewPersistentMap(path string) Map {
-	opts := badger.DefaultOptions(path)
+type PersistentMapParams struct {
+	Path string `json:"path"`
+}
+
+func NewPersistentMap(params PersistentMapParams) Map {
+	opts := badger.DefaultOptions(params.Path)
 	opts.Logger = nil
 	db, err := badger.Open(opts)
 

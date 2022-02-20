@@ -11,7 +11,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/extractors"
-	"github.com/iakinsey/delver/gateway/objectstore"
+	"github.com/iakinsey/delver/resource/objectstore"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
@@ -29,8 +29,8 @@ type compositeExtractor struct {
 }
 
 type CompositeArgs struct {
-	Enabled     []string
-	ObjectStore objectstore.ObjectStore
+	Enabled     []string                `json:"enabled"`
+	ObjectStore objectstore.ObjectStore `json:"-" resource:"object_store"`
 }
 
 func NewCompositeExtractorWorker(opts CompositeArgs) worker.Worker {

@@ -16,8 +16,12 @@ type filesystemObjectStore struct {
 	Path string
 }
 
-func NewFilesystemObjectStore(path string) (ObjectStore, error) {
-	return &filesystemObjectStore{Path: path}, nil
+type FilesystemObjectStoreParams struct {
+	Path string `json:"path"`
+}
+
+func NewFilesystemObjectStore(params FilesystemObjectStoreParams) ObjectStore {
+	return &filesystemObjectStore{Path: params.Path}
 }
 
 func (s *filesystemObjectStore) Get(uuid types.UUID) (*os.File, error) {

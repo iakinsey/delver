@@ -15,9 +15,13 @@ type timerQueue struct {
 	terminated chan bool
 }
 
-func NewTimerQueue(delay time.Duration) Queue {
+type TimerQueueParams struct {
+	Delay time.Duration `json:"delay"`
+}
+
+func NewTimerQueue(params TimerQueueParams) Queue {
 	return &timerQueue{
-		delay:      delay,
+		delay:      params.Delay,
 		channel:    make(chan types.Message),
 		terminate:  make(chan bool),
 		terminated: make(chan bool),

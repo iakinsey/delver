@@ -13,9 +13,9 @@ import (
 
 	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/queue"
+	"github.com/iakinsey/delver/resource/maps"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
-	"github.com/iakinsey/delver/util/maps"
 	"github.com/iakinsey/delver/worker"
 	"github.com/pkg/errors"
 )
@@ -31,15 +31,23 @@ type dfsBasicPublisher struct {
 	robots         frontier.Filter
 }
 
-func NewDfsBasicPublisher(outputQueue queue.Queue, urlStorePath string, visitedHosts maps.Map, rotateAfter time.Duration, r frontier.Filter) worker.Worker {
+type DfsBasicPublisherParams struct {
+	OutputQueue  queue.Queue     `json:"-" resource:"output_queue"`
+	UrlStorePath string          `json:"url_store_path"`
+	VisitedHosts maps.Map        `json:"-" resource:"visited_hostmap"`
+	RotateAfter  time.Duration   `json:"rotate_after"`
+	Robots       frontier.Filter `json:"-" resource:"robots"`
+}
+
+func NewDfsBasicPublisher(params DfsBasicPublisherParams) worker.Worker {
 	return &dfsBasicPublisher{
-		outputQueue:  outputQueue,
-		urlStorePath: urlStorePath,
-		visitedHosts: visitedHosts,
-		rotateAfter:  rotateAfter,
+		outputQueue:  params.OutputQueue,
+		urlStorePath: params.UrlStorePath,
+		visitedHosts: params.VisitedHosts,
+		rotateAfter:  params.RotateAfter,
+		robots:       params.Robots,
 		lock:         sync.Mutex{},
 		firstPass:    true,
-		robots:       r,
 	}
 }
 
@@ -117,7 +125,7 @@ func (s *dfsBasicPublisher) fillQueue() error {
 }
 
 func (s *dfsBasicPublisher) publishUrls(host string, hostDbPath string) (int, error) {
-	m := maps.NewPersistentMap(hostDbPath)
+	m := maps.NewPersistentMap(maps.PersistentMapParams{Path: hostDbPath})
 	count := 0
 
 	err := m.Iter(func(k, v []byte) error {
