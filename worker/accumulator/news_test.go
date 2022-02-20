@@ -23,7 +23,10 @@ func TestNewsAccumulator(t *testing.T) {
 	newsQueue := queues.Outbox
 	conf := config.Get()
 	memoryRobots := frontier.NewMemoryRobots(conf.Robots, util.NewHTTPClient(config.HTTPClientConfig{}))
-	accumulator := NewNewsAccumulator(newsQueue, memoryRobots)
+	accumulator := NewNewsAccumulator(NewsAccumulatorParams{
+		NewsQueue: newsQueue,
+		Robots:    memoryRobots,
+	})
 	composite, _ := json.Marshal(message.CompositeAnalysis{
 		FetcherResponse: message.FetcherResponse{
 			FetcherRequest: message.FetcherRequest{

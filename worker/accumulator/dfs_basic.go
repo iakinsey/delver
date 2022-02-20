@@ -7,50 +7,36 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/iakinsey/delver/config"
+	"github.com/iakinsey/delver/resource/bloom"
+	"github.com/iakinsey/delver/resource/maps"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
-	"github.com/iakinsey/delver/util/bloom"
-	"github.com/iakinsey/delver/util/maps"
 	"github.com/iakinsey/delver/worker"
 )
 
 type dfsBasicAccumulator struct {
-	maxDepth        int
-	urlStorePath    string
-	visitedUrlsPath string
-	urlStore        maps.Map
-	visitedUrls     bloom.BloomFilter
+	maxDepth    int
+	urlStore    maps.Map
+	visitedUrls bloom.BloomFilter
 }
 
 const defaultBloomN = 10000000
 const defaultBloomP = 0.1
 const defaultBloomCount = 3
 
-func NewDfsBasicAccumulator(urlStorePath string, visitedUrlsPath string, maxDepth int) worker.Worker {
-	urlStore := maps.NewMultiHostMap(urlStorePath)
-	visitedUrls, err := bloom.NewPersistentRollingBloomFilter(
-		defaultBloomCount,
-		defaultBloomN,
-		defaultBloomP,
-		visitedUrlsPath,
-		config.Get().DefaultSaveInterval,
-	)
+type DfsBasicAccumulatorParams struct {
+	UrlStore    maps.Map          `json:"-" resource:"url_store"`
+	VisitedUrls bloom.BloomFilter `json:"-" resource:"visited_urls"`
+	MaxDepth    int               `json:"max_depth"`
+}
 
-	if err != nil {
-		log.Fatalf("failed to create dfs basic visited url bloom filter %s", err)
+func NewDfsBasicAccumulator(params DfsBasicAccumulatorParams) worker.Worker {
+	return &dfsBasicAccumulator{
+		urlStore:    params.UrlStore,
+		visitedUrls: params.VisitedUrls,
+		maxDepth:    params.MaxDepth,
 	}
-
-	w := &dfsBasicAccumulator{
-		urlStorePath:    urlStorePath,
-		visitedUrlsPath: visitedUrlsPath,
-		urlStore:        urlStore,
-		visitedUrls:     visitedUrls,
-		maxDepth:        maxDepth,
-	}
-
-	return w
 }
 
 func (s *dfsBasicAccumulator) OnMessage(msg types.Message) (interface{}, error) {

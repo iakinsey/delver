@@ -11,7 +11,10 @@ import (
 )
 
 func TestMultiMapHostGetAndSet(t *testing.T) {
-	m := NewMultiHostMap(util.MakeTempFolder("multimapgetset"))
+	params := MultiHostMapParams{
+		BasePath: util.MakeTempFolder("multimapgetset"),
+	}
+	m := NewMultiHostMap(params)
 	count := 100
 	var pairs [][2][]byte
 
@@ -34,11 +37,13 @@ func TestMultiMapHostGetAndSet(t *testing.T) {
 }
 
 func TestMultiMapHostSetMany(t *testing.T) {
-	path := util.MakeTempFolder("multimapgetset")
+	params := MultiHostMapParams{
+		BasePath: util.MakeTempFolder("multimapgetset"),
+	}
 
-	defer os.RemoveAll(path)
+	defer os.RemoveAll(params.BasePath)
 
-	m := NewMultiHostMap(path)
+	m := NewMultiHostMap(params)
 	count := 5
 	var pairs [][2][]byte
 

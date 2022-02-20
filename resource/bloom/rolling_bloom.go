@@ -21,7 +21,35 @@ type rollingBloomFilter struct {
 	path         string
 }
 
-func NewPersistentRollingBloomFilter(bloomCount int, maxN uint64, p float64, path string, saveInterval time.Duration) (BloomFilter, error) {
+type RollingBloomFilterParams struct {
+	BloomCount   int           `json:"bloom_count"`
+	MaxN         uint64        `json"max_n"`
+	P            float64       `json:"p"`
+	Path         string        `json:"path"`
+	SaveInterval time.Duration `json:"save_interval"`
+}
+
+func NewRollingBloomFilter(params RollingBloomFilterParams) BloomFilter {
+	if params.Path == "" {
+		return newRollingBloomFilter(params.BloomCount, params.MaxN, params.P)
+	}
+
+	b, err := newPersistentRollingBloomFilter(
+		params.BloomCount,
+		params.MaxN,
+		params.P,
+		params.Path,
+		params.SaveInterval,
+	)
+
+	if err != nil {
+		log.Fatalf("failed to create persistent rolling bloom filter: %s", err)
+	}
+
+	return b
+}
+
+func newPersistentRollingBloomFilter(bloomCount int, maxN uint64, p float64, path string, saveInterval time.Duration) (BloomFilter, error) {
 	rbf := &rollingBloomFilter{
 		rwLock:       sync.RWMutex{},
 		saveInterval: saveInterval,
@@ -32,11 +60,16 @@ func NewPersistentRollingBloomFilter(bloomCount int, maxN uint64, p float64, pat
 		path:         path,
 	}
 
+	bloomParams := BloomFilterParams{
+		MaxN: maxN,
+		P:    p,
+	}
+
 	if path == "" {
-		rbf.blooms = []BloomFilter{NewBloomFilter(maxN, p)}
+		rbf.blooms = []BloomFilter{NewBloomFilter(bloomParams)}
 		return rbf, nil
 	} else if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		rbf.blooms = []BloomFilter{NewBloomFilter(maxN, p)}
+		rbf.blooms = []BloomFilter{NewBloomFilter(bloomParams)}
 	} else if err != nil {
 		return nil, errors.Wrap(err, "failed to check if bloom file exists")
 	} else if f, err := os.Open(path); err != nil {
@@ -59,9 +92,13 @@ func NewPersistentRollingBloomFilter(bloomCount int, maxN uint64, p float64, pat
 	return rbf, nil
 }
 
-func NewRollingBloomFilter(bloomCount int, maxN uint64, p float64) BloomFilter {
+func newRollingBloomFilter(bloomCount int, maxN uint64, p float64) BloomFilter {
+	bloomParams := BloomFilterParams{
+		MaxN: maxN,
+		P:    p,
+	}
 	rbf := &rollingBloomFilter{
-		blooms:     []BloomFilter{NewBloomFilter(maxN, p)},
+		blooms:     []BloomFilter{NewBloomFilter(bloomParams)},
 		rwLock:     sync.RWMutex{},
 		terminate:  make(chan bool),
 		bloomCount: bloomCount,
@@ -124,14 +161,19 @@ func (s *rollingBloomFilter) rotate() {
 	s.rwLock.Lock()
 	defer s.rwLock.Unlock()
 
+	params := BloomFilterParams{
+		MaxN: s.maxN,
+		P:    s.p,
+	}
+
 	if len(s.blooms) == s.bloomCount {
 		s.blooms = append(
-			[]BloomFilter{NewBloomFilter(s.maxN, s.p)},
+			[]BloomFilter{NewBloomFilter(params)},
 			s.blooms[:len(s.blooms)-1]...,
 		)
 	} else {
 		s.blooms = append(
-			[]BloomFilter{NewBloomFilter(s.maxN, s.p)},
+			[]BloomFilter{NewBloomFilter(params)},
 			s.blooms...,
 		)
 	}

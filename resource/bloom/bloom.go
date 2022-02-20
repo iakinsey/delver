@@ -101,8 +101,13 @@ func LoadBloomFilter(src io.Reader) (BloomFilter, error) {
 	return newBloomFilter(maxN, p, bitmap), nil
 }
 
-func NewBloomFilter(maxN uint64, p float64) BloomFilter {
-	return newBloomFilter(maxN, p, roaring64.New())
+type BloomFilterParams struct {
+	MaxN uint64  `json:"max_n"`
+	P    float64 `json:"p"`
+}
+
+func NewBloomFilter(params BloomFilterParams) BloomFilter {
+	return newBloomFilter(params.MaxN, params.P, roaring64.New())
 }
 
 func newBloomFilter(maxN uint64, p float64, bitmap *roaring64.Bitmap) BloomFilter {

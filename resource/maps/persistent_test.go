@@ -9,7 +9,8 @@ import (
 )
 
 func TestPersistentMapGetAndSet(t *testing.T) {
-	m := NewPersistentMap(util.MakeTempFolder("mapgetset"))
+	params := PersistentMapParams{Path: util.MakeTempFolder("mapgetset")}
+	m := NewPersistentMap(params)
 	count := 100
 	var pairs [][2][]byte
 
@@ -31,14 +32,16 @@ func TestPersistentMapGetAndSet(t *testing.T) {
 	}
 }
 func TestPersistentMapGetNoValue(t *testing.T) {
-	m := NewPersistentMap(util.MakeTempFolder("getnovalue"))
+	params := PersistentMapParams{Path: util.MakeTempFolder("getnovalue")}
+	m := NewPersistentMap(params)
 	val, err := m.Get([]byte(types.NewV4()))
 
 	assert.Nil(t, val)
 	assert.EqualError(t, err, ErrKeyNotFound.Error())
 }
 func TestPersistentMapSetManyAndIter(t *testing.T) {
-	m := NewPersistentMap(util.MakeTempFolder("setmanyiter"))
+	params := PersistentMapParams{Path: util.MakeTempFolder("setmanyiter")}
+	m := NewPersistentMap(params)
 	count := 100
 	var keys [][]byte
 	var vals [][]byte

@@ -9,8 +9,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var testBloomParams = BloomFilterParams{
+	MaxN: 10000,
+	P:    0.01,
+}
+
 func TestBloomFilter(t *testing.T) {
-	bloomFilter := NewBloomFilter(10000, 0.01)
+	bloomFilter := NewBloomFilter(testBloomParams)
 	elementCount := 100
 	var values []string
 
@@ -31,13 +36,13 @@ func TestBloomFilter(t *testing.T) {
 }
 
 func TestBloomFilterExceedsError(t *testing.T) {
-	bloomFilter := NewBloomFilter(1, 0.01)
+	bloomFilter := NewBloomFilter(testBloomParams)
 
 	assert.Error(t, bloomFilter.SetString(string(types.NewV4())))
 }
 
 func TestBloomPersist(t *testing.T) {
-	bloomFilter := NewBloomFilter(10000, 0.01)
+	bloomFilter := NewBloomFilter(testBloomParams)
 	elementCount := 50
 	var values []string
 

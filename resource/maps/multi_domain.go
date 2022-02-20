@@ -15,9 +15,13 @@ type multiHostMap struct {
 	mapLock  util.KeyedMutex
 }
 
-func NewMultiHostMap(basePath string) Map {
+type MultiHostMapParams struct {
+	BasePath string `json:"base_path"`
+}
+
+func NewMultiHostMap(params MultiHostMapParams) Map {
 	m := &multiHostMap{
-		basePath: basePath,
+		basePath: params.BasePath,
 		mapLock:  *util.NewKeyedMutex(),
 	}
 
@@ -87,7 +91,10 @@ func (s *multiHostMap) transaction(key []byte, fn func(m Map) ([]byte, error)) (
 
 	s.mapLock.Lock(mapKey)
 
-	mapper := NewPersistentMap(path.Join(s.basePath, fName))
+	params := PersistentMapParams{
+		Path: path.Join(s.basePath, fName),
+	}
+	mapper := NewPersistentMap(params)
 	res, err := fn(mapper)
 
 	mapper.Close()

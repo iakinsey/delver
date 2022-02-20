@@ -19,11 +19,17 @@ type rssFeedPublisher struct {
 	timeout   time.Duration
 }
 
-func NewRssFeedPublisher(uris []string, userAgent string, timeout time.Duration) worker.Worker {
+type RssFeedPublisherParams struct {
+	Uris      []string      `json:"uris"`
+	UserAgent string        `json:"user_agent"`
+	Timeout   time.Duration `json:"timeout"`
+}
+
+func NewRssFeedPublisher(params RssFeedPublisherParams) worker.Worker {
 	return &rssFeedPublisher{
-		uris:      uris,
-		userAgent: userAgent,
-		timeout:   timeout,
+		uris:      params.Uris,
+		userAgent: params.UserAgent,
+		timeout:   params.Timeout,
 	}
 }
 

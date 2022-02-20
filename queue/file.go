@@ -42,45 +42,55 @@ type fileQueue struct {
 	reset          bool
 }
 
-func NewFileQueue(name string, path string, dlqPath string, maxPollDelayMs int, maxSize int, reset bool, resilient bool) (Queue, error) {
+type FileQueueParams struct {
+	Name           string `json:"name"`
+	Path           string `json:"name"`
+	DlqPath        string `json:"dlq_path"`
+	MaxPollDelayMs int    `json:"max_poll_delay_ms"`
+	MaxSize        int    `json:"max_size"`
+	Reset          bool   `json:"reset"`
+	Resilient      bool   `json"resilient"`
+}
+
+func NewFileQueue(params FileQueueParams) Queue {
 	nameRegexp, err := regexp.Compile(nameRegex)
 
 	if err != nil {
-		return nil, err
+		log.Fatalf(err.Error())
 	}
 
-	if !nameRegexp.MatchString(name) {
-		return nil, fmt.Errorf("Queue name %s does not conform to regex %s", name, nameRegexp)
+	if !nameRegexp.MatchString(params.Name) {
+		log.Fatalf("Queue name %s does not conform to regex %s", params.Name, nameRegexp)
 	}
 
-	if err := util.GetOrCreateDir(path); err != nil {
-		return nil, err
+	if err := util.GetOrCreateDir(params.Path); err != nil {
+		log.Fatalf(err.Error())
 	}
 
-	if err := util.GetOrCreateDir(dlqPath); err != nil {
-		return nil, err
+	if err := util.GetOrCreateDir(params.DlqPath); err != nil {
+		log.Fatalf(err.Error())
 	}
 
 	entityRegex, err := regexp.Compile(identifierRegex)
 
 	if err != nil {
-		return nil, err
+		log.Fatalf(err.Error())
 	}
 
 	return &fileQueue{
-		name:           name,
-		path:           path,
-		dlqPath:        dlqPath,
-		maxPollDelay:   time.Duration(maxPollDelayMs) * time.Millisecond,
-		maxSize:        maxSize,
+		name:           params.Name,
+		path:           params.Path,
+		dlqPath:        params.DlqPath,
+		maxPollDelay:   time.Duration(params.MaxPollDelayMs) * time.Millisecond,
+		maxSize:        params.MaxSize,
 		channel:        make(chan types.Message),
 		terminate:      make(chan bool),
 		terminated:     make(chan bool),
-		resilient:      resilient,
+		resilient:      params.Resilient,
 		messageCounter: 0,
 		entityRegex:    entityRegex,
-		reset:          reset,
-	}, nil
+		reset:          params.Reset,
+	}
 }
 
 func (s *fileQueue) Start() error {

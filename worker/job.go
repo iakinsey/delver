@@ -14,7 +14,7 @@ type jobManager struct {
 }
 
 func NewJobManager(worker Worker, outbox queue.Queue, delay time.Duration) WorkerManager {
-	inbox := queue.NewTimerQueue(delay)
+	inbox := queue.NewTimerQueue(queue.TimerQueueParams{Delay: delay})
 	manager := NewWorkerManager(worker, inbox, outbox)
 
 	return &jobManager{

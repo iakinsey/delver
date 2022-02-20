@@ -6,7 +6,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/iakinsey/delver/gateway/objectstore"
+	"github.com/iakinsey/delver/resource/objectstore"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
@@ -15,17 +15,17 @@ import (
 )
 
 // TODO put these values into a config module
-type HttpFetcherArgs struct {
-	MaxRetries  int
-	ObjectStore objectstore.ObjectStore
-	Client      *util.DelverHTTPClient
+type HttpFetcherParams struct {
+	MaxRetries  int                     `json:"max_retries"`
+	ObjectStore objectstore.ObjectStore `json:"-" resource:"object_store"`
+	Client      *util.DelverHTTPClient  `json:"-" resource:"client"`
 }
 
 type httpFetcher struct {
-	HttpFetcherArgs
+	HttpFetcherParams
 }
 
-func NewHttpFetcher(args HttpFetcherArgs) worker.Worker {
+func NewHttpFetcher(args HttpFetcherParams) worker.Worker {
 	return &httpFetcher{args}
 }
 

@@ -17,7 +17,8 @@ func TestCreateRollingBloomFileExists(t *testing.T) {
 
 	maxN := uint64(10000)
 	p := 0.1
-	firstBloom := NewBloomFilter(maxN, p)
+	bloomParams := BloomFilterParams{MaxN: maxN, P: p}
+	firstBloom := NewBloomFilter(bloomParams)
 	v := []byte{1, 3, 5, 7, 9}
 
 	assert.NoError(t, firstBloom.SetBytes(v))
@@ -26,29 +27,47 @@ func TestCreateRollingBloomFileExists(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	pBloom, err := NewPersistentRollingBloomFilter(3, maxN, p, path, conf.DefaultSaveInterval)
+	rollingParams := RollingBloomFilterParams{
+		BloomCount:   3,
+		MaxN:         maxN,
+		P:            p,
+		Path:         path,
+		SaveInterval: conf.DefaultSaveInterval,
+	}
+	pBloom := NewRollingBloomFilter(rollingParams)
 
 	assert.NotNil(t, pBloom)
-	assert.NoError(t, err)
 	assert.True(t, pBloom.ContainsBytes(v))
 }
 
 func TestCreateRollingBloomFileDoesntExist(t *testing.T) {
 	path := util.NewTempPath("rolling-bloom-no-exist")
+	conf := config.Get()
 
 	defer os.RemoveAll(path)
 
 	maxN := uint64(10000)
 	p := 0.1
+	rollingParams := RollingBloomFilterParams{
+		BloomCount:   3,
+		MaxN:         maxN,
+		P:            p,
+		Path:         path,
+		SaveInterval: conf.DefaultSaveInterval,
+	}
 
-	pBloom, err := NewPersistentRollingBloomFilter(3, maxN, p, path, config.Get().DefaultSaveInterval)
+	pBloom := NewRollingBloomFilter(rollingParams)
 
 	assert.NotNil(t, pBloom)
-	assert.NoError(t, err)
 }
 
 func TestRollingBloomSetAndGet(t *testing.T) {
-	bloom := NewRollingBloomFilter(3, 10000, 0.01)
+	rollingParams := RollingBloomFilterParams{
+		BloomCount: 3,
+		MaxN:       10000,
+		P:          0.01,
+	}
+	bloom := NewRollingBloomFilter(rollingParams)
 	val := []byte{1, 2, 3, 4, 5}
 
 	assert.NoError(t, bloom.SetBytes(val))
@@ -57,7 +76,12 @@ func TestRollingBloomSetAndGet(t *testing.T) {
 }
 
 func TestRollingBloomSetManyAndGet(t *testing.T) {
-	bloom := NewRollingBloomFilter(3, 10000, 0.01)
+	rollingParams := RollingBloomFilterParams{
+		BloomCount: 3,
+		MaxN:       10000,
+		P:          0.01,
+	}
+	bloom := NewRollingBloomFilter(rollingParams)
 	vals := [][]byte{
 		{1, 2, 3, 4, 5},
 		{6, 7, 8, 9, 10},
@@ -72,18 +96,23 @@ func TestRollingBloomSetManyAndGet(t *testing.T) {
 }
 
 func TestRollingBloomClose(t *testing.T) {
+	conf := config.Get()
 	path := util.NewTempPath("rolling-bloom-exist")
 
 	defer os.RemoveAll(path)
 
 	assert.NoFileExists(t, path)
 
-	maxN := uint64(10000)
-	p := 0.1
-	pBloom, err := NewPersistentRollingBloomFilter(3, maxN, p, path, config.Get().DefaultSaveInterval)
+	rollingParams := RollingBloomFilterParams{
+		BloomCount:   3,
+		MaxN:         10000,
+		P:            0.1,
+		Path:         path,
+		SaveInterval: conf.DefaultSaveInterval,
+	}
+	pBloom := NewRollingBloomFilter(rollingParams)
 
 	assert.NotNil(t, pBloom)
-	assert.NoError(t, err)
 	pBloom.Close()
 	assert.FileExists(t, path)
 }

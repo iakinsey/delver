@@ -11,8 +11,8 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/config"
-	"github.com/iakinsey/delver/gateway/objectstore"
 	"github.com/iakinsey/delver/queue"
+	"github.com/iakinsey/delver/resource/objectstore"
 	"github.com/iakinsey/delver/util"
 	"github.com/stretchr/testify/assert"
 )
@@ -84,12 +84,8 @@ func TeardownWorkerQueueFolders(paths QueuePaths) {
 func CreateQueueTriad(paths QueuePaths) (queues TestQueues) {
 	queues.Inbox = CreateTestQueue(paths.Inbox, paths.InboxDLQ)
 	queues.Outbox = CreateTestQueue(paths.Outbox, paths.OutboxDLQ)
-	objectStore, err := objectstore.NewFilesystemObjectStore(paths.ObjectStore)
-
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
-
+	params := objectstore.FilesystemObjectStoreParams{Path: paths.ObjectStore}
+	objectStore := objectstore.NewFilesystemObjectStore(params)
 	queues.ObjectStore = objectStore
 
 	return queues
@@ -126,11 +122,13 @@ func TestData(name string) []byte {
 }
 
 func CreateTestQueue(path string, dlq string) queue.Queue {
-	queue, err := queue.NewFileQueue("TestInboxQueue", path, dlq, 100, 100, false, false)
-
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
-
-	return queue
+	return queue.NewFileQueue(queue.FileQueueParams{
+		Name:           "TestInboxQueue",
+		Path:           path,
+		DlqPath:        dlq,
+		MaxPollDelayMs: 100,
+		MaxSize:        100,
+		Reset:          false,
+		Resilient:      false,
+	})
 }

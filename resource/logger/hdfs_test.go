@@ -17,8 +17,9 @@ func TestHDFSLogger(t *testing.T) {
 		return
 	}
 
-	namenode := "localhost:9000"
-	logger := NewHDFSLogger(namenode)
+	logger := NewHDFSLogger(HDFSLoggerParams{
+		Namenode: "localhost:9000",
+	})
 	adv := true
 	tu := int32(44)
 	composite := message.CompositeAnalysis{

@@ -9,10 +9,10 @@ import (
 
 	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/frontier"
+	"github.com/iakinsey/delver/resource/maps"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
-	"github.com/iakinsey/delver/util/maps"
 	"github.com/iakinsey/delver/util/testutil"
 	"github.com/stretchr/testify/assert"
 )
@@ -26,7 +26,7 @@ func TestDfsBasic(t *testing.T) {
 	urlStorePath := util.NewTempPath("dfsBasicUrlStore")
 	visitedDomainsPath := util.NewTempPath("dfsBasicVisitedDomains")
 	rotateAfter := 1 * time.Millisecond
-	mapper := maps.NewMultiHostMap(urlStorePath)
+	mapper := maps.NewMultiHostMap(maps.MultiHostMapParams{BasePath: urlStorePath})
 	urls := []string{
 		"http://example.com/1",
 		"http://example.com/2",
@@ -49,14 +49,15 @@ func TestDfsBasic(t *testing.T) {
 	mapper.Close()
 
 	conf := config.Get()
-	visitedHosts := maps.NewPersistentMap(visitedDomainsPath)
-	publisher := NewDfsBasicPublisher(
-		queues.Outbox,
-		urlStorePath,
-		visitedHosts,
-		rotateAfter,
-		frontier.NewMemoryRobots(conf.Robots, util.NewHTTPClient(config.HTTPClientConfig{})),
-	)
+	visitedHosts := maps.NewPersistentMap(maps.PersistentMapParams{Path: visitedDomainsPath})
+	robots := frontier.NewMemoryRobots(conf.Robots, util.NewHTTPClient(config.HTTPClientConfig{}))
+	publisher := NewDfsBasicPublisher(DfsBasicPublisherParams{
+		OutputQueue:  queues.Outbox,
+		UrlStorePath: urlStorePath,
+		VisitedHosts: visitedHosts,
+		RotateAfter:  rotateAfter,
+		Robots:       robots,
+	})
 	out, err := publisher.OnMessage(types.Message{})
 
 	assert.Nil(t, out)

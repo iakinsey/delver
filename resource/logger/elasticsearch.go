@@ -41,11 +41,15 @@ type elasticsearchLogger struct {
 	index  string
 }
 
-func NewElasticsearchLogger(addresses []string) Logger {
+type ElasticsearchLoggerParams struct {
+	Addresses []string `json:"addresses"`
+}
+
+func NewElasticsearchLogger(params ElasticsearchLoggerParams) Logger {
 	index := "resource"
 
 	client, err := elasticsearch.NewClient(elasticsearch.Config{
-		Addresses: addresses,
+		Addresses: params.Addresses,
 	})
 
 	util.PanicIfErr(err, "failed to create elasticsearch client")

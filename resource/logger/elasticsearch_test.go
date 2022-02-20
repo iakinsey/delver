@@ -33,7 +33,9 @@ func TestElasticsearchLogger(t *testing.T) {
 			client: client,
 		}
 	} else {
-		l = NewElasticsearchLogger([]string{"http://localhost:9200"})
+		l = NewElasticsearchLogger(ElasticsearchLoggerParams{
+			Addresses: []string{"http://localhost:9200"},
+		})
 	}
 
 	composite := message.CompositeAnalysis{

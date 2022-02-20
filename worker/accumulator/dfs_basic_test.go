@@ -4,6 +4,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/iakinsey/delver/resource/bloom"
+	"github.com/iakinsey/delver/resource/maps"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
@@ -19,7 +21,22 @@ func TestDfsBasic(t *testing.T) {
 	defer os.Remove(visitedUrlsPath)
 	defer os.RemoveAll(urlStorePath)
 
-	accumulator := NewDfsBasicAccumulator(urlStorePath, visitedUrlsPath, maxDepth)
+	urlStore := maps.NewMultiHostMap(maps.MultiHostMapParams{
+		BasePath: urlStorePath,
+	})
+	visitedUrls := bloom.NewRollingBloomFilter(bloom.RollingBloomFilterParams{
+		BloomCount: 3,
+		MaxN:       10000,
+		P:          1,
+		Path:       visitedUrlsPath,
+	})
+	accumulator := NewDfsBasicAccumulator(DfsBasicAccumulatorParams{
+		UrlStore:    urlStore,
+		VisitedUrls: visitedUrls,
+		MaxDepth:    maxDepth,
+	})
+
+	//urlStorePath, visitedUrlsPath, maxDepth)
 	msg1, _ := types.NewMessage(message.CompositeAnalysis{
 		FetcherResponse: message.FetcherResponse{
 			FetcherRequest: message.FetcherRequest{
@@ -77,8 +94,20 @@ func TestDfsBasicMaxDepthExceeded(t *testing.T) {
 
 	defer os.Remove(visitedUrlsPath)
 	defer os.RemoveAll(urlStorePath)
-
-	accumulator := NewDfsBasicAccumulator(urlStorePath, visitedUrlsPath, maxDepth)
+	urlStore := maps.NewMultiHostMap(maps.MultiHostMapParams{
+		BasePath: urlStorePath,
+	})
+	visitedUrls := bloom.NewRollingBloomFilter(bloom.RollingBloomFilterParams{
+		BloomCount: 3,
+		MaxN:       10000,
+		P:          1,
+		Path:       visitedUrlsPath,
+	})
+	accumulator := NewDfsBasicAccumulator(DfsBasicAccumulatorParams{
+		UrlStore:    urlStore,
+		VisitedUrls: visitedUrls,
+		MaxDepth:    maxDepth,
+	})
 	msg1, _ := types.NewMessage(message.CompositeAnalysis{
 		FetcherResponse: message.FetcherResponse{
 			FetcherRequest: message.FetcherRequest{

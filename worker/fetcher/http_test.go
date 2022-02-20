@@ -20,7 +20,7 @@ func TestComposeFetcher(t *testing.T) {
 
 	queues := testutil.CreateQueueTriad(paths)
 
-	fetcher := NewHttpFetcher(HttpFetcherArgs{
+	fetcher := NewHttpFetcher(HttpFetcherParams{
 		ObjectStore: queues.ObjectStore,
 		Client:      util.NewHTTPClient(config.HTTPClientConfig{}),
 	})
