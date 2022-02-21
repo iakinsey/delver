@@ -111,6 +111,10 @@ func NewBloomFilter(params BloomFilterParams) BloomFilter {
 }
 
 func newBloomFilter(maxN uint64, p float64, bitmap *roaring64.Bitmap) BloomFilter {
+	if p == 1 {
+		p = 0.999
+	}
+
 	mFloat := getOptimalBloomM(maxN, p)
 	m := uint64(mFloat)
 	kFloat := getOptimalBloomK(m, maxN, p)
@@ -224,7 +228,7 @@ func (s *bloomFilter) getHashes(in []byte) (result []uint64) {
 func (s *bloomFilter) checkBounds() error {
 	if s.n >= s.maxN {
 		return ErrBloomOverflow(NewBloomError(s, "bloom filter size overflow"))
-	} else if s.getCurrentP() > s.p {
+	} else if s.getCurrentP() >= s.p {
 		return ErrBloomExceedsErrorRate(NewBloomError(s, "bloom filter exceeds error rate"))
 	}
 
@@ -243,9 +247,9 @@ func (s *bloomFilter) getCurrentP() float64 {
 }
 
 func getOptimalBloomM(n uint64, p float64) float64 {
-	return -(float64(n) * math.Log(p)) * math.Pow(math.Ln2, 2)
+	return -(float64(n) * math.Log(p)) / math.Pow(math.Ln2, 2)
 }
 
 func getOptimalBloomK(m uint64, maxN uint64, p float64) float64 {
-	return float64(m/maxN) * math.Ln2
+	return float64(m) / float64(maxN) * math.Ln2
 }
