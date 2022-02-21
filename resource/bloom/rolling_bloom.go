@@ -23,7 +23,7 @@ type rollingBloomFilter struct {
 
 type RollingBloomFilterParams struct {
 	BloomCount   int           `json:"bloom_count"`
-	MaxN         uint64        `json"max_n"`
+	MaxN         uint64        `json:"max_n"`
 	P            float64       `json:"p"`
 	Path         string        `json:"path"`
 	SaveInterval time.Duration `json:"save_interval"`

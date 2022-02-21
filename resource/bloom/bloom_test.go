@@ -36,7 +36,12 @@ func TestBloomFilter(t *testing.T) {
 }
 
 func TestBloomFilterExceedsError(t *testing.T) {
-	bloomFilter := NewBloomFilter(testBloomParams)
+	params := BloomFilterParams{
+		MaxN: 1,
+		P:    0.01,
+	}
+
+	bloomFilter := NewBloomFilter(params)
 
 	assert.Error(t, bloomFilter.SetString(string(types.NewV4())))
 }

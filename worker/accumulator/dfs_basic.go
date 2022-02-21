@@ -21,10 +21,6 @@ type dfsBasicAccumulator struct {
 	visitedUrls bloom.BloomFilter
 }
 
-const defaultBloomN = 10000000
-const defaultBloomP = 0.1
-const defaultBloomCount = 3
-
 type DfsBasicAccumulatorParams struct {
 	UrlStore    maps.Map          `json:"-" resource:"url_store"`
 	VisitedUrls bloom.BloomFilter `json:"-" resource:"visited_urls"`

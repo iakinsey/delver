@@ -36,7 +36,6 @@ func TestDfsBasic(t *testing.T) {
 		MaxDepth:    maxDepth,
 	})
 
-	//urlStorePath, visitedUrlsPath, maxDepth)
 	msg1, _ := types.NewMessage(message.CompositeAnalysis{
 		FetcherResponse: message.FetcherResponse{
 			FetcherRequest: message.FetcherRequest{
