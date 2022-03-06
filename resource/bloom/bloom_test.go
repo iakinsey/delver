@@ -16,7 +16,7 @@ var testBloomParams = BloomFilterParams{
 
 func TestBloomFilter(t *testing.T) {
 	bloomFilter := NewBloomFilter(testBloomParams)
-	elementCount := 100
+	elementCount := 1000
 	var values []string
 
 	for i := 0; i < elementCount; i++ {
@@ -35,7 +35,7 @@ func TestBloomFilter(t *testing.T) {
 	}
 }
 
-func TestBloomFilterExceedsError(t *testing.T) {
+func TestBloomOverflowError(t *testing.T) {
 	params := BloomFilterParams{
 		MaxN: 1,
 		P:    0.01,
@@ -43,6 +43,7 @@ func TestBloomFilterExceedsError(t *testing.T) {
 
 	bloomFilter := NewBloomFilter(params)
 
+	assert.NoError(t, bloomFilter.SetString(string(types.NewV4())))
 	assert.Error(t, bloomFilter.SetString(string(types.NewV4())))
 }
 
