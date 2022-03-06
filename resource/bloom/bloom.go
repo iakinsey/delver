@@ -241,9 +241,8 @@ func (s *bloomFilter) getCurrentP() float64 {
 	n := float64(s.n)
 	m := s.mFloat
 	p := math.Pow(1-math.Pow(e, -k*(n+0.5)/(m-1)), k)
-	d := math.Pow(float64(10), float64(s.pDigits))
 
-	return math.Ceil(p*d) / d
+	return p
 }
 
 func getOptimalBloomM(n uint64, p float64) float64 {
