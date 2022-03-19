@@ -200,7 +200,7 @@ func CreateWorkers(workerConfigs []config.Worker, resources map[string]interface
 	return result
 }
 
-func GetWorkerManager(wc config.Worker, resources map[string]interface{}, w worker.Worker) worker.WorkerManager {
+func GetWorkerManager(wc config.Worker, resources map[string]interface{}, w worker.Worker) (m worker.WorkerManager) {
 	inbox, ok := resources[wc.Inbox]
 
 	if !ok {
@@ -213,11 +213,25 @@ func GetWorkerManager(wc config.Worker, resources map[string]interface{}, w work
 		log.Fatalf("worker %s has no outbox %s", wc.Name, wc.Outbox)
 	}
 
-	return worker.NewWorkerManager(
-		w,
-		inbox.(queue.Queue),
-		outbox.(queue.Queue),
-	)
+	switch wc.Manager {
+	case "worker":
+	case "":
+		m = worker.NewWorkerManager(
+			w,
+			inbox.(queue.Queue),
+			outbox.(queue.Queue),
+		)
+	case "job":
+		m = worker.NewJobManager(
+			w,
+			outbox.(queue.Queue),
+			wc.Interval,
+		)
+	default:
+		log.Fatalf("unknown worker manager: %s", wc.Manager)
+	}
+
+	return
 }
 
 func CreateResources(configs []config.Resource) map[string]interface{} {
