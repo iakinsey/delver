@@ -1,10 +1,15 @@
 package config
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 type Worker struct {
 	Name       string          `json:"string"`
 	Type       string          `json:"type"`
+	Manager    string          `json:"manager"`
+	Interval   time.Duration   `json:"interval"`
 	Parameters json.RawMessage `json:"parameters"`
 	Inbox      string          `json:"inbox"`
 	Outbox     string          `json:"outbox"`
