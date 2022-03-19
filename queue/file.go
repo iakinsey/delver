@@ -44,12 +44,12 @@ type fileQueue struct {
 
 type FileQueueParams struct {
 	Name           string `json:"name"`
-	Path           string `json:"name"`
+	Path           string `json:"path"`
 	DlqPath        string `json:"dlq_path"`
 	MaxPollDelayMs int    `json:"max_poll_delay_ms"`
 	MaxSize        int    `json:"max_size"`
 	Reset          bool   `json:"reset"`
-	Resilient      bool   `json"resilient"`
+	Resilient      bool   `json:"resilient"`
 }
 
 func NewFileQueue(params FileQueueParams) Queue {
