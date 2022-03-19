@@ -131,6 +131,7 @@ func main() {
 }
 
 func FromApplication(app config.Application) {
+
 }
 
 func CreateQueues(queueConfigs []config.Resource) map[string]queue.Queue {
@@ -154,45 +155,69 @@ func CreateQueues(queueConfigs []config.Resource) map[string]queue.Queue {
 	return result
 }
 
-func CreateWorkers(workerConfigs []config.Worker, resources map[string]interface{}) map[string]worker.Worker {
-	result := make(map[string]worker.Worker)
+func CreateWorkers(workerConfigs []config.Worker, resources map[string]interface{}) map[string]worker.WorkerManager {
+	result := make(map[string]worker.WorkerManager)
 
 	for _, wc := range workerConfigs {
+		var w worker.Worker
+
 		switch wc.Type {
 		case "dfs_basic_accumulator":
 			dbap := accumulator.DfsBasicAccumulatorParams{}
 			parseParamWithResources(wc.Parameters, &dbap, resources)
-			result[wc.Name] = accumulator.NewDfsBasicAccumulator(dbap)
+			w = accumulator.NewDfsBasicAccumulator(dbap)
 		case "news_accumulator":
 			nap := accumulator.NewsAccumulatorParams{}
 			parseParamWithResources(wc.Parameters, &nap, resources)
-			result[wc.Name] = accumulator.NewNewsAccumulator(nap)
+			w = accumulator.NewNewsAccumulator(nap)
 		case "resource_accumulator":
 			rap := accumulator.ResourceAccumulatorParams{}
 			parseParamWithResources(wc.Parameters, &rap, resources)
-			result[wc.Name] = accumulator.NewResourceAccumulator(rap)
+			w = accumulator.NewResourceAccumulator(rap)
 		case "composite_extractor":
 			cap := extractor.CompositeArgs{}
 			parseParamWithResources(wc.Parameters, &cap, resources)
-			result[wc.Name] = extractor.NewCompositeExtractorWorker(cap)
+			w = extractor.NewCompositeExtractorWorker(cap)
 		case "http_fetcher":
 			hfp := fetcher.HttpFetcherParams{}
 			parseParamWithResources(wc.Parameters, &hfp, resources)
-			result[wc.Name] = fetcher.NewHttpFetcher(hfp)
+			w = fetcher.NewHttpFetcher(hfp)
 		case "dfs_basic_publisher":
 			dbp := publisher.DfsBasicPublisherParams{}
 			parseParamWithResources(wc.Parameters, &dbp, resources)
-			result[wc.Name] = publisher.NewDfsBasicPublisher(dbp)
+			w = publisher.NewDfsBasicPublisher(dbp)
 		case "rss_feed_publisher":
 			rfp := publisher.RssFeedPublisherParams{}
 			parseParamWithResources(wc.Parameters, &rfp, resources)
-			result[wc.Name] = publisher.NewRssFeedPublisher(rfp)
+			w = publisher.NewRssFeedPublisher(rfp)
 		default:
 			log.Fatalf("unknown worker type %s", wc.Type)
 		}
+
+		result[wc.Name] = GetWorkerManager(wc, resources, w)
 	}
 
 	return result
+}
+
+func GetWorkerManager(wc config.Worker, resources map[string]interface{}, w worker.Worker) worker.WorkerManager {
+	inbox, ok := resources[wc.Inbox]
+
+	if !ok {
+		log.Fatalf("worker %s has no inbox %s", wc.Name, wc.Inbox)
+	}
+
+	outbox, ok := resources[wc.Outbox]
+
+	if !ok {
+		log.Fatalf("worker %s has no outbox %s", wc.Name, wc.Outbox)
+	}
+
+	return worker.NewWorkerManager(
+		w,
+		inbox.(queue.Queue),
+		outbox.(queue.Queue),
+	)
 }
 
 func CreateResources(configs []config.Resource) map[string]interface{} {
