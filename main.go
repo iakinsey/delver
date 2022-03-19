@@ -134,27 +134,6 @@ func FromApplication(app config.Application) {
 
 }
 
-func CreateQueues(queueConfigs []config.Resource) map[string]queue.Queue {
-	result := make(map[string]queue.Queue)
-
-	for _, qc := range queueConfigs {
-		switch qc.Type {
-		case "file":
-			fqp := queue.FileQueueParams{}
-			parseParam(qc.Parameters, &fqp)
-			result[qc.Name] = queue.NewFileQueue(fqp)
-		case "timer":
-			tp := queue.TimerQueueParams{}
-			parseParam(qc.Parameters, &tp)
-			result[qc.Name] = queue.NewTimerQueue(tp)
-		default:
-			log.Fatalf("unknown queue type %s", qc.Type)
-		}
-	}
-
-	return result
-}
-
 func CreateWorkers(workerConfigs []config.Worker, resources map[string]interface{}) map[string]worker.WorkerManager {
 	result := make(map[string]worker.WorkerManager)
 
@@ -239,6 +218,14 @@ func CreateResources(configs []config.Resource) map[string]interface{} {
 
 	for _, c := range configs {
 		switch c.Type {
+		case "file_queue":
+			fqp := queue.FileQueueParams{}
+			parseParam(c.Parameters, &fqp)
+			result[c.Name] = queue.NewFileQueue(fqp)
+		case "timer":
+			tp := queue.TimerQueueParams{}
+			parseParam(c.Parameters, &tp)
+			result[c.Name] = queue.NewTimerQueue(tp)
 		case "bloom_filter":
 			bfp := bloom.BloomFilterParams{}
 			parseParam(c.Parameters, &bfp)
