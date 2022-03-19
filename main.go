@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"os/signal"
 	"reflect"
+	"syscall"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -25,6 +27,8 @@ import (
 	"github.com/iakinsey/delver/worker/fetcher"
 	"github.com/iakinsey/delver/worker/publisher"
 )
+
+const terminationWaitTime = 5 * time.Second
 
 func main() {
 	conf := config.Get()
@@ -131,7 +135,55 @@ func main() {
 }
 
 func FromApplication(app config.Application) {
+	resources := CreateResources(app.Resources)
+	workers := CreateWorkers(app.Workers, resources)
 
+	StartApplication(resources, workers)
+}
+
+func StartApplication(resources map[string]interface{}, workers map[string]worker.WorkerManager) {
+	for _, resource := range resources {
+		if q, ok := resource.(queue.Queue); ok {
+			go q.Start()
+		}
+	}
+
+	for _, m := range workers {
+		go m.Start()
+	}
+
+	AwaitTermination(resources, workers)
+}
+
+func AwaitTermination(resources map[string]interface{}, workers map[string]worker.WorkerManager) {
+	done := make(chan bool)
+	sigterm := make(chan os.Signal, 1)
+	signal.Notify(sigterm, syscall.SIGTERM)
+
+	<-sigterm
+
+	Terminate(resources, workers, done)
+
+	select {
+	case <-time.After(terminationWaitTime):
+		os.Exit(1)
+	case <-done:
+		os.Exit(0)
+	}
+}
+
+func Terminate(resources map[string]interface{}, workers map[string]worker.WorkerManager, done chan bool) {
+	for _, resource := range resources {
+		if q, ok := resource.(queue.Queue); ok {
+			q.Stop()
+		}
+	}
+
+	for _, m := range workers {
+		m.Stop()
+	}
+
+	done <- true
 }
 
 func CreateWorkers(workerConfigs []config.Worker, resources map[string]interface{}) map[string]worker.WorkerManager {
