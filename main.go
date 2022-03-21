@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"reflect"
+	"sync"
 	"syscall"
 	"time"
 
@@ -173,15 +174,29 @@ func AwaitTermination(resources map[string]interface{}, workers map[string]worke
 }
 
 func Terminate(resources map[string]interface{}, workers map[string]worker.WorkerManager, done chan bool) {
+	var wg sync.WaitGroup
+
 	for _, resource := range resources {
 		if q, ok := resource.(queue.Queue); ok {
-			q.Stop()
+			wg.Add(1)
+
+			go func() {
+				defer wg.Done()
+				q.Stop()
+			}()
 		}
 	}
 
 	for _, m := range workers {
-		m.Stop()
+		wg.Add(1)
+
+		go func(m worker.WorkerManager) {
+			defer wg.Done()
+			m.Stop()
+		}(m)
 	}
+
+	wg.Wait()
 
 	done <- true
 }
