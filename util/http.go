@@ -41,7 +41,8 @@ func (s *DelverHTTPClient) Perform(url string) (resp *http.Response, err error) 
 	return
 }
 
-func NewHTTPClient(params config.HTTPClientConfig) *DelverHTTPClient {
+func NewHTTPClient() *DelverHTTPClient {
+	params := config.Get().HTTPClient
 	client := &http.Client{Timeout: params.Timeout}
 
 	if params.Socks5Url != "" {

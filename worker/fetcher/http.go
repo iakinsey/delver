@@ -18,15 +18,20 @@ import (
 type HttpFetcherParams struct {
 	MaxRetries  int                     `json:"max_retries"`
 	ObjectStore objectstore.ObjectStore `json:"-" resource:"object_store"`
-	Client      *util.DelverHTTPClient  `json:"-" resource:"client"`
 }
 
 type httpFetcher struct {
-	HttpFetcherParams
+	MaxRetries  int
+	ObjectStore objectstore.ObjectStore
+	Client      *util.DelverHTTPClient
 }
 
 func NewHttpFetcher(args HttpFetcherParams) worker.Worker {
-	return &httpFetcher{args}
+	return &httpFetcher{
+		MaxRetries:  args.MaxRetries,
+		ObjectStore: args.ObjectStore,
+		Client:      util.NewHTTPClient(),
+	}
 }
 
 func (s *httpFetcher) OnMessage(msg types.Message) (interface{}, error) {

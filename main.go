@@ -47,8 +47,7 @@ func main() {
 
 	osp := objectstore.FilesystemObjectStoreParams{Path: objectStorePath}
 	objectStore := objectstore.NewFilesystemObjectStore(osp)
-	httpClient := util.NewHTTPClient(conf.HTTPClient)
-	r := frontier.NewMemoryRobots(conf.Robots, httpClient)
+	r := frontier.NewMemoryRobots()
 
 	fetcherInputQueue, inbox, dlq := testutil.CreateFileQueue("fetcherInput")
 	defer os.RemoveAll(inbox)
@@ -65,7 +64,6 @@ func main() {
 	fetch := fetcher.NewHttpFetcher(fetcher.HttpFetcherParams{
 		MaxRetries:  2,
 		ObjectStore: objectStore,
-		Client:      httpClient,
 	})
 	comp := extractor.NewCompositeExtractorWorker(extractor.CompositeArgs{
 		ObjectStore: objectStore,
@@ -139,10 +137,11 @@ func FromApplication(app config.Application) {
 	resources := CreateResources(app.Resources)
 	workers := CreateWorkers(app.Workers, resources)
 
-	StartApplication(resources, workers)
+	StartApplication(app, resources, workers)
+	AwaitTermination(resources, workers)
 }
 
-func StartApplication(resources map[string]interface{}, workers map[string]worker.WorkerManager) {
+func StartApplication(app config.Application, resources map[string]interface{}, workers map[string]worker.WorkerManager) {
 	for _, resource := range resources {
 		if q, ok := resource.(queue.Queue); ok {
 			go q.Start()
@@ -150,10 +149,10 @@ func StartApplication(resources map[string]interface{}, workers map[string]worke
 	}
 
 	for _, m := range workers {
-		go m.Start()
+		for i := 0; i < app.Config.WorkerCounts; i++ {
+			go m.Start()
+		}
 	}
-
-	AwaitTermination(resources, workers)
 }
 
 func AwaitTermination(resources map[string]interface{}, workers map[string]worker.WorkerManager) {
@@ -321,6 +320,10 @@ func CreateResources(configs []config.Resource) map[string]interface{} {
 			elp := logger.ElasticsearchLoggerParams{}
 			parseParam(c.Parameters, &elp)
 			result[c.Name] = logger.NewElasticsearchLogger(elp)
+		case "http_client":
+			// TODO
+		case "robots":
+			// TODO
 		default:
 			log.Fatalf("unknown resource %s", c.Type)
 		}
