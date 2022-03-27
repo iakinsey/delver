@@ -11,7 +11,6 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/config"
-	"github.com/iakinsey/delver/util"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -29,9 +28,7 @@ func TestMemoryRobots(t *testing.T) {
 	go startRobotsServer()
 	time.Sleep(1 * time.Second)
 
-	conf := config.Get()
-	client := util.NewHTTPClient(config.HTTPClientConfig{})
-	memoryRobots := NewMemoryRobots(conf.Robots, client)
+	memoryRobots := NewMemoryRobots()
 
 	for uri, expectedState := range scenarios {
 		u := fmt.Sprintf("http://localhost:%d%s", testHttpServerPort, uri)

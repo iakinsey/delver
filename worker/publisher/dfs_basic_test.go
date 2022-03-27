@@ -7,7 +7,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/resource/maps"
 	"github.com/iakinsey/delver/types"
@@ -48,9 +47,8 @@ func TestDfsBasic(t *testing.T) {
 
 	mapper.Close()
 
-	conf := config.Get()
 	visitedHosts := maps.NewPersistentMap(maps.PersistentMapParams{Path: visitedDomainsPath})
-	robots := frontier.NewMemoryRobots(conf.Robots, util.NewHTTPClient(config.HTTPClientConfig{}))
+	robots := frontier.NewMemoryRobots()
 	publisher := NewDfsBasicPublisher(DfsBasicPublisherParams{
 		OutputQueue:  queues.Outbox,
 		UrlStorePath: urlStorePath,

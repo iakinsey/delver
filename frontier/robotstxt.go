@@ -28,10 +28,13 @@ type robotsInfo struct {
 	created time.Time
 }
 
-func NewMemoryRobots(conf config.RobotsConfig, client *util.DelverHTTPClient) Filter {
+func NewMemoryRobots() Filter {
+	conf := config.Get().Robots
+	clientConf := config.Get().HTTPClient
+
 	job := &memoryRobots{
-		client:            client,
-		userAgent:         client.UserAgent,
+		client:            util.NewHTTPClient(),
+		userAgent:         clientConf.UserAgent,
 		expiration:        conf.Expiration,
 		clearExpiredDelay: conf.ClearExpiredDelay,
 		robotsMap:         make(map[string]robotsInfo),

@@ -5,10 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
-	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/util/testutil"
 	"github.com/iakinsey/delver/worker"
 )
@@ -22,7 +20,6 @@ func TestComposeFetcher(t *testing.T) {
 
 	fetcher := NewHttpFetcher(HttpFetcherParams{
 		ObjectStore: queues.ObjectStore,
-		Client:      util.NewHTTPClient(config.HTTPClientConfig{}),
 	})
 
 	message, _ := json.Marshal(message.FetcherRequest{
