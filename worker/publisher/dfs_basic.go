@@ -32,11 +32,10 @@ type dfsBasicPublisher struct {
 }
 
 type DfsBasicPublisherParams struct {
-	OutputQueue  queue.Queue     `json:"-" resource:"output_queue"`
-	UrlStorePath string          `json:"url_store_path"`
-	VisitedHosts maps.Map        `json:"-" resource:"visited_hostmap"`
-	RotateAfter  time.Duration   `json:"rotate_after"`
-	Robots       frontier.Filter `json:"-" resource:"robots"`
+	OutputQueue  queue.Queue   `json:"-" resource:"output_queue"`
+	UrlStorePath string        `json:"url_store_path"`
+	VisitedHosts maps.Map      `json:"-" resource:"visited_hostmap"`
+	RotateAfter  time.Duration `json:"rotate_after"`
 }
 
 func NewDfsBasicPublisher(params DfsBasicPublisherParams) worker.Worker {
@@ -45,7 +44,7 @@ func NewDfsBasicPublisher(params DfsBasicPublisherParams) worker.Worker {
 		urlStorePath: params.UrlStorePath,
 		visitedHosts: params.VisitedHosts,
 		rotateAfter:  params.RotateAfter,
-		robots:       params.Robots,
+		robots:       frontier.NewMemoryRobots(),
 		lock:         sync.Mutex{},
 		firstPass:    true,
 	}
