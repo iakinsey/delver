@@ -174,7 +174,7 @@ func CreateWorkers(workerConfigs []config.Worker, resources map[string]interface
 func GetWorkerManager(wc config.Worker, resources map[string]interface{}, w worker.Worker) (m worker.WorkerManager) {
 	inbox, ok := resources[wc.Inbox]
 
-	if !ok {
+	if !ok && wc.Manager != "job" {
 		log.Fatalf("worker %s has no inbox %s", wc.Name, wc.Inbox)
 	}
 

@@ -216,6 +216,8 @@ func (s *compositeExtractor) getExtractor(name string) extractors.Extractor {
 		return extractors.NewSentimentExtractor()
 	case message.TextExtractor:
 		return extractors.NewTextExtractor()
+	case message.NgramExtractor:
+		return extractors.NewNgramExtractor()
 	default:
 		return nil
 	}

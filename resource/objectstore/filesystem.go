@@ -10,6 +10,7 @@ import (
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/util"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 type filesystemObjectStore struct {
@@ -21,6 +22,10 @@ type FilesystemObjectStoreParams struct {
 }
 
 func NewFilesystemObjectStore(params FilesystemObjectStoreParams) ObjectStore {
+	if err := util.GetOrCreateDir(params.Path); err != nil {
+		log.Fatalf("failed to set up filesystem object store directory, %s", err)
+	}
+
 	return &filesystemObjectStore{Path: params.Path}
 }
 

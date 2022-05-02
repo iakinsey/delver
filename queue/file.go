@@ -21,7 +21,7 @@ import (
 
 const claimedSuffix = ".claimed"
 const writingSuffix = ".writing"
-const nameRegex = `[a-zA-Z0-9]+`
+const nameRegex = `[a-zA-Z0-9_-]+`
 const identifierRegex = `^\d+-\d+-\d+-` + nameRegex + "$"
 
 var errQueueEmpty = errors.New("queue is empty")

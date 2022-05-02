@@ -7,7 +7,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/resource/maps"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
@@ -48,13 +47,11 @@ func TestDfsBasic(t *testing.T) {
 	mapper.Close()
 
 	visitedHosts := maps.NewPersistentMap(maps.PersistentMapParams{Path: visitedDomainsPath})
-	robots := frontier.NewMemoryRobots()
 	publisher := NewDfsBasicPublisher(DfsBasicPublisherParams{
 		OutputQueue:  queues.Outbox,
 		UrlStorePath: urlStorePath,
 		VisitedHosts: visitedHosts,
 		RotateAfter:  rotateAfter,
-		Robots:       robots,
 	})
 	out, err := publisher.OnMessage(types.Message{})
 
