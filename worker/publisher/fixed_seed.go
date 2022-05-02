@@ -39,7 +39,7 @@ func (s *fixedSeedPublisher) OnMessage(msg types.Message) (interface{}, error) {
 			URI:       uri,
 			Host:      meta.Host,
 			Protocol:  types.ProtocolHTTP,
-			Depth:     1,
+			Depth:     0,
 		})
 	}
 
