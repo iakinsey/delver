@@ -23,13 +23,12 @@ type newsAccumulator struct {
 
 type NewsAccumulatorParams struct {
 	NewsQueue queue.Queue     `json:"-" resource:"news_queue"`
-	Robots    frontier.Filter `json:"-" resource:"robots"`
 }
 
 func NewNewsAccumulator(params NewsAccumulatorParams) worker.Worker {
 	return &newsAccumulator{
 		maxDepth:  maxDepth,
-		robots:    params.Robots,
+		robots:    frontier.NewMemoryRobots(),
 		newsQueue: params.NewsQueue,
 	}
 }

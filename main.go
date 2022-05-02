@@ -28,7 +28,11 @@ import (
 const terminationWaitTime = 5 * time.Second
 
 func main() {
-	StartFromJsonConfig("./test_config.json")
+	if len(os.Args) <= 1 {
+		log.Fatalf("Config path must be provided")
+	}
+
+	StartFromJsonConfig(os.Args[1])
 }
 
 func StartFromJsonConfig(path string) {
@@ -161,6 +165,10 @@ func CreateWorkers(workerConfigs []config.Worker, resources map[string]interface
 			rfp := publisher.RssFeedPublisherParams{}
 			parseParamWithResources(wc.Parameters, &rfp, resources)
 			w = publisher.NewRssFeedPublisher(rfp)
+		case "fixed_seed_publisher":
+			fsp := publisher.FixedSeedPublisherParams{}
+			parseParamWithResources(wc.Parameters, &fsp, resources)
+			w = publisher.NewFixedSeedPublisher(fsp)
 		default:
 			log.Fatalf("unknown worker type %s", wc.Type)
 		}
