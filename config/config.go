@@ -1,6 +1,8 @@
 package config
 
 import (
+	"encoding/json"
+	"log"
 	"runtime"
 	"time"
 )
@@ -70,6 +72,15 @@ func LoadConfig() Config {
 }
 
 var config Config = LoadConfig()
+
+func Set(msg json.RawMessage) {
+	conf := LoadConfig()
+
+	if err := json.Unmarshal(msg, &conf); err != nil {
+		log.Fatalf("failed to parse application config")
+	}
+	config = conf
+}
 
 func Get() Config {
 	return config
