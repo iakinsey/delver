@@ -1,35 +1,30 @@
 package publisher
 
 import (
-	"net/http"
 	"net/url"
-	"time"
 
 	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
+	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/worker"
 	"github.com/mmcdole/gofeed"
 )
 
 type rssFeedPublisher struct {
-	uris      []string
-	userAgent string
-	timeout   time.Duration
+	uris   []string
+	client *util.DelverHTTPClient
 }
 
 type RssFeedPublisherParams struct {
-	Uris      []string      `json:"uris"`
-	UserAgent string        `json:"user_agent"`
-	Timeout   time.Duration `json:"timeout"`
+	Uris []string `json:"uris"`
 }
 
 func NewRssFeedPublisher(params RssFeedPublisherParams) worker.Worker {
 	return &rssFeedPublisher{
-		uris:      params.Uris,
-		userAgent: params.UserAgent,
-		timeout:   params.Timeout,
+		uris:   params.Uris,
+		client: util.NewHTTPClient(),
 	}
 }
 
@@ -37,7 +32,6 @@ func (s *rssFeedPublisher) OnMessage(msg types.Message) (interface{}, error) {
 	var messages []interface{}
 	done := make(chan []interface{}, len(s.uris))
 
-	// TODO make async
 	for _, uri := range s.uris {
 		go s.getRssUrls(uri, done)
 	}
@@ -55,16 +49,7 @@ func (s *rssFeedPublisher) OnMessage(msg types.Message) (interface{}, error) {
 
 func (s *rssFeedPublisher) getRssUrls(feedUri string, done chan []interface{}) {
 	var result []interface{}
-	client := &http.Client{Timeout: s.timeout}
-	req, err := http.NewRequest("GET", feedUri, nil)
-
-	if err != nil {
-		log.Errorf("failed to create http client: %s", err)
-		done <- result
-		return
-	}
-
-	res, err := client.Do(req)
+	res, err := s.client.Perform(feedUri)
 
 	if err != nil {
 		log.Errorf("failed to perform http request: %s", err)
