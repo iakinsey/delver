@@ -6,7 +6,7 @@ import (
 )
 
 type Worker struct {
-	Name       string          `json:"string"`
+	Name       string          `json:"name"`
 	Type       string          `json:"type"`
 	Manager    string          `json:"manager"`
 	Interval   time.Duration   `json:"interval"`
@@ -19,6 +19,10 @@ type Resource struct {
 	Name       string          `json:"name"`
 	Type       string          `json:"type"`
 	Parameters json.RawMessage `json:"parameters"`
+}
+
+type RawApplication struct {
+	Config json.RawMessage `json:"config"`
 }
 
 type Application struct {

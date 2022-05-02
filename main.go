@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io/ioutil"
 	"os"
 	"os/signal"
 	"reflect"
@@ -12,16 +13,11 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/config"
-	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/resource/bloom"
 	"github.com/iakinsey/delver/resource/logger"
 	"github.com/iakinsey/delver/resource/maps"
 	"github.com/iakinsey/delver/resource/objectstore"
-	"github.com/iakinsey/delver/types"
-	"github.com/iakinsey/delver/types/message"
-	"github.com/iakinsey/delver/util"
-	"github.com/iakinsey/delver/util/testutil"
 	"github.com/iakinsey/delver/worker"
 	"github.com/iakinsey/delver/worker/accumulator"
 	"github.com/iakinsey/delver/worker/extractor"
@@ -32,108 +28,38 @@ import (
 const terminationWaitTime = 5 * time.Second
 
 func main() {
-	conf := config.Get()
-	urlStorePath := util.MakeTempFolder("urlStorePath")
-	visitedUrlsPath := util.NewTempPath("visitedUrls")
-	objectStorePath := util.MakeTempFolder("objectStore")
-	visitedDomainsPath := util.MakeTempFolder("visitedDomains")
-	maxDepth := 2
-	rotateAfter := 5 * time.Minute
-
-	defer os.RemoveAll(urlStorePath)
-	defer os.RemoveAll(objectStorePath)
-	defer os.RemoveAll(visitedDomainsPath)
-	defer os.Remove(visitedUrlsPath)
-
-	osp := objectstore.FilesystemObjectStoreParams{Path: objectStorePath}
-	objectStore := objectstore.NewFilesystemObjectStore(osp)
-	r := frontier.NewMemoryRobots()
-
-	fetcherInputQueue, inbox, dlq := testutil.CreateFileQueue("fetcherInput")
-	defer os.RemoveAll(inbox)
-	defer os.RemoveAll(dlq)
-
-	fetcherOutputQueue, inbox, dlq := testutil.CreateFileQueue("fetcherOutput")
-	defer os.RemoveAll(inbox)
-	defer os.RemoveAll(dlq)
-
-	compositeOutputQueue, inbox, dlq := testutil.CreateFileQueue("compositeOutput")
-	defer os.RemoveAll(inbox)
-	defer os.RemoveAll(dlq)
-
-	fetch := fetcher.NewHttpFetcher(fetcher.HttpFetcherParams{
-		MaxRetries:  2,
-		ObjectStore: objectStore,
-	})
-	comp := extractor.NewCompositeExtractorWorker(extractor.CompositeArgs{
-		ObjectStore: objectStore,
-		Enabled: []string{
-			message.UrlExtractor,
-			message.AdversarialExtractor,
-			message.CompanyNameExtractor,
-			message.CountryExtractor,
-			message.LanguageExtractor,
-			message.SentimentExtractor,
-			message.TextExtractor,
-		},
-	})
-	urlStore := maps.NewMultiHostMap(maps.MultiHostMapParams{
-		BasePath: urlStorePath,
-	})
-	visitedUrls := bloom.NewRollingBloomFilter(bloom.RollingBloomFilterParams{
-		BloomCount: 3,
-		MaxN:       10000,
-		P:          1,
-		Path:       visitedUrlsPath,
-	})
-
-	dbap := accumulator.DfsBasicAccumulatorParams{
-		UrlStore:    urlStore,
-		VisitedUrls: visitedUrls,
-		MaxDepth:    maxDepth,
-	}
-	accum := accumulator.NewDfsBasicAccumulator(dbap)
-	visitedDomains := maps.NewPersistentMap(maps.PersistentMapParams{Path: visitedDomainsPath})
-	pub := publisher.NewDfsBasicPublisher(publisher.DfsBasicPublisherParams{
-		OutputQueue:  fetcherInputQueue,
-		UrlStorePath: urlStorePath,
-		VisitedHosts: visitedDomains,
-		RotateAfter:  rotateAfter,
-		Robots:       r,
-	})
-
-	fetchManager := worker.NewWorkerManager(fetch, fetcherInputQueue, fetcherOutputQueue)
-	compManager := worker.NewWorkerManager(comp, fetcherOutputQueue, compositeOutputQueue)
-	accumManager := worker.NewWorkerManager(accum, compositeOutputQueue, fetcherInputQueue)
-	pubManager := worker.NewJobManager(pub, fetcherInputQueue, 1*time.Minute)
-
-	message, _ := json.Marshal(message.FetcherRequest{
-		RequestID: types.NewV4(),
-		URI:       "http://en.wikipedia.org/wiki",
-		Protocol:  types.ProtocolHTTP,
-	})
-
-	fetcherInputQueue.Put(types.Message{
-		ID:          "0-0-0-TestName",
-		MessageType: types.FetcherRequestType,
-		Message:     json.RawMessage(message),
-	}, 0)
-
-	go fetcherInputQueue.Start()
-	go fetcherOutputQueue.Start()
-	go compositeOutputQueue.Start()
-
-	for i := 0; i < conf.WorkerCounts; i++ {
-		go fetchManager.Start()
-		go compManager.Start()
-		go accumManager.Start()
-		go pubManager.Start()
-	}
-
-	select {}
+	StartFromJsonConfig("./test_config.json")
 }
 
-func FromApplication(app config.Application) {
+func StartFromJsonConfig(path string) {
+	app := config.Application{}
+	inter := config.RawApplication{}
+	f, err := os.Open(path)
+
+	if err != nil {
+		log.Fatalf("failed to open config: %s", path)
+	}
+
+	b, err := ioutil.ReadAll(f)
+
+	if err != nil {
+		log.Fatalf("failed to read config: %s", path)
+	}
+
+	if err := json.Unmarshal(b, &inter); err != nil {
+		log.Fatalf("failed to parse intermediate config: %s", path)
+	}
+
+	config.Set(inter.Config)
+
+	if err := json.Unmarshal(b, &app); err != nil {
+		log.Fatalf("falsed to parse config: %s", path)
+	}
+
+	StartFromApplication(app)
+}
+
+func StartFromApplication(app config.Application) {
 	resources := CreateResources(app.Resources)
 	workers := CreateWorkers(app.Workers, resources)
 
@@ -320,10 +246,6 @@ func CreateResources(configs []config.Resource) map[string]interface{} {
 			elp := logger.ElasticsearchLoggerParams{}
 			parseParam(c.Parameters, &elp)
 			result[c.Name] = logger.NewElasticsearchLogger(elp)
-		case "http_client":
-			// TODO
-		case "robots":
-			// TODO
 		default:
 			log.Fatalf("unknown resource %s", c.Type)
 		}
@@ -341,18 +263,19 @@ func parseParam(data []byte, config interface{}) {
 func parseParamWithResources(data []byte, config interface{}, resources map[string]interface{}) {
 	parseParam(data, config)
 
-	values := reflect.TypeOf(config)
-	elem := reflect.ValueOf(config).Elem()
+	rType := reflect.TypeOf(config)
+	rValue := reflect.ValueOf(config)
+	valelem := rType.Elem()
 
-	for i := 0; i < values.NumField(); i++ {
-		field := values.Field(i)
+	for i := 0; i < valelem.NumField(); i++ {
+		field := valelem.Field(i)
 
 		if resourceTag, ok := field.Tag.Lookup("resource"); ok && resourceTag != "" {
 			resource := getResource(data, config, resourceTag, resources)
-			field := reflect.New(reflect.TypeOf(resource))
+			f := reflect.New(reflect.TypeOf(resource))
 
-			field.Elem().Set(reflect.ValueOf(resource))
-			elem.Field(i).Set(field)
+			f.Elem().Set(reflect.ValueOf(resource))
+			rValue.Elem().Field(i).Set(f.Elem())
 		}
 	}
 }
@@ -381,5 +304,11 @@ func getResourceName(data []byte, key string) string {
 		log.Fatalf("failed to find resource key %s", key)
 	}
 
-	return string(r)
+	var res string
+
+	if err := json.Unmarshal(r, &res); err != nil {
+		log.Fatalf("failed to parse resource value %s", key)
+	}
+
+	return res
 }
