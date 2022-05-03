@@ -29,6 +29,7 @@ func NewRssFeedPublisher(params RssFeedPublisherParams) worker.Worker {
 }
 
 func (s *rssFeedPublisher) OnMessage(msg types.Message) (interface{}, error) {
+	// TODO filter out pages already seen
 	var messages []interface{}
 	done := make(chan []interface{}, len(s.uris))
 
@@ -40,7 +41,7 @@ func (s *rssFeedPublisher) OnMessage(msg types.Message) (interface{}, error) {
 		messages = append(messages, <-done...)
 	}
 
-	log.Errorf("published %d requests from RSS feeds", len(messages))
+	log.Info("published %d requests from RSS feeds", len(messages))
 
 	return types.MultiMessage{
 		Values: messages,
