@@ -52,5 +52,9 @@ func (s *filesystemObjectStore) Put(uuid types.UUID, source io.Reader) (string, 
 }
 
 func (s *filesystemObjectStore) Delete(uuid types.UUID) error {
+	if uuid == "" {
+		return errors.New("empty key provided for delete request")
+	}
+
 	return os.Remove(path.Join(s.Path, string(uuid)))
 }
