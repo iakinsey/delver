@@ -36,15 +36,14 @@ func NewHttpFetcher(args HttpFetcherParams) worker.Worker {
 
 func (s *httpFetcher) OnMessage(msg types.Message) (interface{}, error) {
 	request := message.FetcherRequest{}
-	response := message.FetcherResponse{}
 
 	if err := json.Unmarshal(msg.Message, &request); err != nil {
 		return nil, errors.Wrap(err, "error parsing fetcher request")
 	}
 
-	response.RequestID = request.RequestID
-	response.URI = request.URI
-	response.Protocol = request.Protocol
+	response := message.FetcherResponse{
+		FetcherRequest: request,
+	}
 
 	s.doHttpRequestWithRetry(request, &response)
 

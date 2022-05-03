@@ -87,7 +87,7 @@ func (s *newsAccumulator) processUrls(composite message.CompositeAnalysis) []int
 			Host:      parsed.Host,
 			Origin:    composite.URI,
 			Protocol:  types.ProtocolHTTP,
-			Depth:     composite.Depth + 1,
+			Depth:     1,
 		})
 	}
 

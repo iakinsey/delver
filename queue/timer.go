@@ -35,21 +35,28 @@ func (s *timerQueue) Start() error {
 }
 
 func (s *timerQueue) perform() {
+	s.notify()
+
 	for {
 		select {
 		case <-time.After(s.delay):
-			time, _ := json.Marshal(time.Now().Unix())
-
-			s.channel <- types.Message{
-				ID:          string(types.NewV4()),
-				MessageType: types.TimerType,
-				Message:     json.RawMessage(time),
-			}
+			s.notify()
 		case <-s.terminate:
 			s.terminated <- true
 			return
 		}
 	}
+}
+
+func (s *timerQueue) notify() {
+	time, _ := json.Marshal(time.Now().Unix())
+
+	s.channel <- types.Message{
+		ID:          string(types.NewV4()),
+		MessageType: types.TimerType,
+		Message:     json.RawMessage(time),
+	}
+
 }
 
 func (s *timerQueue) Stop() error {

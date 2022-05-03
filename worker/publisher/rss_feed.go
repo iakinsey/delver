@@ -82,7 +82,7 @@ func (s *rssFeedPublisher) getRssUrls(feedUri string, done chan []interface{}) {
 				Host:      meta.Host,
 				Origin:    feedUri,
 				Protocol:  types.ProtocolHTTP,
-				Depth:     0,
+				Depth:     1,
 			})
 		}
 	}
