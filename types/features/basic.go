@@ -5,3 +5,4 @@ type Countries []string
 type TextContent string
 type URIs []string
 type Ngrams map[int][][]string
+type Title string
