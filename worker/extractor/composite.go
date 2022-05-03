@@ -218,6 +218,8 @@ func (s *compositeExtractor) getExtractor(name string) extractors.Extractor {
 		return extractors.NewTextExtractor()
 	case message.NgramExtractor:
 		return extractors.NewNgramExtractor()
+	case message.TitleExtractor:
+		return extractors.NewTitleExtractor()
 	default:
 		return nil
 	}

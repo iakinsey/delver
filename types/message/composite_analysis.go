@@ -13,6 +13,7 @@ const (
 	TextExtractor        = "text"
 	NgramExtractor       = "ngram"
 	UrlExtractor         = "url"
+	TitleExtractor       = "title"
 )
 
 type CompositeAnalysis struct {
@@ -23,6 +24,7 @@ type CompositeAnalysis struct {
 	Countries    features.Countries    `json:"countries,omitempty"`
 	Language     *features.Language    `json:"language,omitempty"`
 	TextContent  features.TextContent  `json:"text_content,omitempty"`
+	Title        features.Title        `json:"title,omitempty"`
 	Sentiment    *features.Sentiment   `json:"sentiment,omitempty"`
 	Ngrams       *features.Ngrams      `json:"ngrams,omitempty"`
 	URIs         features.URIs         `json:"uris,omitempty"`
@@ -34,6 +36,7 @@ var ParquetSchema = `{
 		{"Tag": "name=request_id, inname=RequestID, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
 		{"Tag": "name=uri, inname=URI, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
 		{"Tag": "name=host, inname=Host, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
+		{"Tag": "name=title, inname=Title, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
 		{"Tag": "name=origin, inname=Origin, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
 		{"Tag": "name=protocol, inname=Protocol, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
 		{"Tag": "name=store_key, inname=StoreKey, type=BYTE_ARRAY, convertedtype=UTF8, repetitiontype=REQUIRED"},
