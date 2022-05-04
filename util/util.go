@@ -35,6 +35,26 @@ func DedupeStrSlice(slice []string) (deduped []string) {
 	return deduped
 }
 
+func HasSuffixes(str string, elems []string) bool {
+	for _, elem := range elems {
+		if strings.HasSuffix(str, elem) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func ContainsAny(str string, substrs []string) bool {
+	for _, substr := range substrs {
+		if strings.Contains(str, substr) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func ReadLines(file *os.File) (lines []string, err error) {
 	scanner := bufio.NewScanner(file)
 
