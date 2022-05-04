@@ -3,6 +3,7 @@ package accumulator
 import (
 	"encoding/json"
 	"net/url"
+	"strings"
 
 	log "github.com/sirupsen/logrus"
 
@@ -10,10 +11,66 @@ import (
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
+	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/worker"
 )
 
 const maxDepth = 1
+
+var blacklistedExtensions = []string{
+	".jpg",
+	".jpeg",
+	".gif",
+	".raw",
+	".tiff",
+	".pdf",
+	".rtf",
+	".doc",
+	".ppt",
+	".svg",
+	".bmp",
+	".png",
+	".webp",
+	".js",
+	".css",
+	".zip",
+	".scss",
+	".json",
+	".exe",
+	".jss",
+	".mp4",
+	".mkv",
+	".mov",
+	".avi",
+	".flv",
+	".wmv",
+	".aac",
+	".ogg",
+	".mp3",
+	".alac",
+	".m4a",
+	".flac",
+	".wav",
+	".wma",
+}
+
+var blacklistedPaths = []string{
+	"section",
+	"tag",
+	"tags",
+	"hub",
+	"opinion",
+	"comment",
+	"feed",
+	"static",
+	"_static",
+	"css",
+	"script",
+	"js",
+	"img",
+	"wp-content",
+	"assets",
+}
 
 type newsAccumulator struct {
 	maxDepth  int
@@ -22,7 +79,7 @@ type newsAccumulator struct {
 }
 
 type NewsAccumulatorParams struct {
-	NewsQueue queue.Queue     `json:"-" resource:"news_queue"`
+	NewsQueue queue.Queue `json:"-" resource:"news_queue"`
 }
 
 func NewNewsAccumulator(params NewsAccumulatorParams) worker.Worker {
@@ -38,6 +95,10 @@ func (s *newsAccumulator) OnMessage(msg types.Message) (interface{}, error) {
 
 	if err := json.Unmarshal(msg.Message, &composite); err != nil {
 		return nil, err
+	}
+
+	if !s.isValidFormat(composite) {
+		return nil, nil
 	}
 
 	urls := s.processUrls(composite)
@@ -69,14 +130,11 @@ func (s *newsAccumulator) processUrls(composite message.CompositeAnalysis) []int
 	for _, u := range composite.URIs {
 		parsed, err := url.Parse(u)
 
-		if err != nil || parsed.Host != origin {
+		if err != nil {
 			continue
 		}
 
-		if allowed, err := s.robots.IsAllowed(u); err != nil {
-			log.Errorf("Failed to get robots info for URL %s: %s", u, err)
-			continue
-		} else if !allowed {
+		if !s.urlAllowed(parsed, origin) {
 			continue
 		}
 
@@ -119,6 +177,89 @@ func (s *newsAccumulator) processArticle(composite message.CompositeAnalysis) {
 	if err := s.newsQueue.Put(article, 0); err != nil {
 		log.Errorf("Failed to log article: %s", composite.URI)
 	}
+}
+
+func (s *newsAccumulator) isValidFormat(composite message.CompositeAnalysis) bool {
+	keys := []string{"Content-Type", "content-type"}
+
+	for _, key := range keys {
+		if val, ok := composite.Header[key]; ok {
+			if len(val) == 0 {
+				continue
+			}
+
+			if !strings.Contains(val[0], "html") {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+func (s *newsAccumulator) urlAllowed(u *url.URL, origin string) bool {
+	// External sites
+	if u.Host != origin {
+		return false
+	}
+
+	// Blacklisted media formats
+	if util.HasSuffixes(u.Path, blacklistedExtensions) {
+		return false
+	}
+
+	// Robots.txt
+	if allowed, err := s.robots.IsAllowed(u.String()); err != nil {
+		log.Errorf("Failed to get robots info for URL %s: %s", u, err)
+		return false
+	} else if !allowed {
+		return false
+	}
+
+	if !s.urlLooksLikeArticle(u) {
+		return false
+	}
+
+	return true
+}
+
+func (s *newsAccumulator) urlLooksLikeArticle(u *url.URL) bool {
+	var tokens []string
+
+	for _, t := range strings.Split(u.Path, "/") {
+		if t == "" {
+			continue
+		}
+
+		tokens = append(tokens, t)
+	}
+
+	// Empty path, should not even be in this branch
+	if len(tokens) == 0 {
+		return false
+	}
+
+	// If it starts with article then its probably an article
+	if strings.Contains(tokens[0], "article") {
+		return true
+	}
+
+	// Small path, probably not an article
+	if len(tokens[0]) <= 20 && len(tokens) == 1 {
+		return false
+	}
+
+	// Contains blacklisted path prefix
+	if util.ContainsAny(tokens[0], blacklistedPaths) {
+		return false
+	}
+
+	// Small URL with nested path, probably not article
+	if len(tokens) == 2 && len(tokens[1]) <= 20 {
+		return false
+	}
+
+	return true
 }
 
 func (s *newsAccumulator) OnComplete() {}
