@@ -9,6 +9,7 @@ import (
 
 	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/queue"
+	"github.com/iakinsey/delver/resource/bloom"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
@@ -77,18 +78,20 @@ type newsAccumulator struct {
 	maxDepth  int
 	robots    frontier.Filter
 	newsQueue queue.Queue
+	seenUrls  bloom.BloomFilter
 }
 
 type NewsAccumulatorParams struct {
-	NewsQueue queue.Queue `json:"-" resource:"news_queue"`
+	NewsQueue queue.Queue       `json:"-" resource:"news_queue"`
+	SeenUrls  bloom.BloomFilter `json:"-" resource:"seen_urls"`
 }
 
-// TODO add bloom filter here
 func NewNewsAccumulator(params NewsAccumulatorParams) worker.Worker {
 	return &newsAccumulator{
 		maxDepth:  maxDepth,
 		robots:    frontier.NewMemoryRobots(),
 		newsQueue: params.NewsQueue,
+		seenUrls:  params.SeenUrls,
 	}
 }
 
@@ -210,8 +213,10 @@ func (s *newsAccumulator) urlAllowed(u *url.URL, origin string) bool {
 		return false
 	}
 
+	uri := u.String()
+
 	// Robots.txt
-	if allowed, err := s.robots.IsAllowed(u.String()); err != nil {
+	if allowed, err := s.robots.IsAllowed(uri); err != nil {
 		log.Errorf("Failed to get robots info for URL %s: %s", u, err)
 		return false
 	} else if !allowed {
@@ -220,6 +225,18 @@ func (s *newsAccumulator) urlAllowed(u *url.URL, origin string) bool {
 
 	if !s.urlLooksLikeArticle(u) {
 		return false
+	}
+
+	if strings.Contains(u.Path, ":") && strings.Contains(u.Path, "=") {
+		return false
+	}
+
+	if s.seenUrls.ContainsString(uri) {
+		return false
+	}
+
+	if err := s.seenUrls.SetBytes([]byte(uri)); err != nil {
+		log.Errorf("failed to mark news URI as seen: %s", uri)
 	}
 
 	return true
