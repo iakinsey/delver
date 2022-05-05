@@ -13,6 +13,7 @@ type Worker struct {
 	Parameters json.RawMessage `json:"parameters"`
 	Inbox      string          `json:"inbox"`
 	Outbox     string          `json:"outbox"`
+	Count      int             `json:"count"`
 }
 
 type Resource struct {

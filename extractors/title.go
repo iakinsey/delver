@@ -53,6 +53,10 @@ func (s *titleExtractor) SetResult(result interface{}, composite *message.Compos
 }
 
 func seekTitle(node *html.Node) (string, bool) {
+	if node.FirstChild == nil {
+		return "", false
+	}
+
 	if node.Type == html.ElementNode && node.Data == "title" {
 		return node.FirstChild.Data, true
 	}

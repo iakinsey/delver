@@ -33,5 +33,6 @@ func (s *jobManager) Start() {
 }
 
 func (s *jobManager) Stop() {
+	s.timer.Stop()
 	s.manager.Stop()
 }
