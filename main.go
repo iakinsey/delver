@@ -83,8 +83,10 @@ func StartApplication(app config.Application, resources map[string]interface{}, 
 		count := wc.Count
 
 		// Defaults to 0
-		if count == 0 {
+		if count == 0 && wc.Manager == "job" {
 			count = 1
+		} else if count == 0 {
+			count = app.Config.WorkerCounts
 		}
 
 		for i := 0; i < count; i++ {
