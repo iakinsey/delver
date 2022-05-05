@@ -29,6 +29,7 @@ var blacklistedExtensions = []string{
 	".ppt",
 	".svg",
 	".bmp",
+	".ico",
 	".png",
 	".webp",
 	".js",
@@ -82,6 +83,7 @@ type NewsAccumulatorParams struct {
 	NewsQueue queue.Queue `json:"-" resource:"news_queue"`
 }
 
+// TODO add bloom filter here
 func NewNewsAccumulator(params NewsAccumulatorParams) worker.Worker {
 	return &newsAccumulator{
 		maxDepth:  maxDepth,
@@ -244,18 +246,20 @@ func (s *newsAccumulator) urlLooksLikeArticle(u *url.URL) bool {
 		return true
 	}
 
-	// Small path, probably not an article
-	if len(tokens[0]) <= 20 && len(tokens) == 1 {
+	count := 0
+
+	for _, token := range tokens {
+		if len(token) <= 20 {
+			count += 1
+		}
+	}
+
+	if count == len(tokens) {
 		return false
 	}
 
 	// Contains blacklisted path prefix
 	if util.ContainsAny(tokens[0], blacklistedPaths) {
-		return false
-	}
-
-	// Small URL with nested path, probably not article
-	if len(tokens) == 2 && len(tokens[1]) <= 20 {
 		return false
 	}
 

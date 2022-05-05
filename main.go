@@ -78,9 +78,17 @@ func StartApplication(app config.Application, resources map[string]interface{}, 
 		}
 	}
 
-	for _, m := range workers {
-		for i := 0; i < app.Config.WorkerCounts; i++ {
-			go m.Start()
+	for _, wc := range app.Workers {
+		manager := workers[wc.Name]
+		count := wc.Count
+
+		// Defaults to 0
+		if count == 0 {
+			count = 1
+		}
+
+		for i := 0; i < count; i++ {
+			go manager.Start()
 		}
 	}
 }
@@ -219,7 +227,7 @@ func CreateResources(configs []config.Resource) map[string]interface{} {
 	for _, c := range configs {
 		switch c.Type {
 		case "file_queue":
-			fqp := queue.FileQueueParams{}
+			fqp := queue.FileQueueParams{Resilient: true}
 			parseParam(c.Parameters, &fqp)
 			result[c.Name] = queue.NewFileQueue(fqp)
 		case "timer":
