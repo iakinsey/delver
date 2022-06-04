@@ -24,6 +24,7 @@ require (
 	github.com/andybalholm/cascadia v1.1.0 // indirect
 	github.com/apache/arrow/go/arrow v0.0.0-20200730104253-651201b0f516 // indirect
 	github.com/apache/thrift v0.14.2 // indirect
+	github.com/armon/go-metrics v0.3.11 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/bits-and-blooms/bitset v1.2.0 // indirect
 	github.com/cdipaolo/goml v0.0.0-20210723214924-bf439dd662aa // indirect
@@ -41,12 +42,14 @@ require (
 	github.com/google/flatbuffers v1.12.1 // indirect
 	github.com/gorilla/css v1.0.0 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
+	github.com/hashicorp/go-immutable-radix v1.0.0 // indirect
+	github.com/hashicorp/golang-lru v0.5.1 // indirect
 	github.com/json-iterator/go v1.1.10 // indirect
 	github.com/klauspost/compress v1.13.1 // indirect
 	github.com/mmcdole/gofeed v1.1.3 // indirect
 	github.com/mmcdole/goxpp v0.0.0-20181012175147-0068e33feabf // indirect
-	github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421 // indirect
-	github.com/modern-go/reflect2 v0.0.0-20180701023420-4b7aa43c6742 // indirect
+	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.8 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect

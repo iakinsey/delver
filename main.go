@@ -12,12 +12,14 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/iakinsey/delver/api"
 	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/resource/bloom"
 	"github.com/iakinsey/delver/resource/logger"
 	"github.com/iakinsey/delver/resource/maps"
 	"github.com/iakinsey/delver/resource/objectstore"
+	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/worker"
 	"github.com/iakinsey/delver/worker/accumulator"
 	"github.com/iakinsey/delver/worker/extractor"
@@ -55,12 +57,14 @@ func StartFromJsonConfig(path string) {
 	}
 
 	config.Set(inter.Config)
+	util.SetMetrics()
 
 	if err := json.Unmarshal(b, &app); err != nil {
 		log.Fatalf("falsed to parse config: %s", path)
 	}
 
-	StartFromApplication(app)
+	api.StartHTTPServer()
+	//StartFromApplication(app)
 }
 
 func StartFromApplication(app config.Application) {
