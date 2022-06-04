@@ -2,6 +2,7 @@ package util
 
 import (
 	"net/http"
+	"net/url"
 
 	"github.com/iakinsey/delver/config"
 	log "github.com/sirupsen/logrus"
@@ -58,6 +59,14 @@ func NewHTTPClient() *DelverHTTPClient {
 			}
 		} else {
 			log.Fatalf("unable to generate context dialer")
+		}
+	} else if params.HTTPProxyUrl != "" {
+		if url, err := url.Parse(params.HTTPProxyUrl); err == nil {
+			client.Transport = &http.Transport{
+				Proxy: http.ProxyURL(url),
+			}
+		} else {
+			log.Fatalf("failed to parse http proxy string %s %s", params.HTTPProxyUrl, err)
 		}
 	}
 
