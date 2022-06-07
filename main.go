@@ -12,7 +12,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/iakinsey/delver/api"
 	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/resource/bloom"
@@ -63,8 +62,8 @@ func StartFromJsonConfig(path string) {
 		log.Fatalf("falsed to parse config: %s", path)
 	}
 
-	api.StartHTTPServer()
-	//StartFromApplication(app)
+	//go api.StartHTTPServer()
+	StartFromApplication(app)
 }
 
 func StartFromApplication(app config.Application) {

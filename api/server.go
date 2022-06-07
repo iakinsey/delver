@@ -49,7 +49,7 @@ func getRoutes() map[string]Controller {
 	routes := make(map[string]Controller)
 	metrics := controller.NewMetricsController()
 
-	routes["/metrics/push"] = metrics.Push
+	routes["/metrics/put"] = metrics.Put
 	routes["/metrics/get"] = metrics.Get
 
 	return routes
