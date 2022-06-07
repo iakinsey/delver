@@ -64,6 +64,7 @@ func LoadConfig() Config {
 		CountriesPath:       DataFilePath("data", "countries.json"),
 		Metrics: MetricsConfig{
 			Enabled: false,
+			URI:     "http://localhost:8181/metrics/put",
 		},
 		Adversarial: AdversarialConfig{
 			SubdomainThreshold:   25,
