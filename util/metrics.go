@@ -28,7 +28,7 @@ func NewMetricsEncoder(uri string) metrics.Encoder {
 func (s *encoder) Encode(args interface{}) error {
 	m := args.(metrics.MetricsSummary)
 	out := make(map[string][]instrument.Metric)
-	t, err := time.Parse(m.Timestamp, "2014-11-17 23:02:03 +0000 UTC")
+	t, err := time.Parse("2006-01-02 15:04:05.999999999 -0700 MST", m.Timestamp)
 
 	if err != nil {
 		return err
