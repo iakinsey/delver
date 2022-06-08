@@ -4,9 +4,11 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/iakinsey/delver/types/instrument"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
@@ -28,17 +30,17 @@ func NewMetricSqlite(path string) MetricsGateway {
 }
 
 func (s *metricSqlite) declareMetric(n string) {
-	q := `
-		CREATE TABLE IF NOT EXISTS %s (
-			when INTEGER,
-			value INTEGER
-		);
-		CREATE INDEX %s_when_idx s ON %s (when ASC);
-	`
-
-	if _, err := s.db.Exec(fmt.Sprintf(q, n, n, n)); err != nil {
-		log.Fatalf("failed to declare metric %s: %s", n, err)
+	d := []string{
+		fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (timestamp INTEGER NOT NULL, value INTEGER NOT NULL)", n),
+		fmt.Sprintf("CREATE INDEX %s_timestamp_idx ON %s (timestamp ASC)", n, n),
 	}
+
+	for _, q := range d {
+		if _, err := s.db.Exec(q); err != nil {
+			log.Fatalf("failed to declare metric %s: %s", n, err)
+		}
+	}
+
 }
 
 func (s *metricSqlite) Get(query instrument.MetricsQuery) ([]instrument.Metric, error) {
@@ -48,12 +50,12 @@ func (s *metricSqlite) Get(query instrument.MetricsQuery) ([]instrument.Metric, 
 
 	q := fmt.Sprintf(`
 		SELECT 
-		(when, value)
+		(timestamp, value)
 		FROM %s
-		WHERE when >= ?
-		AND when <= ?
-		ORDER BY when ASC
-	`, query.Key)
+		WHERE timestamp >= ?
+		AND timestamp <= ?
+		ORDER BY timestamp ASC
+	`, escapeMetricName(query.Key))
 
 	rows, err := s.db.Query(q, query.Start, query.End)
 
@@ -135,14 +137,15 @@ func (s *metricSqlite) Put(req map[string][]instrument.Metric) error {
 	var err error
 
 	for key, metrics := range req {
-		s.declareMetric(key)
+		name := escapeMetricName(key)
+		s.declareMetric(name)
 
 		q := fmt.Sprintf(`
 			INSERT INTO %s
-			(when, value)
+			(timestamp, value)
 			VALUES
 			(?, ?)
-		`, key)
+		`, name)
 
 		stmt, err := s.db.Prepare(q)
 
@@ -185,4 +188,8 @@ func aggSum(vals []int64) (total int64) {
 
 func aggAvg(vals []int64) (avg int64) {
 	return aggSum(vals) / int64(len(vals))
+}
+
+func escapeMetricName(name string) string {
+	return strings.Replace(name, ".", "___", -1)
 }
