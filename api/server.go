@@ -51,6 +51,7 @@ func getRoutes() map[string]Controller {
 
 	routes["/metrics/put"] = metrics.Put
 	routes["/metrics/get"] = metrics.Get
+	routes["/metrics/list"] = metrics.List
 
 	return routes
 }
@@ -73,9 +74,11 @@ func handleRequest(t map[string]Controller, w http.ResponseWriter, r *http.Reque
 
 	var req json.RawMessage
 
-	if err := json.Unmarshal(b, &req); err != nil {
-		log.Errorf("failed to parse request body: %s", err)
-		return respondError(http.StatusBadRequest, "", w)
+	if len(b) > 0 {
+		if err := json.Unmarshal(b, &req); err != nil {
+			log.Errorf("failed to parse request body: %s", err)
+			return respondError(http.StatusBadRequest, "", w)
+		}
 	}
 
 	resp, err := c(req)
