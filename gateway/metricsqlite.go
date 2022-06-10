@@ -72,6 +72,35 @@ func (s *metricSqlite) Get(query instrument.MetricsQuery) ([]instrument.Metric, 
 	return processWithAgg(query, rows), nil
 }
 
+func (s *metricSqlite) List() (result []string, err error) {
+	rows, err := s.db.Query(`
+		SELECT
+		name
+		FROM
+		sqlite_schema
+		WHERE type ='table'
+		AND name NOT LIKE 'sqlite_%'
+	`)
+
+	if err != nil {
+		return
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var name string
+
+		if err := rows.Scan(&name); err != nil {
+			log.Fatal(err)
+		}
+
+		result = append(result, unescapeMetricName(name))
+	}
+
+	return
+}
+
 func processWithAgg(query instrument.MetricsQuery, rows *sql.Rows) (metrics []instrument.Metric) {
 	var aggWindow []int64
 	var result []instrument.Metric
@@ -192,4 +221,8 @@ func aggAvg(vals []int64) (avg int64) {
 
 func escapeMetricName(name string) string {
 	return strings.Replace(name, ".", "___", -1)
+}
+
+func unescapeMetricName(name string) string {
+	return strings.Replace(name, "___", ".", -1)
 }

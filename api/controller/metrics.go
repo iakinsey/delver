@@ -12,6 +12,7 @@ import (
 type MetricsController interface {
 	Put(msg json.RawMessage) (interface{}, error)
 	Get(msg json.RawMessage) (interface{}, error)
+	List(msg json.RawMessage) (interface{}, error)
 }
 
 type metricsController struct {
@@ -44,4 +45,8 @@ func (s *metricsController) Get(msg json.RawMessage) (interface{}, error) {
 	}
 
 	return s.driver.Get(query)
+}
+
+func (s *metricsController) List(msg json.RawMessage) (interface{}, error) {
+	return s.driver.List()
 }
