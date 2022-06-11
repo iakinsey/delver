@@ -53,10 +53,12 @@ func (s *metricSqlite) Get(query instrument.MetricsQuery) ([]instrument.Metric, 
 		ts,
 		value
 		FROM %s
+		WHERE ts >= ?
+		AND ts <= ?
 		ORDER BY ts ASC
 	`, escapeMetricName(query.Key))
 
-	rows, err := s.db.Query(q) //, query.Start, query.End)
+	rows, err := s.db.Query(q, query.Start, query.End)
 
 	if err != nil {
 		return nil, err
@@ -100,9 +102,8 @@ func (s *metricSqlite) List() (result []string, err error) {
 	return
 }
 
-func processWithAgg(query instrument.MetricsQuery, rows *sql.Rows) (metrics []instrument.Metric) {
+func processWithAgg(query instrument.MetricsQuery, rows *sql.Rows) (result []instrument.Metric) {
 	var aggWindow []int64
-	var result []instrument.Metric
 	var aggStart int64 = -1
 
 	for rows.Next() {
