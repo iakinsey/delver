@@ -57,7 +57,7 @@ func getRoutes() map[string]Controller {
 }
 
 func handleRequest(t map[string]Controller, w http.ResponseWriter, r *http.Request) error {
-	log.Info("incoming api request for path %s", r.URL.Path)
+	log.Infof("incoming api request for path %s", r.URL.String())
 
 	c, ok := t[r.URL.Path]
 

@@ -18,7 +18,7 @@ type metricSqlite struct {
 }
 
 func NewMetricSqlite(path string) MetricsGateway {
-	db, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?cache=shared", path))
+	db, err := sql.Open("sqlite3", fmt.Sprintf("file:%s", path))
 
 	if err != nil {
 		log.Fatalf("failed to open metric sqlite database %s", err)
@@ -31,8 +31,8 @@ func NewMetricSqlite(path string) MetricsGateway {
 
 func (s *metricSqlite) declareMetric(n string) {
 	d := []string{
-		fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (timestamp INTEGER NOT NULL, value INTEGER NOT NULL)", n),
-		fmt.Sprintf("CREATE INDEX %s_timestamp_idx ON %s (timestamp ASC)", n, n),
+		fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (ts INTEGER NOT NULL, value INTEGER NOT NULL)", n),
+		fmt.Sprintf("CREATE INDEX IF NOT EXISTS %s_ts_idx ON %s (ts ASC)", n, n),
 	}
 
 	for _, q := range d {
@@ -50,14 +50,13 @@ func (s *metricSqlite) Get(query instrument.MetricsQuery) ([]instrument.Metric, 
 
 	q := fmt.Sprintf(`
 		SELECT 
-		(timestamp, value)
+		ts,
+		value
 		FROM %s
-		WHERE timestamp >= ?
-		AND timestamp <= ?
-		ORDER BY timestamp ASC
+		ORDER BY ts ASC
 	`, escapeMetricName(query.Key))
 
-	rows, err := s.db.Query(q, query.Start, query.End)
+	rows, err := s.db.Query(q) //, query.Start, query.End)
 
 	if err != nil {
 		return nil, err
@@ -171,7 +170,7 @@ func (s *metricSqlite) Put(req map[string][]instrument.Metric) error {
 
 		q := fmt.Sprintf(`
 			INSERT INTO %s
-			(timestamp, value)
+			(ts, value)
 			VALUES
 			(?, ?)
 		`, name)
@@ -185,7 +184,7 @@ func (s *metricSqlite) Put(req map[string][]instrument.Metric) error {
 		defer stmt.Close()
 
 		for _, metric := range metrics {
-			if _, _err := stmt.Exec(metric.When, metric.Value); _err != nil {
+			if _, _err := stmt.Exec(metric.When.Unix(), metric.Value); _err != nil {
 				err = errors.Wrap(err, _err.Error())
 			}
 		}
