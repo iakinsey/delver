@@ -67,3 +67,120 @@ func TestDeleteUserDoesntExist(t *testing.T) {
 
 	assert.Equal(t, errs.AuthError, err.(*errs.ApplicationError).Code)
 }
+
+func TestAuthenticate(t *testing.T) {
+	gateway := NewUserGateway(":memory:")
+	email := "user@email.com"
+	password := "test1234"
+	user, err := gateway.Create(email, password)
+
+	assert.NoError(t, err)
+
+	token, err := gateway.Authenticate(email, password)
+
+	assert.NoError(t, err)
+	assert.Equal(t, token.UserID, user.ID)
+}
+
+func TestAuthenticateNoUser(t *testing.T) {
+	gateway := NewUserGateway(":memory:")
+	email := "user@email.com"
+	password := "test1234"
+
+	token, err := gateway.Authenticate(email, password)
+
+	assert.Error(t, err)
+	assert.Nil(t, token)
+}
+
+func TestAuthenticateIncorrectPassword(t *testing.T) {
+	gateway := NewUserGateway(":memory:")
+	email := "user@email.com"
+	password := "test1234"
+	wrongPassword := "notest"
+	_, err := gateway.Create(email, password)
+
+	assert.NoError(t, err)
+
+	token, err := gateway.Authenticate(email, wrongPassword)
+
+	assert.Equal(t, errs.AuthError, err.(*errs.ApplicationError).Code)
+	assert.Nil(t, token)
+}
+
+func TestIsNotAuthenticatedAfterDeauthenticate(t *testing.T) {
+	gateway := NewUserGateway(":memory:")
+	email := "user@email.com"
+	password := "test1234"
+	user, err := gateway.Create(email, password)
+
+	assert.NoError(t, err)
+
+	token, err := gateway.Authenticate(email, password)
+
+	assert.NoError(t, err)
+	assert.Equal(t, token.UserID, user.ID)
+	assert.NoError(t, gateway.IsAuthenticated(user.ID, token.Value))
+	assert.NoError(t, gateway.Deauthenticate(token.Value))
+	assert.Error(t, gateway.IsAuthenticated(user.ID, token.Value))
+}
+
+func TestIsNotAuthenticatedWrongUserID(t *testing.T) {
+	gateway := NewUserGateway(":memory:")
+	email := "user@email.com"
+	password := "test1234"
+	user, err := gateway.Create(email, password)
+
+	assert.NoError(t, err)
+
+	token, err := gateway.Authenticate(email, password)
+
+	assert.NoError(t, err)
+	assert.Equal(t, token.UserID, user.ID)
+
+	err = gateway.IsAuthenticated(string(types.NewV4()), token.Value)
+
+	assert.Equal(t, errs.AuthError, err.(*errs.ApplicationError).Code)
+}
+
+func TestIsNotAuthenticatedWrongToken(t *testing.T) {
+	gateway := NewUserGateway(":memory:")
+	email := "user@email.com"
+	password := "test1234"
+	user, err := gateway.Create(email, password)
+
+	assert.NoError(t, err)
+
+	token, err := gateway.Authenticate(email, password)
+
+	assert.NoError(t, err)
+	assert.Equal(t, token.UserID, user.ID)
+
+	err = gateway.IsAuthenticated(user.ID, "invalid-token")
+
+	assert.Equal(t, errs.AuthError, err.(*errs.ApplicationError).Code)
+}
+
+func TestChangePassword(t *testing.T) {
+	gateway := NewUserGateway(":memory:")
+	email := "user@email.com"
+	password := "test1234"
+	newPassword := "test1"
+	user, err := gateway.Create(email, password)
+
+	assert.NoError(t, err)
+
+	to, err := gateway.ChangePassword(user.ID, newPassword)
+
+	assert.NotNil(t, to)
+	assert.NoError(t, err)
+
+	token, err := gateway.Authenticate(email, newPassword)
+
+	assert.NoError(t, err)
+	assert.Equal(t, token.UserID, user.ID)
+
+	err = gateway.IsAuthenticated(user.ID, token.Value)
+
+	assert.NoError(t, err)
+}
