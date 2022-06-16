@@ -120,27 +120,17 @@ func TestIsNotAuthenticatedAfterDeauthenticate(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, token.UserID, user.ID)
-	assert.NoError(t, gateway.IsAuthenticated(user.ID, token.Value))
+
+	token2, err := gateway.ValidateToken(token.Value)
+
+	assert.Equal(t, user.ID, token2.UserID)
+	assert.Equal(t, token.Value, token2.Value)
+	assert.NoError(t, err)
 	assert.NoError(t, gateway.Deauthenticate(token.Value))
-	assert.Error(t, gateway.IsAuthenticated(user.ID, token.Value))
-}
 
-func TestIsNotAuthenticatedWrongUserID(t *testing.T) {
-	gateway := NewUserGateway(":memory:")
-	email := "user@email.com"
-	password := "test1234"
-	user, err := gateway.Create(email, password)
-
-	assert.NoError(t, err)
-
-	token, err := gateway.Authenticate(email, password)
-
-	assert.NoError(t, err)
-	assert.Equal(t, token.UserID, user.ID)
-
-	err = gateway.IsAuthenticated(string(types.NewV4()), token.Value)
-
-	assert.Equal(t, errs.AuthError, err.(*errs.ApplicationError).Code)
+	token3, err := gateway.ValidateToken(token.Value)
+	assert.Nil(t, token3)
+	assert.Error(t, err)
 }
 
 func TestIsNotAuthenticatedWrongToken(t *testing.T) {
@@ -156,8 +146,9 @@ func TestIsNotAuthenticatedWrongToken(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, token.UserID, user.ID)
 
-	err = gateway.IsAuthenticated(user.ID, "invalid-token")
+	token2, err := gateway.ValidateToken("invalid-token")
 
+	assert.Nil(t, token2)
 	assert.Equal(t, errs.AuthError, err.(*errs.ApplicationError).Code)
 }
 
@@ -180,7 +171,9 @@ func TestChangePassword(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, token.UserID, user.ID)
 
-	err = gateway.IsAuthenticated(user.ID, token.Value)
+	token2, err := gateway.ValidateToken(token.Value)
 
+	assert.Equal(t, token.Value, token2.Value)
 	assert.NoError(t, err)
+
 }

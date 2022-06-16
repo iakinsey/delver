@@ -1,7 +1,9 @@
 package errs
 
 const (
-	BaseError = iota
+	InternalError = -1 + iota
+	BaseError
+	RequestError
 	AuthError
 	DashError
 )
@@ -38,6 +40,13 @@ func NewAuthError(msg string) error {
 func NewDashError(msg string) error {
 	return &ApplicationError{
 		Code: DashError,
+		Msg:  msg,
+	}
+}
+
+func NewRequestError(msg string) error {
+	return &ApplicationError{
+		Code: RequestError,
 		Msg:  msg,
 	}
 }
