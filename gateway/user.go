@@ -21,6 +21,7 @@ const tokenExpiration = (24 * time.Hour) * 365 // 1 year
 
 type UserGateway interface {
 	Get(string) (*types.User, error)
+	GetByEmail(string) (*types.User, error)
 	Create(string, string) (*types.User, error)
 	Delete(string) error
 	Authenticate(string, string) (*types.Token, error)
@@ -91,6 +92,10 @@ func (s *userGateway) setupUserDb() {
 
 func (s *userGateway) Get(id string) (*types.User, error) {
 	return s.getBy(getUserById, id)
+}
+
+func (s *userGateway) GetByEmail(email string) (*types.User, error) {
+	return s.getBy(getUserByEmail, email)
 }
 
 func (s *userGateway) Create(email, pass string) (*types.User, error) {
