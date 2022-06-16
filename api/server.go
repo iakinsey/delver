@@ -162,7 +162,17 @@ func (s *requestHandler) getAuthContext() (context.Context, error) {
 		return nil, err
 	}
 
-	return context.WithValue(parent, types.AuthHeader, t), nil
+	u, err := s.user.Get(t.UserID)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return context.WithValue(
+		context.WithValue(parent, types.AuthHeader, t),
+		types.UserHeader,
+		u,
+	), nil
 }
 
 func (s *requestHandler) respondSuccess(resp interface{}) {

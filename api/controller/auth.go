@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/iakinsey/delver/gateway"
+	"github.com/iakinsey/delver/types/errs"
 	"github.com/iakinsey/delver/types/rpc"
 )
 
@@ -49,7 +50,7 @@ func (s *authController) DeleteUser(ctx context.Context, msg json.RawMessage) (i
 		return nil, err
 	}
 
-	if err := CurrentUserMatchesEmail(ctx, s.auth, req.Email); err != nil {
+	if err := CurrentUserMatchesEmail(ctx, req.Email); err != nil {
 		return nil, err
 	}
 
@@ -73,10 +74,10 @@ func (s *authController) ChangePassword(ctx context.Context, msg json.RawMessage
 		return nil, err
 	}
 
-	user, err := GetCurrentUser(ctx, s.auth)
+	user := GetCurrentUser(ctx)
 
-	if err != nil {
-		return nil, err
+	if user == nil {
+		return nil, errs.NewAuthError("Unauthorized")
 	}
 
 	if err := gateway.CheckPassword(req.OldPassword, user.PasswordHash); err != nil {

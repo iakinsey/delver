@@ -35,27 +35,15 @@ func TestCreateAndGetDash(t *testing.T) {
 
 	assert.NoError(t, gateway.Put(dash))
 
-	dash2, err := gateway.Get(dash.UserID, dash.ID)
+	dash2, err := gateway.Get(dash.ID)
 
 	assert.NoError(t, err)
 	assert.EqualValues(t, dash, *dash2)
 }
 
-func TestGetDashUnauthorized(t *testing.T) {
-	gateway := NewDashboardGateway(":memory:")
-	dash := genDash()
-
-	assert.NoError(t, gateway.Put(dash))
-
-	dash2, err := gateway.Get(string(types.NewV4()), dash.ID)
-
-	assert.Nil(t, dash2)
-	assert.EqualError(t, err, "Unauthorized")
-}
-
 func TestGetNoDashExists(t *testing.T) {
 	gateway := NewDashboardGateway(":memory:")
-	dash, err := gateway.Get(string(types.NewV4()), string(types.NewV4()))
+	dash, err := gateway.Get(string(types.NewV4()))
 
 	assert.Nil(t, dash)
 	assert.EqualError(t, err, "Dashboard does not exist")
@@ -85,13 +73,13 @@ func TestDeleteDash(t *testing.T) {
 
 	assert.NoError(t, gateway.Put(dash))
 
-	dash2, err := gateway.Get(dash.UserID, dash.ID)
+	dash2, err := gateway.Get(dash.ID)
 
 	assert.NoError(t, err)
 	assert.EqualValues(t, dash, *dash2)
-	assert.NoError(t, gateway.Delete(dash.UserID, dash.ID))
+	assert.NoError(t, gateway.Delete(dash.ID))
 
-	dash3, err := gateway.Get(dash.UserID, dash.ID)
+	dash3, err := gateway.Get(dash.ID)
 
 	assert.Nil(t, dash3)
 	assert.EqualError(t, err, "Dashboard does not exist")
@@ -100,7 +88,7 @@ func TestDeleteDash(t *testing.T) {
 func TestDeleteDashNoDashExists(t *testing.T) {
 	gateway := NewDashboardGateway(":memory:")
 	dash := genDash()
-	err := gateway.Delete(dash.UserID, dash.ID)
+	err := gateway.Delete(dash.ID)
 
 	assert.EqualError(t, err, "Dashboard does not exist")
 }

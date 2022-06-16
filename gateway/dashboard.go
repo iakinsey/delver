@@ -32,7 +32,7 @@ var putDashboard = `
 `
 
 var deleteDashboard = `
-    DELETE FROM dashboard WHERE id = ? and user_id = ?
+    DELETE FROM dashboard WHERE id = ?
 `
 
 var getUserDashboards = `
@@ -41,8 +41,8 @@ var getUserDashboards = `
 
 type DashboardGateway interface {
 	Put(dash types.Dashboard) error
-	Get(userID, dashID string) (*types.Dashboard, error)
-	Delete(userID, dashID string) error
+	Get(dashID string) (*types.Dashboard, error)
+	Delete(dashID string) error
 	List(userID string) ([]types.Dashboard, error)
 }
 
@@ -82,7 +82,7 @@ func (s *dashboardGateway) Put(d types.Dashboard) error {
 	return err
 }
 
-func (s *dashboardGateway) Get(userID string, dashID string) (*types.Dashboard, error) {
+func (s *dashboardGateway) Get(dashID string) (*types.Dashboard, error) {
 	row := s.db.QueryRow(getDashboard, dashID)
 
 	if row.Err() != nil {
@@ -100,10 +100,6 @@ func (s *dashboardGateway) Get(userID string, dashID string) (*types.Dashboard, 
 		return nil, err
 	}
 
-	if d.UserID != userID {
-		return nil, errs.NewDashError("Unauthorized")
-	}
-
 	if err := d.Value.UnmarshalJSON(val); err != nil {
 		return nil, err
 	}
@@ -111,12 +107,12 @@ func (s *dashboardGateway) Get(userID string, dashID string) (*types.Dashboard, 
 	return d, nil
 }
 
-func (s *dashboardGateway) Delete(userID string, dashID string) error {
-	if _, err := s.Get(userID, dashID); err != nil {
+func (s *dashboardGateway) Delete(dashID string) error {
+	if _, err := s.Get(dashID); err != nil {
 		return err
 	}
 
-	_, err := s.db.Exec(deleteDashboard, dashID, userID)
+	_, err := s.db.Exec(deleteDashboard, dashID)
 
 	return err
 }
@@ -149,11 +145,11 @@ func (s *dashboardGateway) List(userID string) ([]types.Dashboard, error) {
 }
 
 func (s *dashboardGateway) isAuthorized(userID, dashID string) error {
-	_, err := s.Get(userID, dashID)
-
-	if errors.Is(err, NoDashErr) {
+	if dash, err := s.Get(dashID); errors.Is(err, NoDashErr) {
 		return nil
+	} else if dash.UserID != userID {
+		return errs.NewAuthError("Unauthorized")
 	}
 
-	return err
+	return nil
 }
