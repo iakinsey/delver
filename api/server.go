@@ -63,7 +63,7 @@ func StartHTTPServer() {
 			resp:   w,
 		}
 
-		h.handle()
+		h.Perform()
 	})
 
 	log.Infof("http server listening on %s", conf.Address)
@@ -100,7 +100,7 @@ type requestHandler struct {
 	resp   http.ResponseWriter
 }
 
-func (s *requestHandler) perform() {
+func (s *requestHandler) Perform() {
 	resp, err := s.handle()
 
 	if err != nil {

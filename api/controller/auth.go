@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/iakinsey/delver/gateway"
+	"github.com/iakinsey/delver/types/rpc"
 )
 
 type AuthController interface {
@@ -26,17 +27,77 @@ func NewAuthController(g gateway.UserGateway) AuthController {
 }
 
 func (s *authController) CreateUser(ctx context.Context, msg json.RawMessage) (interface{}, error) {
-	return nil, nil
+	req := rpc.CreateUserRequest{}
+
+	if err := json.Unmarshal(msg, &req); err != nil {
+		return nil, err
+	}
+
+	_, err := s.auth.Create(req.Email, req.Password)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return s.authenticate(req.Email, req.Password)
 }
+
 func (s *authController) DeleteUser(ctx context.Context, msg json.RawMessage) (interface{}, error) {
-	return nil, nil
+	req := rpc.CreateUserRequest{}
+
+	if err := json.Unmarshal(msg, &req); err != nil {
+		return nil, err
+	}
+
+	if err := CurrentUserMatchesEmail(ctx, s.auth, req.Email); err != nil {
+		return nil, err
+	}
+
+	return nil, s.auth.Delete(req.Email)
 }
+
 func (s *authController) Authenticate(ctx context.Context, msg json.RawMessage) (interface{}, error) {
-	return nil, nil
+	req := rpc.AuthenticateRequest{}
+
+	if err := json.Unmarshal(msg, &req); err != nil {
+		return nil, err
+	}
+
+	return s.authenticate(req.Email, req.Password)
 }
+
 func (s *authController) ChangePassword(ctx context.Context, msg json.RawMessage) (interface{}, error) {
-	return nil, nil
+	req := rpc.ChangePasswordRequest{}
+
+	if err := json.Unmarshal(msg, &req); err != nil {
+		return nil, err
+	}
+
+	user, err := GetCurrentUser(ctx, s.auth)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := gateway.CheckPassword(req.OldPassword, user.PasswordHash); err != nil {
+		return nil, err
+	}
+
+	return s.auth.ChangePassword(user.ID, req.NewPassword)
 }
+
 func (s *authController) Logout(ctx context.Context, msg json.RawMessage) (interface{}, error) {
-	return nil, nil
+	token := GetCurrentToken(ctx)
+
+	return nil, s.auth.Deauthenticate(token.Value)
+}
+
+func (s *authController) authenticate(email, pass string) (interface{}, error) {
+	token, err := s.auth.Authenticate(email, pass)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return token.Value, nil
 }

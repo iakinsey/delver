@@ -17,3 +17,4 @@ type Token struct {
 	Expires time.Time `json:"expires"`
 	Value   string    `json:"value"`
 }
+
