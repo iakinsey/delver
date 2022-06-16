@@ -26,8 +26,11 @@ type RobotsConfig struct {
 }
 
 type APIConfig struct {
-	Enabled bool   `json:"enabled"`
-	Address string `json:"address"`
+	Enabled    bool   `json:"enabled"`
+	Address    string `json:"address"`
+	AllowCors  bool   `json:"allow_cors"`
+	UserDBPath string `json:"user_db_path"`
+	DashDBPath string `json:"dash_db_path"`
 }
 
 type PersistentMapConfig struct {
@@ -76,8 +79,11 @@ func LoadConfig() Config {
 			UserAgent:  "delver pre-alpha",
 		},
 		API: APIConfig{
-			Enabled: true,
-			Address: ":8181",
+			Enabled:    true,
+			Address:    ":8181",
+			AllowCors:  true,
+			UserDBPath: DataFilePath("data", "users.db"),
+			DashDBPath: DataFilePath("data", "dash.db"),
 		},
 		Robots: RobotsConfig{
 			Expiration:        1 * time.Hour,

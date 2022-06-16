@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path"
@@ -10,9 +11,9 @@ import (
 )
 
 type MetricsController interface {
-	Put(msg json.RawMessage) (interface{}, error)
-	Get(msg json.RawMessage) (interface{}, error)
-	List(msg json.RawMessage) (interface{}, error)
+	Put(context.Context, json.RawMessage) (interface{}, error)
+	Get(context.Context, json.RawMessage) (interface{}, error)
+	List(context.Context, json.RawMessage) (interface{}, error)
 }
 
 type metricsController struct {
@@ -27,7 +28,7 @@ func NewMetricsController() MetricsController {
 	}
 }
 
-func (s *metricsController) Put(msg json.RawMessage) (interface{}, error) {
+func (s *metricsController) Put(ctx context.Context, msg json.RawMessage) (interface{}, error) {
 	var request map[string][]instrument.Metric
 
 	if err := json.Unmarshal(msg, &request); err != nil {
@@ -37,7 +38,7 @@ func (s *metricsController) Put(msg json.RawMessage) (interface{}, error) {
 	return nil, s.driver.Put(request)
 }
 
-func (s *metricsController) Get(msg json.RawMessage) (interface{}, error) {
+func (s *metricsController) Get(ctx context.Context, msg json.RawMessage) (interface{}, error) {
 	var query instrument.MetricsQuery
 
 	if err := json.Unmarshal(msg, &query); err != nil {
@@ -47,6 +48,6 @@ func (s *metricsController) Get(msg json.RawMessage) (interface{}, error) {
 	return s.driver.Get(query)
 }
 
-func (s *metricsController) List(msg json.RawMessage) (interface{}, error) {
+func (s *metricsController) List(ctx context.Context, msg json.RawMessage) (interface{}, error) {
 	return s.driver.List()
 }

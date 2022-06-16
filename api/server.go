@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net"
@@ -8,11 +9,27 @@ import (
 
 	"github.com/iakinsey/delver/api/controller"
 	"github.com/iakinsey/delver/config"
+	"github.com/iakinsey/delver/gateway"
+	"github.com/iakinsey/delver/types"
+	"github.com/iakinsey/delver/types/errs"
+	"github.com/iakinsey/delver/util"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
 
-type Controller func(json.RawMessage) (interface{}, error)
+var corsHeaders = map[string]string{
+	"Access-Control-Allow-Origin":      "*",
+	"Access-Control-Allow-Headers":     "*",
+	"Access-Control-Allow-Credentials": "true",
+	"Access-Control-Allow-Methods":     "GET, POST, OPTIONS",
+	"Access-Control-Max-Age":           "1728000",
+}
+var noAuthWhitelist = []string{
+	"/user/create",
+	"/user/authenticate",
+}
+
+type Controller func(context.Context, json.RawMessage) (interface{}, error)
 type APIResponse struct {
 	Code    int         `json:"http_code,omitempty"`
 	Success bool        `json:"success,omitempty"`
@@ -27,49 +44,93 @@ func StartHTTPServer() {
 		return
 	}
 
+	// TODO set user gateway path
+	user := gateway.NewUserGateway(conf.UserDBPath)
 	handler := http.NewServeMux()
 	l, err := net.Listen("tcp", conf.Address)
-	routes := getRoutes()
+	routes := getRoutes(conf, user)
 
 	if err != nil {
 		log.Fatalf("failed to start http server %s", err)
 	}
 
 	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if err := handleRequest(routes, w, r); err != nil {
-			log.Errorf("handle request failure: %s", err)
+		h := requestHandler{
+			user:   user,
+			conf:   conf,
+			routes: routes,
+			req:    r,
+			resp:   w,
 		}
+
+		h.handle()
 	})
 
 	log.Infof("http server listening on %s", conf.Address)
 	log.Fatal(http.Serve(l, handler))
 }
 
-func getRoutes() map[string]Controller {
+func getRoutes(conf config.APIConfig, user gateway.UserGateway) map[string]Controller {
 	routes := make(map[string]Controller)
 	metrics := controller.NewMetricsController()
+	dash := controller.NewDashboardController(gateway.NewDashboardGateway(conf.DashDBPath))
+	auth := controller.NewAuthController(user)
 
 	routes["/metrics/put"] = metrics.Put
 	routes["/metrics/get"] = metrics.Get
 	routes["/metrics/list"] = metrics.List
+	routes["/dashboard/save"] = dash.Save
+	routes["/dashboard/load"] = dash.Load
+	routes["/dashboard/delete"] = dash.Delete
+	routes["/dashboard/list"] = dash.List
+	routes["/user/create"] = auth.CreateUser
+	routes["/user/delete"] = auth.DeleteUser
+	routes["/user/authenticate"] = auth.Authenticate
+	routes["/user/change_password"] = auth.ChangePassword
+	routes["/user/logout"] = auth.Logout
 
 	return routes
 }
 
-func handleRequest(t map[string]Controller, w http.ResponseWriter, r *http.Request) error {
-	log.Infof("incoming api request for path %s", r.URL.String())
+type requestHandler struct {
+	user   gateway.UserGateway
+	conf   config.APIConfig
+	routes map[string]Controller
+	req    *http.Request
+	resp   http.ResponseWriter
+}
 
-	c, ok := t[r.URL.Path]
+func (s *requestHandler) perform() {
+	resp, err := s.handle()
 
-	if !ok {
-		return respondError(http.StatusNotFound, "", w)
+	if err != nil {
+		s.respondError(err)
+		return
 	}
 
-	b, err := io.ReadAll(r.Body)
+	s.respondSuccess(resp)
+}
+
+func (s *requestHandler) handle() (interface{}, error) {
+	log.Infof("incoming api request for path %s", s.req.URL.String())
+
+	ctx, err := s.getAuthContext()
+
+	if err != nil {
+		return nil, err
+	}
+
+	c, ok := s.routes[s.req.URL.Path]
+
+	if !ok {
+		return nil, errs.NewRequestError("Not found")
+	}
+
+	b, err := io.ReadAll(s.req.Body)
 
 	if err != nil {
 		log.Errorf("failed to read request body: %s", err)
-		return respondError(http.StatusBadRequest, "", w)
+		return nil, errs.NewRequestError("Malformed request")
 	}
 
 	var req json.RawMessage
@@ -77,23 +138,35 @@ func handleRequest(t map[string]Controller, w http.ResponseWriter, r *http.Reque
 	if len(b) > 0 {
 		if err := json.Unmarshal(b, &req); err != nil {
 			log.Errorf("failed to parse request body: %s", err)
-			return respondError(http.StatusBadRequest, "", w)
+			return nil, errs.NewRequestError("Malformed request body")
 		}
 	}
 
-	resp, err := c(req)
-
-	if err != nil {
-		log.Errorf("failure when calling controller: %s", err)
-		return respondError(http.StatusInternalServerError, "", w)
-	}
-
-	return respondSuccess(resp, w)
+	return c(ctx, req)
 }
 
-func respondSuccess(resp interface{}, w http.ResponseWriter) error {
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
+func (s *requestHandler) getAuthContext() (context.Context, error) {
+	parent := s.req.Context()
+	path := s.req.URL.Path
+	auth := s.req.Header.Get(string(types.AuthHeader))
+
+	// If the route doesn't require auth and no header is set then
+	// return the parent context
+	if auth == "" && util.StringInSlice(path, noAuthWhitelist) {
+		return parent, nil
+	}
+
+	t, err := s.user.ValidateToken(auth)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return context.WithValue(parent, types.AuthHeader, t), nil
+}
+
+func (s *requestHandler) respondSuccess(resp interface{}) {
+	s.resp.WriteHeader(http.StatusOK)
 
 	apiResp := APIResponse{
 		Code:    http.StatusOK,
@@ -101,36 +174,45 @@ func respondSuccess(resp interface{}, w http.ResponseWriter) error {
 		Data:    resp,
 	}
 
-	return respond(apiResp, w)
+	s.respond(apiResp)
 }
 
-func respondError(code int, msg string, w http.ResponseWriter) error {
-	w.WriteHeader(code)
-	w.Header().Set("Content-Type", "application/json")
-
-	if msg == "" {
-		msg = http.StatusText(code)
-	}
-
+func (s *requestHandler) respondError(theErr error) {
 	apiResp := APIResponse{
-		Code:    code,
 		Success: false,
-		Error:   msg,
+		Error:   theErr.Error(),
+		Code:    errs.InternalError,
 	}
 
-	return respond(apiResp, w)
+	if userErr, ok := theErr.(*errs.ApplicationError); ok {
+		s.resp.WriteHeader(http.StatusBadRequest)
+		apiResp.Code = userErr.Code
+	} else {
+		log.Error(errors.Wrap(theErr, "handle request failure"))
+		s.resp.WriteHeader(http.StatusInternalServerError)
+	}
+
+	s.respond(apiResp)
 }
 
-func respond(apiResp APIResponse, w http.ResponseWriter) error {
+func (s *requestHandler) respond(apiResp APIResponse) {
+	s.resp.Header().Set("Content-Type", "application/json")
+
+	if s.conf.AllowCors {
+		for k, v := range corsHeaders {
+			s.resp.Header().Set(k, v)
+		}
+	}
+
 	b, err := json.Marshal(apiResp)
 
 	if err != nil {
-		return errors.Wrap(err, "serialize response error")
+		log.Error(errors.Wrap(err, "serialize response error"))
+		return
 	}
 
-	if _, err = w.Write(b); err != nil {
-		return errors.Wrap(err, "write response error")
+	if _, err = s.resp.Write(b); err != nil {
+		log.Error(errors.Wrap(err, "write response error"))
+		return
 	}
-
-	return nil
 }

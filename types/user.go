@@ -2,6 +2,10 @@ package types
 
 import "time"
 
+type TAuthKey string
+
+var AuthHeader = TAuthKey("auth")
+
 type User struct {
 	ID           string `json:"id"`
 	Email        string `json:"email"`

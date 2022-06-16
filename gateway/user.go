@@ -25,7 +25,7 @@ type UserGateway interface {
 	Delete(string) error
 	Authenticate(string, string) (*types.Token, error)
 	Deauthenticate(string) error
-	IsAuthenticated(string, string) error
+	ValidateToken(string) (*types.Token, error)
 	ChangePassword(string, string) (*types.Token, error)
 }
 
@@ -55,7 +55,7 @@ var createUser = "INSERT INTO user (id, email, password_hash) VALUES (?, ?, ?)"
 var changePassword = "UPDATE user SET password_hash = ? WHERE id = ?"
 var deleteUser = "DELETE FROM user WHERE id = ?"
 var setToken = "INSERT INTO TOKEN (value, user_id, expires) VALUES (?, ?, ?)"
-var getToken = "SELECT value, user_id, expires FROM TOKEN WHERE user_id = ? AND value = ?"
+var getToken = "SELECT value, user_id, expires FROM TOKEN WHERE value = ?"
 var deleteToken = "DELETE FROM token WHERE value = ?"
 var clearTokens = "DELETE FROM token WHERE user_id = ?"
 
@@ -147,22 +147,23 @@ func (s *userGateway) Deauthenticate(value string) error {
 	return err
 }
 
-func (s *userGateway) IsAuthenticated(userId, tokenValue string) error {
-	t, err := s.getToken(userId, tokenValue)
+func (s *userGateway) ValidateToken(tokenValue string) (*types.Token, error) {
+	t, err := s.getToken(tokenValue)
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
+	// Happy path, if token exists and isnt expired, return success early
 	if t.Expires.After(time.Now()) {
-		return nil
+		return t, nil
 	}
 
 	if err := s.Deauthenticate(tokenValue); err != nil {
-		return err
+		return nil, err
 	}
 
-	return errs.NewAuthError("Session expired")
+	return nil, errs.NewAuthError("Session expired")
 }
 
 func (s *userGateway) ChangePassword(userID, pass string) (*types.Token, error) {
@@ -204,8 +205,8 @@ func (s *userGateway) getBy(query, key string) (*types.User, error) {
 	return user, nil
 }
 
-func (s *userGateway) getToken(userID, tokenValue string) (*types.Token, error) {
-	row := s.db.QueryRow(getToken, userID, tokenValue)
+func (s *userGateway) getToken(tokenValue string) (*types.Token, error) {
+	row := s.db.QueryRow(getToken, tokenValue)
 
 	if row.Err() != nil {
 		return nil, row.Err()
