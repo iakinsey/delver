@@ -3,8 +3,10 @@ package types
 import "time"
 
 type TAuthKey string
+type TUserKey string
 
 var AuthHeader = TAuthKey("auth")
+var UserHeader = TUserKey("user")
 
 type User struct {
 	ID           string `json:"id"`
@@ -17,4 +19,3 @@ type Token struct {
 	Expires time.Time `json:"expires"`
 	Value   string    `json:"value"`
 }
-
