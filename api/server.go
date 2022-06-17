@@ -114,6 +114,10 @@ func (s *requestHandler) Perform() {
 func (s *requestHandler) handle() (interface{}, error) {
 	log.Infof("incoming api request for path %s", s.req.URL.String())
 
+	if s.req.Method == http.MethodOptions && s.conf.AllowCors {
+		return nil, nil
+	}
+
 	ctx, err := s.getAuthContext()
 
 	if err != nil {
@@ -176,18 +180,17 @@ func (s *requestHandler) getAuthContext() (context.Context, error) {
 }
 
 func (s *requestHandler) respondSuccess(resp interface{}) {
-	s.resp.WriteHeader(http.StatusOK)
-
 	apiResp := APIResponse{
 		Code:    http.StatusOK,
 		Success: true,
 		Data:    resp,
 	}
 
-	s.respond(apiResp)
+	s.respond(http.StatusOK, apiResp)
 }
 
 func (s *requestHandler) respondError(theErr error) {
+	httpCode := http.StatusInternalServerError
 	apiResp := APIResponse{
 		Success: false,
 		Error:   theErr.Error(),
@@ -195,17 +198,16 @@ func (s *requestHandler) respondError(theErr error) {
 	}
 
 	if userErr, ok := theErr.(*errs.ApplicationError); ok {
-		s.resp.WriteHeader(http.StatusBadRequest)
+		httpCode = http.StatusBadRequest
 		apiResp.Code = userErr.Code
 	} else {
 		log.Error(errors.Wrap(theErr, "handle request failure"))
-		s.resp.WriteHeader(http.StatusInternalServerError)
 	}
 
-	s.respond(apiResp)
+	s.respond(httpCode, apiResp)
 }
 
-func (s *requestHandler) respond(apiResp APIResponse) {
+func (s *requestHandler) respond(httpCode int, apiResp APIResponse) {
 	s.resp.Header().Set("Content-Type", "application/json")
 
 	if s.conf.AllowCors {
@@ -214,6 +216,7 @@ func (s *requestHandler) respond(apiResp APIResponse) {
 		}
 	}
 
+	s.resp.WriteHeader(httpCode)
 	b, err := json.Marshal(apiResp)
 
 	if err != nil {

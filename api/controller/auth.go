@@ -84,7 +84,13 @@ func (s *authController) ChangePassword(ctx context.Context, msg json.RawMessage
 		return nil, err
 	}
 
-	return s.auth.ChangePassword(user.ID, req.NewPassword)
+	token, err := s.auth.ChangePassword(user.ID, req.NewPassword)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return token.Value, nil
 }
 
 func (s *authController) Logout(ctx context.Context, msg json.RawMessage) (interface{}, error) {
