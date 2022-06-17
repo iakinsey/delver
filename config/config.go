@@ -80,7 +80,7 @@ func LoadConfig() Config {
 		},
 		API: APIConfig{
 			Enabled:    true,
-			Address:    ":8181",
+			Address:    ":8080",
 			AllowCors:  true,
 			UserDBPath: DataFilePath("data", "users.db"),
 			DashDBPath: DataFilePath("data", "dash.db"),

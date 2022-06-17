@@ -102,7 +102,7 @@ func StartApplication(app config.Application, resources map[string]interface{}, 
 func AwaitTermination(resources map[string]interface{}, workers map[string]worker.WorkerManager) {
 	done := make(chan bool)
 	sigterm := make(chan os.Signal, 1)
-	signal.Notify(sigterm, syscall.SIGTERM)
+	signal.Notify(sigterm, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
 	<-sigterm
 
