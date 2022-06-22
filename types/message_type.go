@@ -8,4 +8,5 @@ const (
 	FetcherResponseType
 	CompositeAnalysisType
 	TimerType
+	MetricType
 )
