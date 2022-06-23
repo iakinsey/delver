@@ -81,8 +81,6 @@ func (s *searchGateway) Declare(index types.Index) {
 	} else if res.StatusCode >= 300 {
 		log.Panicf("failed to create index (code %d): %s", res.StatusCode, res.String())
 	}
-
-	return
 }
 
 func (s *searchGateway) IndexMany(entities []*types.Indexable) error {

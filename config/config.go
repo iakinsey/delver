@@ -33,6 +33,11 @@ type APIConfig struct {
 	DashDBPath string `json:"dash_db_path"`
 }
 
+type StreamerConfig struct {
+	Enabled bool   `json:"enabled"`
+	Address string `json:"address"`
+}
+
 type PersistentMapConfig struct {
 	GCInterval          time.Duration `json:"gc_interval"`
 	GCDiscardRatio      float64       `json:"gc_discard_ratio"`
@@ -53,7 +58,8 @@ type Config struct {
 	CompaniesPath       string              `json:"companies_path"`
 	Adversarial         AdversarialConfig   `json:"adversarial"`
 	HTTPClient          HTTPClientConfig    `json:"http_client"`
-	API                 APIConfig           `json:"api_config"`
+	API                 APIConfig           `json:"api"`
+	Streamer            StreamerConfig      `json:"streamer"`
 	Robots              RobotsConfig        `json:"robots"`
 	PersistentMap       PersistentMapConfig `json:"persistent_map"`
 }
@@ -84,6 +90,10 @@ func LoadConfig() Config {
 			AllowCors:  true,
 			UserDBPath: DataFilePath("data", "users.db"),
 			DashDBPath: DataFilePath("data", "dash.db"),
+		},
+		Streamer: StreamerConfig{
+			Enabled: true,
+			Address: ":26548",
 		},
 		Robots: RobotsConfig{
 			Expiration:        1 * time.Hour,
