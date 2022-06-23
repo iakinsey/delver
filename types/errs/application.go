@@ -6,6 +6,7 @@ const (
 	RequestError
 	AuthError
 	DashError
+	StreamError
 )
 
 type ApplicationError struct {
@@ -51,10 +52,21 @@ func NewRequestError(msg string) error {
 	}
 }
 
+func NewStreamError(msg string) error {
+	return &ApplicationError{
+		Code: StreamError,
+		Msg:  msg,
+	}
+}
+
 func IsAuthError(err error) bool {
 	return IsApplicationError(AuthError, err)
 }
 
 func IsDashError(err error) bool {
 	return IsApplicationError(DashError, err)
+}
+
+func IsStreamError(err error) bool {
+	return IsApplicationError(StreamError, err)
 }
