@@ -82,13 +82,7 @@ func (s *clientStreamer) getFilter(conn *websocket.Conn) (map[string]interface{}
 		return nil, errors.Wrap(err, "failed to parse encoded filter")
 	}
 
-	filter := make(map[string]interface{})
-
-	if err := json.Unmarshal(decoded, &filter); err != nil {
-		return nil, errors.Wrap(err, "failed to parse decoded filter")
-	}
-
-	return filter, nil
+	return s.decodeFilters(decoded)
 }
 
 func (s *clientStreamer) decodeFilters(message []byte) (map[string]interface{}, error) {
@@ -119,20 +113,12 @@ func (s *clientStreamer) decodeFilters(message []byte) (map[string]interface{}, 
 			return nil, fmt.Errorf("unknown filter type %s", filter.DataType)
 		}
 
-		if err := setFilter(key, val, result, st); err != nil {
-			return nil, err
+		if err := json.Unmarshal(val, st); err != nil {
+			return nil, errors.Wrap(err, "failed to parse filter value")
 		}
+
+		result[key] = st
 	}
 
 	return result, nil
-}
-
-func setFilter(key string, val json.RawMessage, result map[string]interface{}, st interface{}) error {
-	if err := json.Unmarshal(val, st); err != nil {
-		return errors.Wrap(err, "failed to parse filter value")
-	}
-
-	result[key] = st
-
-	return nil
 }
