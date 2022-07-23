@@ -1,5 +1,7 @@
 package rpc
 
+import "encoding/json"
+
 const FilterTypeArticle = "article"
 const FilterTypePage = "page"
 const FilterTypeMetric = "metric"
@@ -8,10 +10,11 @@ type Filter struct {
 	DataType string `json:"data_type"`
 }
 
-type ArticleFilter struct {
-	Fields []string           `json:"fields"`
-	Range  int                `json:"range"`
-	Query  ArticleFilterQuery `json:"query"`
+type Aggregator struct {
+	Name              string `json:"agg_name"`
+	TimeField         string `json:"time_field"`
+	AggField          string `json:"agg_field"`
+	TimeWindowSeconds int32  `json:"time_window_seconds"`
 }
 
 type ArticleFilterQuery struct {
@@ -20,11 +23,7 @@ type ArticleFilterQuery struct {
 	Company []string `json:"company"`
 }
 
-type PageFilter struct {
-	Fields []string        `json:"fields"`
-	Range  int             `json:"range"`
-	Query  PageFilterQuery `json:"query"`
-}
+type MetricFilterQuery struct{}
 
 type PageFilterQuery struct {
 	Url      []string `json:"url"`
@@ -34,5 +33,11 @@ type PageFilterQuery struct {
 	Language []string `json:"language"`
 }
 
-type MetricFilter struct {
+type FilterParams struct {
+	Fields   []string        `json:"fields"`
+	Range    int             `json:"range"`
+	RawQuery json.RawMessage `json:"query"`
+	Options  map[string]bool `json:"options"`
+	Agg      Aggregator      `json:"agg"`
+	Query    interface{}
 }
