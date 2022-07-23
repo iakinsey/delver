@@ -50,18 +50,23 @@ type MetricsConfig struct {
 	URI     string `json:"uri"`
 }
 
+type ClientStreamerConfig struct {
+	SearchAddresses []string
+}
+
 type Config struct {
-	WorkerCounts        int                 `json:"worker_counts"`
-	Metrics             MetricsConfig       `json:"metrics"`
-	DefaultSaveInterval time.Duration       `json:"default_save_interval"`
-	CountriesPath       string              `json:"countries_path"`
-	CompaniesPath       string              `json:"companies_path"`
-	Adversarial         AdversarialConfig   `json:"adversarial"`
-	HTTPClient          HTTPClientConfig    `json:"http_client"`
-	API                 APIConfig           `json:"api"`
-	Streamer            StreamerConfig      `json:"streamer"`
-	Robots              RobotsConfig        `json:"robots"`
-	PersistentMap       PersistentMapConfig `json:"persistent_map"`
+	WorkerCounts        int                  `json:"worker_counts"`
+	Metrics             MetricsConfig        `json:"metrics"`
+	DefaultSaveInterval time.Duration        `json:"default_save_interval"`
+	CountriesPath       string               `json:"countries_path"`
+	CompaniesPath       string               `json:"companies_path"`
+	Adversarial         AdversarialConfig    `json:"adversarial"`
+	HTTPClient          HTTPClientConfig     `json:"http_client"`
+	API                 APIConfig            `json:"api"`
+	Streamer            StreamerConfig       `json:"streamer"`
+	Robots              RobotsConfig         `json:"robots"`
+	PersistentMap       PersistentMapConfig  `json:"persistent_map"`
+	ClientStreamer      ClientStreamerConfig `json:"client_streamer"`
 }
 
 func LoadConfig() Config {

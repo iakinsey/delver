@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"strings"
 
-	"github.com/elastic/go-elasticsearch/esapi"
 	"github.com/elastic/go-elasticsearch/v7"
+	"github.com/elastic/go-elasticsearch/v7/esapi"
 	"github.com/elastic/go-elasticsearch/v7/esutil"
 	"github.com/iakinsey/delver/types"
 	"github.com/pkg/errors"
@@ -27,6 +29,19 @@ type SearchGateway interface {
 	Index(*types.Indexable) error
 	IndexMany([]*types.Indexable) error
 	Declare(types.Index)
+	Search(query io.Reader) (entities []json.RawMessage, err error)
+}
+
+type hitsEntity struct {
+	Source json.RawMessage `json:"_source"`
+}
+
+type searchResultHits struct {
+	Hits []hitsEntity `json:"hits"`
+}
+
+type searchResult struct {
+	Hits searchResultHits `json:"hits"`
 }
 
 func NewSearchGateway(addresses []string) SearchGateway {
@@ -41,6 +56,36 @@ func NewSearchGateway(addresses []string) SearchGateway {
 	return &searchGateway{
 		client: client,
 	}
+}
+
+func (s *searchGateway) Search(query io.Reader) (entities []json.RawMessage, err error) {
+	res, err := s.client.Search(
+		s.client.Search.WithBody(query),
+	)
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to search entity")
+	} else if res.StatusCode >= 300 {
+		return nil, fmt.Errorf("failed to search entity (code %d): %s", res.StatusCode, res.String())
+	}
+
+	data, err := ioutil.ReadAll(res.Body)
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read search output")
+	}
+
+	result := searchResult{}
+
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, errors.Wrap(err, "failed to parse search output")
+	}
+
+	for _, hit := range result.Hits.Hits {
+		entities = append(entities, hit.Source)
+	}
+
+	return
 }
 
 func (s *searchGateway) Index(indexable *types.Indexable) error {
