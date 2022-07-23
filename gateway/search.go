@@ -14,7 +14,6 @@ import (
 	"github.com/elastic/go-elasticsearch/v7/esutil"
 	"github.com/iakinsey/delver/types"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -50,7 +49,7 @@ func NewSearchGateway(addresses []string) SearchGateway {
 	})
 
 	if err != nil {
-		logrus.Panicf("failed to create search gateway: %s", err)
+		log.Panicf("failed to create search gateway: %s", err)
 	}
 
 	return &searchGateway{
@@ -176,5 +175,5 @@ func (s *searchGateway) getOrCreateBulkIndexer(index string) (esutil.BulkIndexer
 }
 
 func onBulkFailure(ctx context.Context, bii esutil.BulkIndexerItem, biri esutil.BulkIndexerResponseItem, err error) {
-	logrus.Errorf("failed to index entity %s: %s", bii.DocumentID, err)
+	log.Errorf("failed to index entity %s: %s", bii.DocumentID, err)
 }
