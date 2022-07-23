@@ -11,10 +11,10 @@ type Filter struct {
 }
 
 type Aggregator struct {
-	Name              string `json:"agg_name"`
-	TimeField         string `json:"time_field"`
-	AggField          string `json:"agg_field"`
-	TimeWindowSeconds int32  `json:"time_window_seconds"`
+	Name              string  `json:"agg_name"`
+	TimeField         string  `json:"time_field"`
+	AggField          string  `json:"agg_field"`
+	TimeWindowSeconds float64 `json:"time_window_seconds"`
 }
 
 type ArticleFilterQuery struct {
@@ -38,6 +38,7 @@ type FilterParams struct {
 	Range    int             `json:"range"`
 	RawQuery json.RawMessage `json:"query"`
 	Options  map[string]bool `json:"options"`
-	Agg      Aggregator      `json:"agg"`
+	Callback string          `json:"callback"`
+	Agg      *Aggregator     `json:"agg"`
 	Query    interface{}
 }

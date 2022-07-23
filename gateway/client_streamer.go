@@ -12,6 +12,7 @@ import (
 	"github.com/iakinsey/delver/filter"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/rpc"
+	"github.com/iakinsey/delver/util"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/websocket"
@@ -152,8 +153,84 @@ func (s *clientStreamer) Preload(c client) error {
 }
 
 func (s *clientStreamer) applyTransforms(entities []json.RawMessage, filter rpc.FilterParams) ([]byte, error) {
-	// TODO START HERE NEXT
-	return nil, nil
+	if filter.Agg == nil && filter.Callback == "" {
+		res, err := json.Marshal(entities)
+
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to serialize entities while preparing output data")
+		}
+
+		return res, nil
+	} else if filter.Agg == nil {
+		var preparedEntities []map[string]interface{}
+
+		for _, rawEntity := range entities {
+			var preparedEntity map[string]interface{}
+
+			if err := json.Unmarshal(rawEntity, &preparedEntity); err != nil {
+				return nil, errors.Wrap(err, "failed to parse entity while preparing output data")
+			}
+
+			preparedEntity["callback"] = filter.Callback
+			preparedEntities = append(preparedEntities, preparedEntity)
+		}
+
+		res, err := json.Marshal(preparedEntities)
+
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to serialize entity while preparing output data")
+		}
+
+		return res, nil
+	}
+
+	agg, err := util.NewAggregator(
+		filter.Agg.Name,
+		filter.Agg.TimeField,
+		filter.Agg.AggField,
+		filter.Agg.TimeWindowSeconds,
+	)
+
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid aggregator params while preparing output data")
+	}
+
+	var results []interface{}
+
+	for _, rawEntity := range entities {
+		var entity map[string]float64
+
+		if err := json.Unmarshal(rawEntity, &entity); err != nil {
+			return nil, errors.Wrap(err, "failed to parse entity while preparing aggregate output data")
+		}
+
+		m := agg.Perform(entity)
+
+		if m == nil {
+			continue
+		}
+
+		if filter.Callback != "" {
+			m2 := make(map[string]interface{})
+
+			for k, v := range m {
+				m2[k] = v
+			}
+
+			m2["callback"] = filter.Callback
+			results = append(results, entity)
+		} else {
+			results = append(results, entity)
+		}
+	}
+
+	res, err := json.Marshal(results)
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to serialize entities while preparing aggregate output data")
+	}
+
+	return res, nil
 }
 
 func (s *clientStreamer) getFilter(conn *websocket.Conn) (map[string]rpc.FilterParams, error) {
@@ -191,7 +268,7 @@ func (s *clientStreamer) decodeFilters(message []byte) (map[string]rpc.FilterPar
 
 		var fp rpc.FilterParams
 
-		if err := json.Unmarshal(val, fp); err != nil {
+		if err := json.Unmarshal(val, &fp); err != nil {
 			return nil, errors.Wrap(err, "failed to parse filter value")
 		}
 
