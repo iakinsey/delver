@@ -15,9 +15,11 @@ type SearchFilter interface {
 }
 
 func GetStreamFilter(params rpc.FilterParams) StreamFilter {
+	// TODO
 	return nil
 }
 
 func GetSearchFilter(params rpc.FilterParams) SearchFilter {
+	// TODO
 	return nil
 }
