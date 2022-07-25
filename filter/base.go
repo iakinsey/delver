@@ -3,11 +3,12 @@ package filter
 import (
 	"io"
 
+	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/rpc"
 )
 
 type StreamFilter interface {
-	Perform(entities interface{}) (interface{}, error)
+	Perform(entities []*types.Indexable) (interface{}, error)
 }
 
 type SearchFilter interface {

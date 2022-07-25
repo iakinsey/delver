@@ -1,15 +1,21 @@
 package types
 
 type Indexable struct {
-	ID    string
-	Index string
+	ID         string
+	Index      string
+	DataType   string
 	Streamable bool
-	Data  interface{}
+	Data       interface{}
 }
 
 type Index struct {
 	Name string
 	Spec string
+}
+
+type ClientStreamerMessage struct {
+	Type string      `json:"type"`
+	Data interface{} `json:"data"`
 }
 
 var Indices = []Index{

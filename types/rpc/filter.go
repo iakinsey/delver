@@ -37,6 +37,7 @@ type FilterParams struct {
 	Fields   []string        `json:"fields"`
 	Range    int             `json:"range"`
 	RawQuery json.RawMessage `json:"query"`
+	DataType string          `json:"data_type"`
 	Options  map[string]bool `json:"options"`
 	Callback string          `json:"callback"`
 	Agg      *Aggregator     `json:"agg"`

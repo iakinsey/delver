@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/hashicorp/go-multierror"
 	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/filter"
 	"github.com/iakinsey/delver/types"
@@ -26,13 +27,13 @@ type client struct {
 
 type clientStreamer struct {
 	clients       map[string]client
-	socketToUuid  map[websocket.Conn][]string
 	searchGateway SearchGateway
+	in            chan []*types.Indexable
 }
 
 type ClientStreamer interface {
 	Start() error
-	Publish(entities []*types.Indexable) error
+	Publish(entity []*types.Indexable)
 }
 
 func NewClientStreamer() ClientStreamer {
@@ -42,6 +43,7 @@ func NewClientStreamer() ClientStreamer {
 	return &clientStreamer{
 		clients:       make(map[string]client),
 		searchGateway: searchGateway,
+		in:            make(chan []*types.Indexable),
 	}
 }
 
@@ -60,32 +62,38 @@ func (s *clientStreamer) Start() error {
 	}
 
 	handler.Handle("/", websocket.Handler(func(conn *websocket.Conn) {
-		// TODO
-		/*``
-		if err := websocket.JSON.Receive(conn & message); err != nil {
+		uuids, err := s.Register(conn)
 
+		log.Info("Connect %s", conn.RemoteAddr().String())
+
+		if err != nil && uuids != nil {
+			log.Errorf("failed to register client: %s", err)
+			s.Unregister(uuids)
+		} else {
+			conn.Read(make([]byte, 1))
+			s.Unregister(uuids)
 		}
-		*/
+
+		log.Info("Disconnect %s", conn.RemoteAddr().String())
 	}))
 
 	log.Infof("streamer server listening on %s", conf.Address)
+	go s.listen()
 	log.Fatal(http.Serve(l, handler))
 
 	return nil
 }
 
-func (s *clientStreamer) Publish(entities []*types.Indexable) error {
-	return nil
+func (s *clientStreamer) Publish(entities []*types.Indexable) {
+	s.in <- entities
 }
 
-func (s *clientStreamer) Register(conn *websocket.Conn) error {
+func (s *clientStreamer) Register(conn *websocket.Conn) (uuids []string, err error) {
 	filters, err := s.getFilter(conn)
 
 	if err != nil {
-		return err
+		return
 	}
-
-	s.socketToUuid[*conn] = make([]string, 0)
 
 	for key, val := range filters {
 		s.clients[key] = client{
@@ -93,32 +101,24 @@ func (s *clientStreamer) Register(conn *websocket.Conn) error {
 			filter:       val,
 			streamFilter: filter.GetStreamFilter(val),
 		}
-		s.socketToUuid[*conn] = append(s.socketToUuid[*conn], key)
+
+		uuids = append(uuids, key)
 		c := s.clients[key]
 
 		if preload, ok := c.filter.Options["preload"]; preload && ok {
 			if err = s.Preload(c); err != nil {
-				return err
+				return
 			}
 		}
 	}
 
-	return nil
+	return
 }
 
-func (s *clientStreamer) Unregister(conn *websocket.Conn) {
-	uuids, ok := s.socketToUuid[*conn]
-
-	// TODO should return error?
-	if !ok {
-		return
-	}
-
+func (s *clientStreamer) Unregister(uuids []string) {
 	for _, u := range uuids {
 		delete(s.clients, u)
 	}
-
-	delete(s.socketToUuid, *conn)
 }
 
 func (s *clientStreamer) Preload(c client) error {
@@ -147,6 +147,58 @@ func (s *clientStreamer) Preload(c client) error {
 
 	if _, err := c.conn.Write(data); err != nil {
 		return errors.Wrap(err, "failed to publish preload data to client")
+	}
+
+	return nil
+}
+
+func (s *clientStreamer) listen() {
+	for {
+		indexables := <-s.in
+		entityMap := make(map[string][]*types.Indexable)
+		var multiErr error
+
+		// group entities by data type
+		for _, entity := range indexables {
+			entityMap[entity.DataType] = append(entityMap[entity.DataType], entity)
+		}
+
+		for _, c := range s.clients {
+			entities, ok := entityMap[c.filter.DataType]
+
+			if !ok {
+				continue
+			}
+
+			results, err := c.streamFilter.Perform(entities)
+
+			if err != nil {
+				multierror.Append(multiErr, err)
+			}
+
+			if results == nil {
+				continue
+			}
+
+			if err = s.send(c, results); err != nil {
+				multierror.Append(multiErr, err)
+			}
+		}
+
+		if multiErr != nil {
+			log.Error("errors during notify", multiErr)
+		}
+	}
+}
+
+func (s *clientStreamer) send(c client, data interface{}) error {
+	msg := types.ClientStreamerMessage{
+		Type: c.filter.DataType,
+		Data: data,
+	}
+
+	if err := websocket.JSON.Send(c.conn, msg); err != nil {
+		return errors.Wrap(err, "failed to send data to client")
 	}
 
 	return nil
