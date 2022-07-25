@@ -13,6 +13,7 @@ func NewArticleTransformer() Transformer {
 }
 
 func (s *articleTransformer) Perform(msg json.RawMessage) (*types.Indexable, error) {
+	// TODO
 	return nil, nil
 }
 
