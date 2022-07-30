@@ -9,8 +9,9 @@ import (
 )
 
 type transformer struct {
-	t      []transformers.Transformer
-	search gateway.SearchGateway
+	t        []transformers.Transformer
+	search   gateway.SearchGateway
+	streamer gateway.ClientStreamer
 }
 
 type TransformerArgs struct {
@@ -32,8 +33,9 @@ func NewTransformerWorker(opts TransformerArgs) worker.Worker {
 	}
 
 	return &transformer{
-		t:      t,
-		search: search,
+		t:        t,
+		search:   search,
+		streamer: gateway.NewClientStreamer(),
 	}
 }
 
@@ -59,7 +61,7 @@ func (s *transformer) OnMessage(msg types.Message) (interface{}, error) {
 		tErr = multierror.Append(tErr, err)
 	}
 
-	if err := s.stream(entities); err != nil {
+	if err := s.streamer.Publish(entities); err != nil {
 		tErr = multierror.Append(tErr, err)
 	}
 
@@ -67,7 +69,3 @@ func (s *transformer) OnMessage(msg types.Message) (interface{}, error) {
 }
 
 func (s *transformer) OnComplete() {}
-
-func (s *transformer) stream(entities []*types.Indexable) error {
-	return nil
-}

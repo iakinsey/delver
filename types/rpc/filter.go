@@ -41,5 +41,6 @@ type FilterParams struct {
 	Options  map[string]bool `json:"options"`
 	Callback string          `json:"callback"`
 	Agg      *Aggregator     `json:"agg"`
+	DoNothing bool
 	Query    interface{}
 }

@@ -16,7 +16,8 @@ type SearchFilter interface {
 }
 
 func GetStreamFilter(params rpc.FilterParams) StreamFilter {
-	// TODO
+	// TODO START HERE NEXT
+	// create all stream filters and transformers
 	return nil
 }
 
