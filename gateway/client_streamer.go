@@ -33,7 +33,7 @@ type clientStreamer struct {
 
 type ClientStreamer interface {
 	Start() error
-	Publish(entity []*types.Indexable)
+	Publish(entities []*types.Indexable) error
 }
 
 func NewClientStreamer() ClientStreamer {
@@ -68,24 +68,53 @@ func (s *clientStreamer) Start() error {
 
 		if err != nil && uuids != nil {
 			log.Errorf("failed to register client: %s", err)
-			s.Unregister(uuids)
 		} else {
+			// wait until client erroneously sends data or disconnects
 			conn.Read(make([]byte, 1))
-			s.Unregister(uuids)
 		}
 
+		s.Unregister(uuids)
 		log.Info("Disconnect %s", conn.RemoteAddr().String())
 	}))
 
 	log.Infof("streamer server listening on %s", conf.Address)
-	go s.listen()
 	log.Fatal(http.Serve(l, handler))
 
 	return nil
 }
 
-func (s *clientStreamer) Publish(entities []*types.Indexable) {
-	s.in <- entities
+func (s *clientStreamer) Publish(indexables []*types.Indexable) error {
+	entityMap := make(map[string][]*types.Indexable)
+	var multiErr error
+
+	// group entities by data type
+	for _, entity := range indexables {
+		entityMap[entity.DataType] = append(entityMap[entity.DataType], entity)
+	}
+
+	for _, c := range s.clients {
+		entities, ok := entityMap[c.filter.DataType]
+
+		if !ok {
+			continue
+		}
+
+		results, err := c.streamFilter.Perform(entities)
+
+		if err != nil {
+			multierror.Append(multiErr, err)
+		}
+
+		if results == nil {
+			continue
+		}
+
+		if err = s.send(c, results); err != nil {
+			multierror.Append(multiErr, err)
+		}
+	}
+
+	return multiErr
 }
 
 func (s *clientStreamer) Register(conn *websocket.Conn) (uuids []string, err error) {
@@ -150,45 +179,6 @@ func (s *clientStreamer) Preload(c client) error {
 	}
 
 	return nil
-}
-
-func (s *clientStreamer) listen() {
-	for {
-		indexables := <-s.in
-		entityMap := make(map[string][]*types.Indexable)
-		var multiErr error
-
-		// group entities by data type
-		for _, entity := range indexables {
-			entityMap[entity.DataType] = append(entityMap[entity.DataType], entity)
-		}
-
-		for _, c := range s.clients {
-			entities, ok := entityMap[c.filter.DataType]
-
-			if !ok {
-				continue
-			}
-
-			results, err := c.streamFilter.Perform(entities)
-
-			if err != nil {
-				multierror.Append(multiErr, err)
-			}
-
-			if results == nil {
-				continue
-			}
-
-			if err = s.send(c, results); err != nil {
-				multierror.Append(multiErr, err)
-			}
-		}
-
-		if multiErr != nil {
-			log.Error("errors during notify", multiErr)
-		}
-	}
 }
 
 func (s *clientStreamer) send(c client, data interface{}) error {
