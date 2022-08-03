@@ -7,12 +7,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const (
-	Article = "article"
-	Metric  = "metric"
-	Page    = "page"
-)
-
 type Transformer interface {
 	Perform(msg json.RawMessage) (*types.Indexable, error)
 	Input() types.MessageType
@@ -21,14 +15,14 @@ type Transformer interface {
 
 func GetTransformer(name string) Transformer {
 	switch name {
-	case Article:
+	case types.ArticleIndexable:
 		return NewArticleTransformer()
-	case Metric:
+	case types.MetricIndexable:
 		return NewMetricTransformer()
-	case Page:
+	case types.PageIndexable:
 		return NewPageTransformer()
 	default:
-		log.Panicf("unknown transformer %s", name)
+		log.Panicf("unknown transformer: %s", name)
 	}
 
 	return nil
