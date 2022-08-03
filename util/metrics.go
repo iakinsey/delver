@@ -2,6 +2,7 @@ package util
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -82,7 +83,7 @@ func LoadMetrics() metrics.MetricSink {
 	}
 
 	m := metrics.NewInmemSink(time.Second, time.Minute)
-	ctx := ContextWithSigterm(nil)
+	ctx := ContextWithSigterm(context.Background())
 
 	go m.Stream(ctx, NewMetricsEncoder(conf.URI))
 

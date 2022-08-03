@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/iakinsey/delver/types/rpc"
+	"github.com/iakinsey/delver/util"
 	"github.com/pkg/errors"
 )
 
@@ -17,26 +17,10 @@ type articleSearchFilter struct {
 	rpc.ArticleFilterQuery
 
 	Must            []interface{}
-	FieldConstraint []string
+	FieldConstraint string
 	Complete        bool
 }
 
-const defaultDaysLookback = 90
-
-var defaultFields = []string{"title", "url", "url_md5", "found"}
-
-const queryTemplate = `{
-    "from": 0,
-    "size": 10000,
-    "sort": [
-        {"found": {"order": "desc"}}
-    ],
-    "query": {
-        "bool": {
-            "must": %s
-        }
-	}
-}`
 const dateRangeTemplate = `{
 	"range": {"found": {"gte": %d}}
 }`
@@ -51,17 +35,12 @@ const companyTemplate = `
 `
 
 func NewArticleSearchFilter(params rpc.FilterParams) SearchFilter {
-	articleFilter, ok := params.Query.(rpc.ArticleFilterQuery)
-
-	if !ok {
-		log.Fatalf("failed to cast to article filter")
-	}
+	articleFilter := params.Query.(rpc.ArticleFilterQuery)
 
 	return &articleSearchFilter{
 		FilterParams:       params,
 		ArticleFilterQuery: articleFilter,
 		Must:               make([]interface{}, 0),
-		FieldConstraint:    make([]string, 0),
 		Complete:           false,
 	}
 }
@@ -86,7 +65,7 @@ func (s *articleSearchFilter) transformDateRange() {
 	daysLookback := s.Range
 
 	if daysLookback == 0 {
-		daysLookback = defaultDaysLookback
+		daysLookback = articleDefaultDaysLookback
 	}
 	lookback := time.Now().AddDate(0, 0, -daysLookback).Unix()
 	part := json.RawMessage(fmt.Sprintf(dateRangeTemplate, lookback))
@@ -97,10 +76,10 @@ func (s *articleSearchFilter) transformFields() {
 	fields := s.Fields
 
 	if len(fields) == 0 {
-		fields = defaultFields
+		fields = articleDefaultFields
 	}
 
-	s.FieldConstraint = fields
+	s.FieldConstraint = util.ToEscapedStringList(fields)
 }
 
 func (s *articleSearchFilter) transformCountry() {
@@ -148,7 +127,7 @@ func (s *articleSearchFilter) buildQuery() (io.Reader, error) {
 		return nil, errors.Wrap(err, "failed to serialize json when building article search query")
 	}
 
-	query := fmt.Sprintf(queryTemplate, string(b))
+	query := fmt.Sprintf(queryTemplate, s.FieldConstraint, string(b))
 
 	return strings.NewReader(query), nil
 }

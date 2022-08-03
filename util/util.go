@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net/url"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -125,6 +126,16 @@ func PanicIfErr(err error, msg string) {
 	}
 }
 
+func ToEscapedStringList(strs []string) string {
+	var vals []string
+
+	for _, s := range strs {
+		vals = append(vals, fmt.Sprintf(`"%s"`, s))
+	}
+
+	return fmt.Sprintf("[%s]", strings.Join(vals, ","))
+}
+
 func ToParquet(id string, schema string, msg interface{}) (io.Reader, error) {
 	fw, err := mem.NewMemFileWriter(id, nil)
 
@@ -174,4 +185,34 @@ func RandomString(n int) string {
 		s[i] = letters[rand.Intn(len(letters))]
 	}
 	return string(s)
+}
+
+func IsNullByCheckingStructTag(s interface{}, name string) bool {
+	// TODO I have no idea if this works or not
+	v := reflect.ValueOf(s).Elem()
+	t := v.Type()
+
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		tag := f.Tag.Get("json")
+
+		if tag == "" {
+			continue
+		}
+
+		fieldName := strings.Split(tag, ",")[0]
+
+		if fieldName != name {
+			continue
+		}
+
+		fv := v.Field(i)
+		if fv.Kind() != reflect.Ptr {
+			return true
+		} else if fv.IsNil() {
+			return false
+		}
+	}
+
+	return false
 }

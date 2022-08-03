@@ -7,10 +7,6 @@ import (
 )
 
 func ContextWithSigterm(ctx context.Context) context.Context {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
 	ctx, cancel := context.WithCancel(ctx)
 	c := make(chan os.Signal, 1)
 

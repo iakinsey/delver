@@ -168,20 +168,22 @@ func (s *clientStreamer) Preload(c client) error {
 		return nil
 	}
 
-	data, err := s.applyTransforms(entities, c.filter)
-
-	if err != nil {
-		return errors.Wrap(err, "failed to transform preload search")
-	}
-
-	if _, err := c.conn.Write(data); err != nil {
+	if err := s.send(c, entities); err != nil {
 		return errors.Wrap(err, "failed to publish preload data to client")
 	}
 
 	return nil
 }
 
-func (s *clientStreamer) send(c client, data interface{}) error {
+// TODO modify this function to perform the apply transforms mechanism
+// Then make sure both stream and search paths go through it
+func (s *clientStreamer) send(c client, entities []json.RawMessage) error {
+	data, err := s.applyTransforms(entities, c.filter)
+
+	if err != nil {
+		return errors.Wrap(err, "failed to transform preload search")
+	}
+
 	msg := types.ClientStreamerMessage{
 		Type: c.filter.DataType,
 		Data: data,
