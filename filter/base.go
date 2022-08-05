@@ -15,6 +15,8 @@ type StreamFilter interface {
 
 type SearchFilter interface {
 	Perform() (io.Reader, error)
+	IsAggregate() bool
+	Postprocess([]json.RawMessage) ([]json.RawMessage, error)
 }
 
 func GetStreamFilter(params rpc.FilterParams) StreamFilter {
@@ -22,7 +24,7 @@ func GetStreamFilter(params rpc.FilterParams) StreamFilter {
 	case types.ArticleIndexable:
 		return NewArticleStreamFilter(params)
 	case types.MetricIndexable:
-		// TODO
+		return NewMetricStreamFilter(params)
 	case types.PageIndexable:
 		return NewPageStreamFilter(params)
 	}
@@ -37,7 +39,7 @@ func GetSearchFilter(params rpc.FilterParams) SearchFilter {
 	case types.ArticleIndexable:
 		return NewArticleSearchFilter(params)
 	case types.MetricIndexable:
-		// TODO
+		return NewMetricSearchFilter(params)
 	case types.PageIndexable:
 		return NewPageSearchFilter(params)
 	}

@@ -57,6 +57,12 @@ type Page struct {
 	Title         string `json:"title"`
 }
 
+type Metric struct {
+	Key   string `json:"key"`
+	When  int64  `json:"when"`
+	Value int64  `json:"value"`
+}
+
 var Indices = []Index{
 	{
 		Name: "article",
@@ -119,8 +125,9 @@ var Indices = []Index{
 			"settings":{},
 			"mappings": {
 				"properties": {
-					"when": {"type": "keyword"},
-					"value": {"type": "date"}
+					"key": {"type":"keyword"},
+					"when": {"type": "date", "format": "epoch_second"},
+					"value": {"type": "integer"}
 				}
 			}
 		}`,

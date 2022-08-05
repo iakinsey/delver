@@ -16,7 +16,7 @@ type aggregator struct {
 	aggFn             func([]float64) float64
 	timeField         string
 	aggField          string
-	timeWindowSeconds float64
+	timeWindowSeconds int64
 	nextTime          *float64
 	timeWindow        []float64
 	valueWindow       []float64
@@ -24,20 +24,17 @@ type aggregator struct {
 
 func getAggFn(name string) (func([]float64) float64, error) {
 	switch name {
+	case "":
 	case "sum":
 		return Sum, nil
 	case "mean":
 		return Mean, nil
-	case "median":
-		return Median, nil
-	case "mode":
-		return Mode, nil
 	}
 
 	return nil, fmt.Errorf("no such agg function: %s", name)
 }
 
-func NewAggregator(name string, timeField string, aggField string, timeWindowSeconds float64) (Aggregator, error) {
+func NewAggregator(name string, timeField string, aggField string, timeWindowSeconds int64) (Aggregator, error) {
 	aggFn, err := getAggFn(name)
 
 	if err != nil {
@@ -90,7 +87,7 @@ func (s *aggregator) Perform(entity map[string]float64) map[string]float64 {
 
 	next := map[string]float64{
 		s.aggField:  s.aggFn(s.valueWindow),
-		s.timeField: Median(s.timeWindow),
+		s.timeField: Min(s.timeWindow),
 	}
 
 	s.reset(time)
@@ -132,23 +129,12 @@ func Median(l []float64) (r float64) {
 
 	return l[int(math.Floor(float64(len(l))/2.0))]
 }
-func Mode(l []float64) (r float64) {
+func Min(l []float64) (r float64) {
 	if len(l) == 1 {
 		return l[0]
 	}
 
-	m := make(map[float64]int, 0)
-	var maxK float64
-	var maxV int
+	sort.Float64s(l)
 
-	for _, n := range l {
-		m[n] += 1
-
-		if m[n] > maxV {
-			maxK = n
-			maxV = m[n]
-		}
-	}
-
-	return maxK
+	return l[0]
 }

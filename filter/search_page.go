@@ -32,6 +32,10 @@ func NewPageSearchFilter(params rpc.FilterParams) SearchFilter {
 	}
 }
 
+func (s *pageSearchFilter) IsAggregate() bool {
+	return false
+}
+
 func (s *pageSearchFilter) Perform() (io.Reader, error) {
 	if s.Complete {
 		return s.buildQuery()
@@ -48,6 +52,10 @@ func (s *pageSearchFilter) Perform() (io.Reader, error) {
 	s.Complete = true
 
 	return s.buildQuery()
+}
+
+func (s *pageSearchFilter) Postprocess(entities []json.RawMessage) ([]json.RawMessage, error) {
+	return entities, nil
 }
 
 func (s *pageSearchFilter) transformMatchString(key string, vals []string) {

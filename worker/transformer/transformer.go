@@ -14,12 +14,12 @@ type transformer struct {
 	streamer gateway.ClientStreamer
 }
 
-type TransformerArgs struct {
+type TransformerParams struct {
 	Enabled         []string `json:"enabled"`
 	SearchAddresses []string `json:"search_addresses"`
 }
 
-func NewTransformerWorker(opts TransformerArgs) worker.Worker {
+func NewTransformerWorker(opts TransformerParams) worker.Worker {
 	var t []transformers.Transformer
 
 	for _, name := range opts.Enabled {
