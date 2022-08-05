@@ -14,20 +14,27 @@ import (
 
 	"github.com/iakinsey/delver/api"
 	"github.com/iakinsey/delver/config"
+	"github.com/iakinsey/delver/instrument"
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/resource/bloom"
 	"github.com/iakinsey/delver/resource/logger"
 	"github.com/iakinsey/delver/resource/maps"
 	"github.com/iakinsey/delver/resource/objectstore"
-	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/worker"
 	"github.com/iakinsey/delver/worker/accumulator"
 	"github.com/iakinsey/delver/worker/extractor"
 	"github.com/iakinsey/delver/worker/fetcher"
 	"github.com/iakinsey/delver/worker/publisher"
+	"github.com/iakinsey/delver/worker/transformer"
 )
 
 const terminationWaitTime = 5 * time.Second
+
+type preparedApplication struct {
+	app       config.Application
+	resources map[string]interface{}
+	workers   map[string]worker.WorkerManager
+}
 
 func main() {
 	if len(os.Args) <= 1 {
@@ -57,7 +64,6 @@ func StartFromJsonConfig(path string) {
 	}
 
 	config.Set(inter.Config)
-	util.SetMetrics()
 
 	if err := json.Unmarshal(b, &app); err != nil {
 		log.Fatalf("falsed to parse config: %s", path)
@@ -68,11 +74,44 @@ func StartFromJsonConfig(path string) {
 }
 
 func StartFromApplication(app config.Application) {
-	resources := CreateResources(app.Resources)
-	workers := CreateWorkers(app.Workers, resources)
+	preparedApp := &preparedApplication{
+		app:       app,
+		resources: make(map[string]interface{}),
+		workers:   make(map[string]worker.WorkerManager),
+	}
 
-	StartApplication(app, resources, workers)
-	AwaitTermination(resources, workers)
+	SetupTransformerQueue(preparedApp)
+
+	for _, rc := range app.Resources {
+		CreateResource(rc, preparedApp)
+	}
+
+	for _, wc := range app.Workers {
+		CreateWorker(wc, preparedApp)
+	}
+
+	StartApplication(app, preparedApp.resources, preparedApp.workers)
+	AwaitTermination(preparedApp.resources, preparedApp.workers)
+}
+
+func SetupTransformerQueue(preparedApp *preparedApplication) {
+	// This is done explicitly due to metrics and transformers having
+	// tight coupling with the entire system. What if the list is sorted
+	// by name then gets instantiated first?
+	for i, rc := range preparedApp.app.Resources {
+		if rc.Name == config.TransformerQueueName {
+			CreateResource(rc, preparedApp)
+
+			if q, ok := preparedApp.resources[rc.Name]; !ok {
+				log.Fatalf("failed to find transformer queue after creation")
+			} else {
+				instrument.SetMetrics(q.(queue.Queue))
+			}
+			// remove resource from config so it doesnt gret created twice
+			r := preparedApp.app.Resources
+			preparedApp.app.Resources = append(r[:i], r[i+1:]...)
+		}
+	}
 }
 
 func StartApplication(app config.Application, resources map[string]interface{}, workers map[string]worker.WorkerManager) {
@@ -144,53 +183,51 @@ func Terminate(resources map[string]interface{}, workers map[string]worker.Worke
 	done <- true
 }
 
-func CreateWorkers(workerConfigs []config.Worker, resources map[string]interface{}) map[string]worker.WorkerManager {
-	result := make(map[string]worker.WorkerManager)
+func CreateWorker(wc config.Worker, preparedApp *preparedApplication) {
+	var w worker.Worker
 
-	for _, wc := range workerConfigs {
-		var w worker.Worker
-
-		switch wc.Type {
-		case "dfs_basic_accumulator":
-			dbap := accumulator.DfsBasicAccumulatorParams{}
-			parseParamWithResources(wc.Parameters, &dbap, resources)
-			w = accumulator.NewDfsBasicAccumulator(dbap)
-		case "news_accumulator":
-			nap := accumulator.NewsAccumulatorParams{}
-			parseParamWithResources(wc.Parameters, &nap, resources)
-			w = accumulator.NewNewsAccumulator(nap)
-		case "resource_accumulator":
-			rap := accumulator.ResourceAccumulatorParams{}
-			parseParamWithResources(wc.Parameters, &rap, resources)
-			w = accumulator.NewResourceAccumulator(rap)
-		case "composite_extractor":
-			cap := extractor.CompositeArgs{}
-			parseParamWithResources(wc.Parameters, &cap, resources)
-			w = extractor.NewCompositeExtractorWorker(cap)
-		case "http_fetcher":
-			hfp := fetcher.HttpFetcherParams{}
-			parseParamWithResources(wc.Parameters, &hfp, resources)
-			w = fetcher.NewHttpFetcher(hfp)
-		case "dfs_basic_publisher":
-			dbp := publisher.DfsBasicPublisherParams{}
-			parseParamWithResources(wc.Parameters, &dbp, resources)
-			w = publisher.NewDfsBasicPublisher(dbp)
-		case "rss_feed_publisher":
-			rfp := publisher.RssFeedPublisherParams{}
-			parseParamWithResources(wc.Parameters, &rfp, resources)
-			w = publisher.NewRssFeedPublisher(rfp)
-		case "fixed_seed_publisher":
-			fsp := publisher.FixedSeedPublisherParams{}
-			parseParamWithResources(wc.Parameters, &fsp, resources)
-			w = publisher.NewFixedSeedPublisher(fsp)
-		default:
-			log.Fatalf("unknown worker type %s", wc.Type)
-		}
-
-		result[wc.Name] = GetWorkerManager(wc, resources, w)
+	switch wc.Type {
+	case "dfs_basic_accumulator":
+		dbap := accumulator.DfsBasicAccumulatorParams{}
+		parseParamWithResources(wc.Parameters, &dbap, preparedApp.resources)
+		w = accumulator.NewDfsBasicAccumulator(dbap)
+	case "news_accumulator":
+		nap := accumulator.NewsAccumulatorParams{}
+		parseParamWithResources(wc.Parameters, &nap, preparedApp.resources)
+		w = accumulator.NewNewsAccumulator(nap)
+	case "resource_accumulator":
+		rap := accumulator.ResourceAccumulatorParams{}
+		parseParamWithResources(wc.Parameters, &rap, preparedApp.resources)
+		w = accumulator.NewResourceAccumulator(rap)
+	case "composite_extractor":
+		cap := extractor.CompositeArgs{}
+		parseParamWithResources(wc.Parameters, &cap, preparedApp.resources)
+		w = extractor.NewCompositeExtractorWorker(cap)
+	case "http_fetcher":
+		hfp := fetcher.HttpFetcherParams{}
+		parseParamWithResources(wc.Parameters, &hfp, preparedApp.resources)
+		w = fetcher.NewHttpFetcher(hfp)
+	case "dfs_basic_publisher":
+		dbp := publisher.DfsBasicPublisherParams{}
+		parseParamWithResources(wc.Parameters, &dbp, preparedApp.resources)
+		w = publisher.NewDfsBasicPublisher(dbp)
+	case "rss_feed_publisher":
+		rfp := publisher.RssFeedPublisherParams{}
+		parseParamWithResources(wc.Parameters, &rfp, preparedApp.resources)
+		w = publisher.NewRssFeedPublisher(rfp)
+	case "fixed_seed_publisher":
+		fsp := publisher.FixedSeedPublisherParams{}
+		parseParamWithResources(wc.Parameters, &fsp, preparedApp.resources)
+		w = publisher.NewFixedSeedPublisher(fsp)
+	case "transformer":
+		tfp := transformer.TransformerParams{}
+		parseParamWithResources(wc.Parameters, &tfp, preparedApp.resources)
+		w = transformer.NewTransformerWorker(tfp)
+	default:
+		log.Fatalf("unknown worker type %s", wc.Type)
 	}
 
-	return result
+	preparedApp.workers[wc.Name] = GetWorkerManager(wc, preparedApp.resources, w)
 }
 
 func GetWorkerManager(wc config.Worker, resources map[string]interface{}, w worker.Worker) (m worker.WorkerManager) {
@@ -227,53 +264,47 @@ func GetWorkerManager(wc config.Worker, resources map[string]interface{}, w work
 	return
 }
 
-func CreateResources(configs []config.Resource) map[string]interface{} {
-	result := make(map[string]interface{})
-
-	for _, c := range configs {
-		switch c.Type {
-		case "file_queue":
-			fqp := queue.FileQueueParams{Resilient: true}
-			parseParam(c.Parameters, &fqp)
-			result[c.Name] = queue.NewFileQueue(fqp)
-		case "timer":
-			tp := queue.TimerQueueParams{}
-			parseParam(c.Parameters, &tp)
-			result[c.Name] = queue.NewTimerQueue(tp)
-		case "bloom_filter":
-			bfp := bloom.BloomFilterParams{}
-			parseParam(c.Parameters, &bfp)
-			result[c.Name] = bloom.NewBloomFilter(bfp)
-		case "rolling_bloom_filter":
-			rbfp := bloom.RollingBloomFilterParams{}
-			parseParam(c.Parameters, &rbfp)
-			result[c.Name] = bloom.NewRollingBloomFilter(rbfp)
-		case "persistent_map":
-			pmp := maps.PersistentMapParams{}
-			parseParam(c.Parameters, &pmp)
-			result[c.Name] = maps.NewPersistentMap(pmp)
-		case "multi_host_map":
-			mhmp := maps.MultiHostMapParams{}
-			parseParam(c.Parameters, &mhmp)
-			result[c.Name] = maps.NewMultiHostMap(mhmp)
-		case "filesystem_object_store":
-			fosp := objectstore.FilesystemObjectStoreParams{}
-			parseParam(c.Parameters, &fosp)
-			result[c.Name] = objectstore.NewFilesystemObjectStore(fosp)
-		case "hdfs_logger":
-			hlp := logger.HDFSLoggerParams{}
-			parseParam(c.Parameters, &hlp)
-			result[c.Name] = logger.NewHDFSLogger(hlp)
-		case "elasticsearch_logger":
-			elp := logger.ElasticsearchLoggerParams{}
-			parseParam(c.Parameters, &elp)
-			result[c.Name] = logger.NewElasticsearchLogger(elp)
-		default:
-			log.Fatalf("unknown resource %s", c.Type)
-		}
+func CreateResource(c config.Resource, preparedApp *preparedApplication) {
+	switch c.Type {
+	case "file_queue":
+		fqp := queue.FileQueueParams{Resilient: true}
+		parseParam(c.Parameters, &fqp)
+		preparedApp.resources[c.Name] = queue.NewFileQueue(fqp)
+	case "timer":
+		tp := queue.TimerQueueParams{}
+		parseParam(c.Parameters, &tp)
+		preparedApp.resources[c.Name] = queue.NewTimerQueue(tp)
+	case "bloom_filter":
+		bfp := bloom.BloomFilterParams{}
+		parseParam(c.Parameters, &bfp)
+		preparedApp.resources[c.Name] = bloom.NewBloomFilter(bfp)
+	case "rolling_bloom_filter":
+		rbfp := bloom.RollingBloomFilterParams{}
+		parseParam(c.Parameters, &rbfp)
+		preparedApp.resources[c.Name] = bloom.NewRollingBloomFilter(rbfp)
+	case "persistent_map":
+		pmp := maps.PersistentMapParams{}
+		parseParam(c.Parameters, &pmp)
+		preparedApp.resources[c.Name] = maps.NewPersistentMap(pmp)
+	case "multi_host_map":
+		mhmp := maps.MultiHostMapParams{}
+		parseParam(c.Parameters, &mhmp)
+		preparedApp.resources[c.Name] = maps.NewMultiHostMap(mhmp)
+	case "filesystem_object_store":
+		fosp := objectstore.FilesystemObjectStoreParams{}
+		parseParam(c.Parameters, &fosp)
+		preparedApp.resources[c.Name] = objectstore.NewFilesystemObjectStore(fosp)
+	case "hdfs_logger":
+		hlp := logger.HDFSLoggerParams{}
+		parseParam(c.Parameters, &hlp)
+		preparedApp.resources[c.Name] = logger.NewHDFSLogger(hlp)
+	case "elasticsearch_logger":
+		elp := logger.ElasticsearchLoggerParams{}
+		parseParam(c.Parameters, &elp)
+		preparedApp.resources[c.Name] = logger.NewElasticsearchLogger(elp)
+	default:
+		log.Fatalf("unknown resource %s", c.Type)
 	}
-
-	return result
 }
 
 func parseParam(data []byte, config interface{}) {

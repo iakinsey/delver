@@ -19,3 +19,42 @@ const queryTemplate = `{
         }
 	}
 }`
+
+const metricQueryTemplate = `{
+    "size": 0,
+    "query": {
+        "bool": {
+            "must": [
+                {
+                    "match": {
+                        "key": "%s"
+                    }
+                },
+                {
+                    "range": {
+                        "when": {
+                            "gte": %d,
+                            "lte": %d
+                        }
+                    }
+                }
+            ]
+        }
+    },
+    "aggs": {
+        "metric_timeseries": {
+            "date_histogram": {
+                "field": "when",
+                "fixed_interval": "%s"
+            },
+            "aggs": {
+                "metric_rollup": {
+                    "%s": {
+                        "field": "value"
+                    }
+                }
+            }
+        }
+    }
+   
+}`

@@ -11,10 +11,10 @@ type Filter struct {
 }
 
 type Aggregator struct {
-	Name              string  `json:"agg_name"`
-	TimeField         string  `json:"time_field"`
-	AggField          string  `json:"agg_field"`
-	TimeWindowSeconds float64 `json:"time_window_seconds"`
+	Name              string `json:"agg_name"`
+	TimeField         string `json:"time_field"`
+	AggField          string `json:"agg_field"`
+	TimeWindowSeconds int64  `json:"time_window_seconds"`
 }
 
 type ArticleFilterQuery struct {
@@ -23,7 +23,11 @@ type ArticleFilterQuery struct {
 	Company []string `json:"company"`
 }
 
-type MetricFilterQuery struct{}
+type MetricFilterQuery struct {
+	Key   string `json:"key"`
+	Start int64  `json:"start"`
+	End   int64  `json:"end"`
+}
 
 type PageFilterQuery struct {
 	Url      []string `json:"url"`
@@ -34,13 +38,13 @@ type PageFilterQuery struct {
 }
 
 type FilterParams struct {
-	Fields   []string        `json:"fields"`
-	Range    int             `json:"range"`
-	RawQuery json.RawMessage `json:"query"`
-	DataType string          `json:"data_type"`
-	Options  map[string]bool `json:"options"`
-	Callback string          `json:"callback"`
-	Agg      *Aggregator     `json:"agg"`
+	Fields    []string        `json:"fields"`
+	Range     int             `json:"range"`
+	RawQuery  json.RawMessage `json:"query"`
+	DataType  string          `json:"data_type"`
+	Options   map[string]bool `json:"options"`
+	Callback  string          `json:"callback"`
+	Agg       *Aggregator     `json:"agg"`
 	DoNothing bool
-	Query    interface{}
+	Query     interface{}
 }

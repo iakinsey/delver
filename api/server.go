@@ -72,13 +72,9 @@ func StartHTTPServer() {
 
 func getRoutes(conf config.APIConfig, user gateway.UserGateway) map[string]Controller {
 	routes := make(map[string]Controller)
-	metrics := controller.NewMetricsController()
 	dash := controller.NewDashboardController(gateway.NewDashboardGateway(conf.DashDBPath))
 	auth := controller.NewAuthController(user)
 
-	routes["/metrics/put"] = metrics.Put
-	routes["/metrics/get"] = metrics.Get
-	routes["/metrics/list"] = metrics.List
 	routes["/dashboard/save"] = dash.Save
 	routes["/dashboard/load"] = dash.Load
 	routes["/dashboard/delete"] = dash.Delete

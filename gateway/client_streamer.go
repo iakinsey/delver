@@ -109,7 +109,7 @@ func (s *clientStreamer) Publish(indexables []*types.Indexable) error {
 			continue
 		}
 
-		if err = s.send(c, results); err != nil {
+		if err = s.send(c, results, false); err != nil {
 			multierror.Append(multiErr, err)
 		}
 	}
@@ -153,12 +153,19 @@ func (s *clientStreamer) Unregister(uuids []string) {
 func (s *clientStreamer) Preload(c client) error {
 	searchFilter := filter.GetSearchFilter(c.filter)
 	reader, err := searchFilter.Perform()
+	aggPreflight := searchFilter.IsAggregate()
 
 	if err != nil {
 		return errors.Wrap(err, "unable to get search preload filter")
 	}
 
-	entities, err := s.searchGateway.Search(reader)
+	var entities []json.RawMessage
+
+	if aggPreflight {
+		entities, err = s.searchGateway.SearchAggregate(reader)
+	} else {
+		entities, err = s.searchGateway.Search(reader)
+	}
 
 	if err != nil {
 		return errors.Wrap(err, "failed to perform preload search")
@@ -168,7 +175,13 @@ func (s *clientStreamer) Preload(c client) error {
 		return nil
 	}
 
-	if err := s.send(c, entities); err != nil {
+	entities, err = searchFilter.Postprocess(entities)
+
+	if err != nil {
+		return errors.Wrap(err, "failed search preload postprocessing")
+	}
+
+	if err := s.send(c, entities, aggPreflight); err != nil {
 		return errors.Wrap(err, "failed to publish preload data to client")
 	}
 
@@ -177,8 +190,8 @@ func (s *clientStreamer) Preload(c client) error {
 
 // TODO modify this function to perform the apply transforms mechanism
 // Then make sure both stream and search paths go through it
-func (s *clientStreamer) send(c client, entities []json.RawMessage) error {
-	data, err := s.applyTransforms(entities, c.filter)
+func (s *clientStreamer) send(c client, entities []json.RawMessage, aggPreflight bool) error {
+	data, err := s.applyTransforms(entities, c.filter, aggPreflight)
 
 	if err != nil {
 		return errors.Wrap(err, "failed to transform preload search")
@@ -196,8 +209,8 @@ func (s *clientStreamer) send(c client, entities []json.RawMessage) error {
 	return nil
 }
 
-func (s *clientStreamer) applyTransforms(entities []json.RawMessage, filter rpc.FilterParams) ([]byte, error) {
-	if filter.Agg == nil && filter.Callback == "" {
+func (s *clientStreamer) applyTransforms(entities []json.RawMessage, filter rpc.FilterParams, aggPreflight bool) ([]byte, error) {
+	if (filter.Agg == nil || aggPreflight) && filter.Callback == "" {
 		res, err := json.Marshal(entities)
 
 		if err != nil {
@@ -205,7 +218,7 @@ func (s *clientStreamer) applyTransforms(entities []json.RawMessage, filter rpc.
 		}
 
 		return res, nil
-	} else if filter.Agg == nil {
+	} else if filter.Agg == nil || aggPreflight {
 		var preparedEntities []map[string]interface{}
 
 		for _, rawEntity := range entities {

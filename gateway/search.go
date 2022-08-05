@@ -29,6 +29,7 @@ type SearchGateway interface {
 	IndexMany([]*types.Indexable) error
 	Declare(types.Index)
 	Search(query io.Reader) (entities []json.RawMessage, err error)
+	SearchAggregate(query io.Reader) (entities []json.RawMessage, err error)
 }
 
 type hitsEntity struct {
@@ -41,6 +42,10 @@ type searchResultHits struct {
 
 type searchResult struct {
 	Hits searchResultHits `json:"hits"`
+}
+
+type aggSearchResult struct {
+	Aggregations map[string]json.RawMessage `json:"aggregations"`
 }
 
 func NewSearchGateway(addresses []string) SearchGateway {
@@ -58,20 +63,10 @@ func NewSearchGateway(addresses []string) SearchGateway {
 }
 
 func (s *searchGateway) Search(query io.Reader) (entities []json.RawMessage, err error) {
-	res, err := s.client.Search(
-		s.client.Search.WithBody(query),
-	)
+	data, err := s.doSearch(query)
 
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to search entity")
-	} else if res.StatusCode >= 300 {
-		return nil, fmt.Errorf("failed to search entity (code %d): %s", res.StatusCode, res.String())
-	}
-
-	data, err := ioutil.ReadAll(res.Body)
-
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read search output")
+		return nil, errors.Wrap(err, "failed to perform search")
 	}
 
 	result := searchResult{}
@@ -85,6 +80,43 @@ func (s *searchGateway) Search(query io.Reader) (entities []json.RawMessage, err
 	}
 
 	return
+}
+
+func (s *searchGateway) SearchAggregate(query io.Reader) (entities []json.RawMessage, err error) {
+	data, err := s.doSearch(query)
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to perform aggregate search")
+	}
+
+	result := aggSearchResult{}
+
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, errors.Wrap(err, "failed to parse aggregate search output")
+	}
+
+	if len(result.Aggregations) != 1 {
+		return nil, errors.Wrapf(err, "too many aggregations, have: %d, want: 1", len(result.Aggregations))
+	}
+
+	key := ""
+
+	for k := range result.Aggregations {
+		key = k
+		break
+	}
+
+	var bucketMap map[string][]json.RawMessage
+
+	if err = json.Unmarshal(result.Aggregations[key], &bucketMap); err != nil {
+		return nil, errors.Wrap(err, "failed to parse bucket map")
+	}
+
+	if _, ok := bucketMap["buckets"]; !ok {
+		return nil, errors.New("search result does not contain aggregate buckets")
+	}
+
+	return bucketMap["buckets"], nil
 }
 
 func (s *searchGateway) Index(indexable *types.Indexable) error {
@@ -107,7 +139,6 @@ func (s *searchGateway) Index(indexable *types.Indexable) error {
 	}
 
 	return nil
-
 }
 
 func (s *searchGateway) Declare(index types.Index) {
@@ -172,6 +203,26 @@ func (s *searchGateway) getOrCreateBulkIndexer(index string) (esutil.BulkIndexer
 	s.bulkIndexers[index] = indexer
 
 	return indexer, nil
+}
+
+func (s *searchGateway) doSearch(query io.Reader) ([]byte, error) {
+	res, err := s.client.Search(
+		s.client.Search.WithBody(query),
+	)
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to search entity")
+	} else if res.StatusCode >= 300 {
+		return nil, fmt.Errorf("failed to search entity (code %d): %s", res.StatusCode, res.String())
+	}
+
+	data, err := ioutil.ReadAll(res.Body)
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read search output")
+	}
+
+	return data, err
 }
 
 func onBulkFailure(ctx context.Context, bii esutil.BulkIndexerItem, biri esutil.BulkIndexerResponseItem, err error) {

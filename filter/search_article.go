@@ -45,6 +45,10 @@ func NewArticleSearchFilter(params rpc.FilterParams) SearchFilter {
 	}
 }
 
+func (s *articleSearchFilter) IsAggregate() bool {
+	return false
+}
+
 func (s *articleSearchFilter) Perform() (io.Reader, error) {
 	if s.Complete {
 		return s.buildQuery()
@@ -59,6 +63,10 @@ func (s *articleSearchFilter) Perform() (io.Reader, error) {
 	s.Complete = true
 
 	return s.buildQuery()
+}
+
+func (s *articleSearchFilter) Postprocess(entities []json.RawMessage) ([]json.RawMessage, error) {
+	return entities, nil
 }
 
 func (s *articleSearchFilter) transformDateRange() {

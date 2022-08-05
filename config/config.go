@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+const TransformerQueueName = "transformer_queue"
+
 type AdversarialConfig struct {
 	SubdomainThreshold   int `json:"subdomain_threshold"`
 	EnumerationThreshold int `json:"enumeration_threshold"`
@@ -46,17 +48,22 @@ type PersistentMapConfig struct {
 }
 
 type MetricsConfig struct {
-	Enabled bool   `json:"enabled"`
-	URI     string `json:"uri"`
+	Enabled bool `json:"enabled"`
 }
 
 type ClientStreamerConfig struct {
 	SearchAddresses []string
 }
 
+type TransformerConfig struct {
+	Enabled         []string `json:"enabled"`
+	SearchAddresses []string `json:"search_addresses"`
+}
+
 type Config struct {
-	WorkerCounts        int                  `json:"worker_counts"`
-	Metrics             MetricsConfig        `json:"metrics"`
+	WorkerCounts int           `json:"worker_counts"`
+	Metrics      MetricsConfig `json:"metrics"`
+	// TODO maybe this should be in the workers/resources mapping instead?
 	DefaultSaveInterval time.Duration        `json:"default_save_interval"`
 	CountriesPath       string               `json:"countries_path"`
 	CompaniesPath       string               `json:"companies_path"`
@@ -77,8 +84,7 @@ func LoadConfig() Config {
 		CompaniesPath:       DataFilePath("data", "companies.json"),
 		CountriesPath:       DataFilePath("data", "countries.json"),
 		Metrics: MetricsConfig{
-			Enabled: false,
-			URI:     "http://localhost:8181/metrics/put",
+			Enabled: true,
 		},
 		Adversarial: AdversarialConfig{
 			SubdomainThreshold:   25,

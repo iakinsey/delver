@@ -8,10 +8,10 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/armon/go-metrics"
+	"github.com/iakinsey/delver/instrument"
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
-	"github.com/iakinsey/delver/util"
 )
 
 type WorkerManager interface {
@@ -37,7 +37,7 @@ func NewWorkerManager(worker Worker, inbox queue.Queue, outbox queue.Queue) Work
 		worker:     worker,
 		terminate:  make(chan bool),
 		terminated: make(chan bool),
-		metrics:    util.GetMetrics(),
+		metrics:    instrument.GetMetrics(),
 		workerName: reflect.TypeOf(worker).Elem().Name(),
 	}
 }
