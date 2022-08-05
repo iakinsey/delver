@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"reflect"
+	"sort"
 	"sync"
 	"syscall"
 	"time"
@@ -80,7 +81,11 @@ func StartFromApplication(app config.Application) {
 		workers:   make(map[string]worker.WorkerManager),
 	}
 
-	SetupTransformerQueue(preparedApp)
+	// Put the transformer queue at the start of the list, allowing
+	// other resources to access it in a stable manner
+	sort.SliceStable(app.Resources, func(i, j int) bool {
+		return app.Resources[i].Name == config.TransformerQueueName
+	})
 
 	for _, rc := range app.Resources {
 		CreateResource(rc, preparedApp)
@@ -92,26 +97,6 @@ func StartFromApplication(app config.Application) {
 
 	StartApplication(app, preparedApp.resources, preparedApp.workers)
 	AwaitTermination(preparedApp.resources, preparedApp.workers)
-}
-
-func SetupTransformerQueue(preparedApp *preparedApplication) {
-	// This is done explicitly due to metrics and transformers having
-	// tight coupling with the entire system. What if the list is sorted
-	// by name then gets instantiated first?
-	for i, rc := range preparedApp.app.Resources {
-		if rc.Name == config.TransformerQueueName {
-			CreateResource(rc, preparedApp)
-
-			if q, ok := preparedApp.resources[rc.Name]; !ok {
-				log.Fatalf("failed to find transformer queue after creation")
-			} else {
-				instrument.SetMetrics(q.(queue.Queue))
-			}
-			// remove resource from config so it doesnt gret created twice
-			r := preparedApp.app.Resources
-			preparedApp.app.Resources = append(r[:i], r[i+1:]...)
-		}
-	}
 }
 
 func StartApplication(app config.Application, resources map[string]interface{}, workers map[string]worker.WorkerManager) {
@@ -265,46 +250,55 @@ func GetWorkerManager(wc config.Worker, resources map[string]interface{}, w work
 }
 
 func CreateResource(c config.Resource, preparedApp *preparedApplication) {
+	var r interface{}
+
 	switch c.Type {
 	case "file_queue":
 		fqp := queue.FileQueueParams{Resilient: true}
 		parseParam(c.Parameters, &fqp)
-		preparedApp.resources[c.Name] = queue.NewFileQueue(fqp)
+		r = queue.NewFileQueue(fqp)
 	case "timer":
 		tp := queue.TimerQueueParams{}
 		parseParam(c.Parameters, &tp)
-		preparedApp.resources[c.Name] = queue.NewTimerQueue(tp)
+		r = queue.NewTimerQueue(tp)
 	case "bloom_filter":
 		bfp := bloom.BloomFilterParams{}
 		parseParam(c.Parameters, &bfp)
-		preparedApp.resources[c.Name] = bloom.NewBloomFilter(bfp)
+		r = bloom.NewBloomFilter(bfp)
 	case "rolling_bloom_filter":
 		rbfp := bloom.RollingBloomFilterParams{}
 		parseParam(c.Parameters, &rbfp)
-		preparedApp.resources[c.Name] = bloom.NewRollingBloomFilter(rbfp)
+		r = bloom.NewRollingBloomFilter(rbfp)
 	case "persistent_map":
 		pmp := maps.PersistentMapParams{}
 		parseParam(c.Parameters, &pmp)
-		preparedApp.resources[c.Name] = maps.NewPersistentMap(pmp)
+		r = maps.NewPersistentMap(pmp)
 	case "multi_host_map":
 		mhmp := maps.MultiHostMapParams{}
 		parseParam(c.Parameters, &mhmp)
-		preparedApp.resources[c.Name] = maps.NewMultiHostMap(mhmp)
+		r = maps.NewMultiHostMap(mhmp)
 	case "filesystem_object_store":
 		fosp := objectstore.FilesystemObjectStoreParams{}
 		parseParam(c.Parameters, &fosp)
-		preparedApp.resources[c.Name] = objectstore.NewFilesystemObjectStore(fosp)
+		r = objectstore.NewFilesystemObjectStore(fosp)
 	case "hdfs_logger":
 		hlp := logger.HDFSLoggerParams{}
 		parseParam(c.Parameters, &hlp)
-		preparedApp.resources[c.Name] = logger.NewHDFSLogger(hlp)
+		r = logger.NewHDFSLogger(hlp)
 	case "elasticsearch_logger":
 		elp := logger.ElasticsearchLoggerParams{}
 		parseParam(c.Parameters, &elp)
-		preparedApp.resources[c.Name] = logger.NewElasticsearchLogger(elp)
+		r = logger.NewElasticsearchLogger(elp)
 	default:
 		log.Fatalf("unknown resource %s", c.Type)
 	}
+
+	// Set metrics value if resoruce is specified
+	if c.Name == config.TransformerQueueName {
+		instrument.SetMetrics(r.(queue.Queue))
+	}
+
+	preparedApp.resources[c.Name] = r
 }
 
 func parseParam(data []byte, config interface{}) {
