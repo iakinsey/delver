@@ -89,7 +89,9 @@ func (s *clientStreamer) Publish(indexables []*types.Indexable) error {
 
 	// group entities by data type
 	for _, entity := range indexables {
-		entityMap[entity.DataType] = append(entityMap[entity.DataType], entity)
+		if entity.Streamable {
+			entityMap[entity.DataType] = append(entityMap[entity.DataType], entity)
+		}
 	}
 
 	for _, c := range s.clients {

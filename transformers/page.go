@@ -12,7 +12,8 @@ func NewPageTransformer() Transformer {
 	return &pageTransformer{}
 }
 
-func (s *pageTransformer) Perform(msg json.RawMessage) (*types.Indexable, error) {
+func (s *pageTransformer) Perform(msg json.RawMessage) ([]*types.Indexable, error) {
+
 	return nil, nil
 }
 

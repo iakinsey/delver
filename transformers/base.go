@@ -8,7 +8,7 @@ import (
 )
 
 type Transformer interface {
-	Perform(msg json.RawMessage) (*types.Indexable, error)
+	Perform(msg json.RawMessage) ([]*types.Indexable, error)
 	Input() types.MessageType
 	Streamable() bool
 }
