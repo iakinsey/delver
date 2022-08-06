@@ -54,7 +54,7 @@ func (s *transformer) OnMessage(msg types.Message) (interface{}, error) {
 			tErr = multierror.Append(tErr, err)
 		}
 
-		entities = append(entities, idx)
+		entities = append(entities, idx...)
 	}
 
 	if err := s.search.IndexMany(entities); err != nil {

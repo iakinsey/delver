@@ -7,7 +7,9 @@ const (
 )
 
 type Indexable struct {
-	ID         string
+	ID string
+	// TODO Index and DataType may be redundant, but perhaps not if
+	// we want to house the same data different indices
 	Index      string
 	DataType   string
 	Streamable bool
@@ -65,7 +67,7 @@ type Metric struct {
 
 var Indices = []Index{
 	{
-		Name: "article",
+		Name: ArticleIndexable,
 		Spec: `{
 			"settings":{},
 			"mappings": {
@@ -99,7 +101,7 @@ var Indices = []Index{
 		}`,
 	},
 	{
-		Name: "page",
+		Name: PageIndexable,
 		Spec: `{
 			"settings":{},
 			"mappings": {
@@ -120,7 +122,7 @@ var Indices = []Index{
 		}`,
 	},
 	{
-		Name: "metric",
+		Name: MetricIndexable,
 		Spec: `{
 			"settings":{},
 			"mappings": {
