@@ -327,8 +327,13 @@ func parseParamWithResources(data []byte, config interface{}, resources map[stri
 	}
 }
 
-func getResource(data []byte, config interface{}, resourceKey string, resources map[string]interface{}) interface{} {
+func getResource(data []byte, c interface{}, resourceKey string, resources map[string]interface{}) interface{} {
 	resourceName := getResourceName(data, resourceKey)
+
+	if resourceName == "" && resourceKey == config.TransformerQueueName {
+		resourceName = config.TransformerQueueName
+	}
+
 	resource, ok := resources[resourceName]
 
 	if !ok {
