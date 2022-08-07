@@ -2,7 +2,6 @@ package extractor
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -11,11 +10,13 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/extractors"
+	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/resource/objectstore"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/worker"
+	"github.com/pkg/errors"
 )
 
 type compositeResult struct {
@@ -24,19 +25,22 @@ type compositeResult struct {
 }
 
 type compositeExtractor struct {
-	Enabled     []string
-	ObjectStore objectstore.ObjectStore
+	Enabled          []string
+	ObjectStore      objectstore.ObjectStore
+	TransformerQueue queue.Queue
 }
 
 type CompositeArgs struct {
-	Enabled     []string                `json:"enabled"`
-	ObjectStore objectstore.ObjectStore `json:"-" resource:"object_store"`
+	Enabled          []string                `json:"enabled"`
+	ObjectStore      objectstore.ObjectStore `json:"-" resource:"object_store"`
+	TransformerQueue queue.Queue             `json:"-" resource:"transformer_queue"`
 }
 
 func NewCompositeExtractorWorker(opts CompositeArgs) worker.Worker {
 	return &compositeExtractor{
-		Enabled:     opts.Enabled,
-		ObjectStore: opts.ObjectStore,
+		Enabled:          opts.Enabled,
+		ObjectStore:      opts.ObjectStore,
+		TransformerQueue: opts.TransformerQueue,
 	}
 }
 
@@ -190,9 +194,12 @@ func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 		if delErr := os.Remove(path); err != nil {
 			log.Errorf("failed to delete file after extraction: %s", delErr)
 		}
-
 	} else if err != nil {
 		log.Errorf("failed to stat file for deletion: %s", err)
+	}
+
+	if transformerErr := s.sendToTransformerQueue(composite); transformerErr != nil {
+		log.Errorf(transformerErr.Error())
 	}
 
 	return result, err
@@ -231,6 +238,26 @@ func (s *compositeExtractor) getExtractors() (result []extractors.Extractor) {
 	}
 
 	return
+}
+
+func (s *compositeExtractor) sendToTransformerQueue(composite *message.CompositeAnalysis) error {
+	b, err := json.Marshal(composite)
+
+	if err != nil {
+		return errors.Wrap(err, "composite failed to serialize transformer message")
+	}
+
+	transformerMsg := types.Message{
+		ID:          string(composite.RequestID),
+		MessageType: types.CompositeAnalysisType,
+		Message:     json.RawMessage(b),
+	}
+
+	return errors.Wrap(
+		s.TransformerQueue.Put(transformerMsg, 0),
+		"composite failed to send transformer message",
+	)
+
 }
 
 func getCompositeError(composite *message.CompositeAnalysis, errors []error) error {
