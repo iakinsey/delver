@@ -50,7 +50,7 @@ type Page struct {
 	Origin        string `json:"origin"`
 	Protocol      string `json:"protocol"`
 	ContentMd5    string `json:"content_md5"`
-	ElapsedTimeMs string `json:"elapsed_time_ms"`
+	ElapsedTimeMs int64  `json:"elapsed_time_ms"`
 	Error         string `json:"error"`
 	Timestamp     int64  `json:"timestamp"`
 	HttpCode      int    `json:"http_code"`
