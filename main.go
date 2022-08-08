@@ -257,6 +257,8 @@ func CreateResource(c config.Resource, preparedApp *preparedApplication) {
 		fqp := queue.FileQueueParams{Resilient: true}
 		parseParam(c.Parameters, &fqp)
 		r = queue.NewFileQueue(fqp)
+	case "channel_queue":
+		r = queue.NewChannelQueue()
 	case "timer":
 		tp := queue.TimerQueueParams{}
 		parseParam(c.Parameters, &tp)
