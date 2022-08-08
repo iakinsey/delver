@@ -241,6 +241,10 @@ func (s *compositeExtractor) getExtractors() (result []extractors.Extractor) {
 }
 
 func (s *compositeExtractor) sendToTransformerQueue(composite *message.CompositeAnalysis) error {
+	if s.TransformerQueue == nil {
+		return nil
+	}
+
 	b, err := json.Marshal(composite)
 
 	if err != nil {

@@ -40,7 +40,7 @@ func TestComposeFetcher(t *testing.T) {
 
 	queues.Inbox.Start()
 	go manager.Start()
-	<-time.After(2 * time.Second)
+	<-time.After(12 * time.Second)
 
 	testutil.AssertFolderSize(t, paths.Inbox, 0)
 	testutil.AssertFolderSize(t, paths.InboxDLQ, 0)

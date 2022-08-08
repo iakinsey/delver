@@ -41,7 +41,7 @@ func (s *rssFeedPublisher) OnMessage(msg types.Message) (interface{}, error) {
 		messages = append(messages, <-done...)
 	}
 
-	log.Info("published %d requests from RSS feeds", len(messages))
+	log.Infof("published %d requests from RSS feeds", len(messages))
 
 	return types.MultiMessage{
 		Values: messages,

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/iakinsey/delver/resource/bloom"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
@@ -20,6 +21,11 @@ func TestNewsAccumulator(t *testing.T) {
 	newsQueue := queues.Outbox
 	accumulator := NewNewsAccumulator(NewsAccumulatorParams{
 		NewsQueue: newsQueue,
+		SeenUrls: bloom.NewBloomFilter(bloom.BloomFilterParams{
+			MaxN: 1000,
+			P:    0.01,
+		},
+		),
 	})
 	composite, _ := json.Marshal(message.CompositeAnalysis{
 		FetcherResponse: message.FetcherResponse{
@@ -28,7 +34,7 @@ func TestNewsAccumulator(t *testing.T) {
 			},
 		},
 		URIs: features.URIs{
-			"http://test.com",
+			"http://test.com/article/this-is-a-test-article-today",
 			"http://example.com",
 		},
 	})

@@ -64,7 +64,7 @@ func (s *clientStreamer) Start() error {
 	handler.Handle("/", websocket.Handler(func(conn *websocket.Conn) {
 		uuids, err := s.Register(conn)
 
-		log.Info("Connect %s", conn.RemoteAddr().String())
+		log.Infof("Connect %s", conn.RemoteAddr().String())
 
 		if err != nil && uuids != nil {
 			log.Errorf("failed to register client: %s", err)
@@ -74,7 +74,7 @@ func (s *clientStreamer) Start() error {
 		}
 
 		s.Unregister(uuids)
-		log.Info("Disconnect %s", conn.RemoteAddr().String())
+		log.Infof("Disconnect %s", conn.RemoteAddr().String())
 	}))
 
 	log.Infof("streamer server listening on %s", conf.Address)
