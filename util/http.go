@@ -18,9 +18,13 @@ type DelverHTTPClient struct {
 	MaxRetries int
 }
 
-func (s *DelverHTTPClient) Perform(url string) (resp *http.Response, err error) {
+func (s *DelverHTTPClient) Perform(url string) (*http.Response, error) {
+	var req *http.Request
+	var resp *http.Response
+	var err error
+
 	for i := 0; i < s.MaxRetries+1; i++ {
-		req, err := http.NewRequest("GET", url, nil)
+		req, err = http.NewRequest("GET", url, nil)
 
 		if err != nil {
 			return nil, err
@@ -39,7 +43,7 @@ func (s *DelverHTTPClient) Perform(url string) (resp *http.Response, err error) 
 		}
 	}
 
-	return
+	return resp, err
 }
 
 func NewHTTPClient() *DelverHTTPClient {
