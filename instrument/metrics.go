@@ -13,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-var metric metrics.MetricSink
+var metric metrics.MetricSink = &metrics.BlackholeSink{}
 
 type encoder struct {
 	transformerQueue queue.Queue
