@@ -12,6 +12,7 @@ import (
 	"github.com/iakinsey/delver/extractors"
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/resource/objectstore"
+	"github.com/iakinsey/delver/transformers"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
@@ -198,8 +199,15 @@ func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 		log.Errorf("failed to stat file for deletion: %s", err)
 	}
 
-	if transformerErr := s.sendToTransformerQueue(composite); transformerErr != nil {
-		log.Errorf(transformerErr.Error())
+	transformerErr := transformers.Send(
+		s.TransformerQueue,
+		string(composite.RequestID),
+		types.CompositeAnalysisType,
+		composite,
+	)
+
+	if transformerErr != nil {
+		log.Errorf("composite failed to send transformer data: %s", err)
 	}
 
 	return result, err
