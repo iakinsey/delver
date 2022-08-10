@@ -2,25 +2,32 @@ package fetcher
 
 import (
 	"encoding/json"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
-	"time"
 
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
+	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/util/testutil"
-	"github.com/iakinsey/delver/worker"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestComposeFetcher(t *testing.T) {
+func TestFetcher(t *testing.T) {
 	paths := testutil.SetupWorkerQueueFolders("HttpTest")
-
-	defer testutil.TeardownWorkerQueueFolders(paths)
-
 	queues := testutil.CreateQueueTriad(paths)
-
-	fetcher := NewHttpFetcher(HttpFetcherParams{
+	fetcher := &httpFetcher{
+		MaxRetries:  1,
 		ObjectStore: queues.ObjectStore,
-	})
+		Client: &util.MockDelverHTTPClient{
+			Error: nil,
+			Response: &http.Response{
+				Body:       io.NopCloser(strings.NewReader("test")),
+				StatusCode: 200,
+			},
+		},
+	}
 
 	message, _ := json.Marshal(message.FetcherRequest{
 		RequestID: types.NewV4(),
@@ -28,26 +35,15 @@ func TestComposeFetcher(t *testing.T) {
 		Protocol:  types.ProtocolHTTP,
 	})
 
-	queues.Inbox.Put(types.Message{
+	msg := types.Message{
 		ID:          "0-0-0-TestName",
 		MessageType: types.FetcherRequestType,
 		Message:     json.RawMessage(message),
-	}, 0)
+	}
 
-	testutil.AssertFolderSize(t, paths.Inbox, 1)
+	res, err := fetcher.OnMessage(msg)
 
-	manager := worker.NewWorkerManager(fetcher, queues.Inbox, queues.Outbox)
-
-	queues.Inbox.Start()
-	go manager.Start()
-	<-time.After(12 * time.Second)
-
-	testutil.AssertFolderSize(t, paths.Inbox, 0)
-	testutil.AssertFolderSize(t, paths.InboxDLQ, 0)
-	testutil.AssertFolderSize(t, paths.Outbox, 1)
-	testutil.AssertFolderSize(t, paths.OutboxDLQ, 0)
+	assert.NoError(t, err)
+	assert.NotNil(t, res)
 	testutil.AssertFolderSize(t, paths.ObjectStore, 1)
-
-	manager.Stop()
-	queues.Inbox.Stop()
 }

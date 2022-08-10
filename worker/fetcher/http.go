@@ -23,7 +23,7 @@ type HttpFetcherParams struct {
 type httpFetcher struct {
 	MaxRetries  int
 	ObjectStore objectstore.ObjectStore
-	Client      *util.DelverHTTPClient
+	Client      util.DelverHTTPClient
 }
 
 func NewHttpFetcher(args HttpFetcherParams) worker.Worker {

@@ -14,7 +14,7 @@ import (
 
 type rssFeedPublisher struct {
 	uris   []string
-	client *util.DelverHTTPClient
+	client util.DelverHTTPClient
 }
 
 type RssFeedPublisherParams struct {

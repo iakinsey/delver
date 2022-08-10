@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/resource/bloom"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
@@ -19,14 +20,16 @@ func TestNewsAccumulator(t *testing.T) {
 
 	queues := testutil.CreateQueueTriad(paths)
 	newsQueue := queues.Outbox
-	accumulator := NewNewsAccumulator(NewsAccumulatorParams{
-		NewsQueue: newsQueue,
-		SeenUrls: bloom.NewBloomFilter(bloom.BloomFilterParams{
+	accumulator := &newsAccumulator{
+		maxDepth:  maxDepth,
+		robots:    frontier.NewNullFilter(),
+		newsQueue: newsQueue,
+		seenUrls: bloom.NewBloomFilter(bloom.BloomFilterParams{
 			MaxN: 1000,
 			P:    0.01,
-		},
-		),
-	})
+		}),
+	}
+
 	composite, _ := json.Marshal(message.CompositeAnalysis{
 		FetcherResponse: message.FetcherResponse{
 			FetcherRequest: message.FetcherRequest{

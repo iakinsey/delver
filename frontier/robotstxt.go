@@ -15,7 +15,7 @@ import (
 )
 
 type memoryRobots struct {
-	client            *util.DelverHTTPClient
+	client            util.DelverHTTPClient
 	userAgent         string
 	expiration        time.Duration
 	clearExpiredDelay time.Duration
