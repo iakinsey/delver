@@ -12,41 +12,23 @@ import (
 
 const defaultUserAgent = "delver"
 
-type DelverHTTPClient struct {
+type DelverHTTPClient interface {
+	Perform(url string) (*http.Response, error)
+}
+
+type delverHTTPClient struct {
 	HTTP       *http.Client
 	UserAgent  string
 	MaxRetries int
 }
 
-func (s *DelverHTTPClient) Perform(url string) (*http.Response, error) {
-	var req *http.Request
-	var resp *http.Response
-	var err error
-
-	for i := 0; i < s.MaxRetries+1; i++ {
-		req, err = http.NewRequest("GET", url, nil)
-
-		if err != nil {
-			return nil, err
-		}
-
-		if s.UserAgent != "" {
-			req.Header.Set("User-Agent", s.UserAgent)
-		} else {
-			req.Header.Set("User-Agent", defaultUserAgent)
-		}
-
-		resp, err = s.HTTP.Do(req)
-
-		if err == nil {
-			break
-		}
-	}
-
-	return resp, err
+// TODO use a mocking library if this becomes a common pattern
+type MockDelverHTTPClient struct {
+	Response *http.Response
+	Error    error
 }
 
-func NewHTTPClient() *DelverHTTPClient {
+func NewHTTPClient() DelverHTTPClient {
 	params := config.Get().HTTPClient
 	client := &http.Client{Timeout: params.Timeout}
 
@@ -74,9 +56,41 @@ func NewHTTPClient() *DelverHTTPClient {
 		}
 	}
 
-	return &DelverHTTPClient{
+	return &delverHTTPClient{
 		HTTP:       client,
 		UserAgent:  params.UserAgent,
 		MaxRetries: params.MaxRetries,
 	}
+}
+
+func (s *delverHTTPClient) Perform(url string) (*http.Response, error) {
+	var req *http.Request
+	var resp *http.Response
+	var err error
+
+	for i := 0; i < s.MaxRetries+1; i++ {
+		req, err = http.NewRequest("GET", url, nil)
+
+		if err != nil {
+			return nil, err
+		}
+
+		if s.UserAgent != "" {
+			req.Header.Set("User-Agent", s.UserAgent)
+		} else {
+			req.Header.Set("User-Agent", defaultUserAgent)
+		}
+
+		resp, err = s.HTTP.Do(req)
+
+		if err == nil {
+			break
+		}
+	}
+
+	return resp, err
+}
+
+func (s *MockDelverHTTPClient) Perform(url string) (*http.Response, error) {
+	return s.Response, s.Error
 }
