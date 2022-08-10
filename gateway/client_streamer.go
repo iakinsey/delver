@@ -36,6 +36,12 @@ type ClientStreamer interface {
 	Publish(entities []*types.Indexable) error
 }
 
+func StartClientStreamer() {
+	streamer := NewClientStreamer()
+
+	log.Fatalf(streamer.Start().Error())
+}
+
 func NewClientStreamer() ClientStreamer {
 	conf := config.Get().ClientStreamer
 	searchGateway := NewSearchGateway(conf.SearchAddresses)
