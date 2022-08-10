@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/api"
@@ -28,6 +29,8 @@ import (
 	"github.com/iakinsey/delver/worker/publisher"
 	"github.com/iakinsey/delver/worker/transformer"
 )
+
+var resourceKeyLookupError = errors.New("failed to find resource key")
 
 const terminationWaitTime = 5 * time.Second
 
@@ -330,10 +333,14 @@ func parseParamWithResources(data []byte, config interface{}, resources map[stri
 }
 
 func getResource(data []byte, c interface{}, resourceKey string, resources map[string]interface{}) interface{} {
-	resourceName := getResourceName(data, resourceKey)
+	resourceName, err := getResourceName(data, resourceKey)
 
-	if resourceName == "" && resourceKey == config.TransformerQueueName {
+	if errors.Is(err, resourceKeyLookupError) && resourceKey == config.TransformerQueueName {
 		resourceName = config.TransformerQueueName
+	} else if errors.Is(err, resourceKeyLookupError) {
+		log.Fatalf("%s: %s", resourceKeyLookupError.Error(), resourceKey)
+	} else if err != nil {
+		log.Fatalf(err.Error())
 	}
 
 	resource, ok := resources[resourceName]
@@ -345,24 +352,24 @@ func getResource(data []byte, c interface{}, resourceKey string, resources map[s
 	return resource
 }
 
-func getResourceName(data []byte, key string) string {
+func getResourceName(data []byte, key string) (string, error) {
 	m := make(map[string]json.RawMessage)
 
 	if err := json.Unmarshal(data, &m); err != nil {
-		log.Fatalf("failed to parse resource json")
+		return "", errors.Wrapf(err, "failed to parse resource json %s", key)
 	}
 
 	r, ok := m[key]
 
 	if !ok {
-		log.Fatalf("failed to find resource key %s", key)
+		return "", resourceKeyLookupError
 	}
 
 	var res string
 
 	if err := json.Unmarshal(r, &res); err != nil {
-		log.Fatalf("failed to parse resource value %s", key)
+		return "", errors.Wrapf(err, "failed to parse resource value %s", key)
 	}
 
-	return res
+	return res, nil
 }
