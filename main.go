@@ -16,6 +16,7 @@ import (
 
 	"github.com/iakinsey/delver/api"
 	"github.com/iakinsey/delver/config"
+	"github.com/iakinsey/delver/gateway"
 	"github.com/iakinsey/delver/instrument"
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/resource/bloom"
@@ -74,6 +75,7 @@ func StartFromJsonConfig(path string) {
 	}
 
 	go api.StartHTTPServer()
+	go gateway.StartClientStreamer()
 	StartFromApplication(app)
 }
 
