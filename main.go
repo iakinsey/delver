@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"os"
 	"os/signal"
 	"reflect"
@@ -58,7 +58,7 @@ func StartFromJsonConfig(path string) {
 		log.Fatalf("failed to open config: %s", path)
 	}
 
-	b, err := ioutil.ReadAll(f)
+	b, err := io.ReadAll(f)
 
 	if err != nil {
 		log.Fatalf("failed to read config: %s", path)
@@ -227,11 +227,19 @@ func GetWorkerManager(wc config.Worker, resources map[string]interface{}, w work
 		log.Fatalf("worker %s has no inbox %s", wc.Name, wc.Inbox)
 	}
 
-	outbox, ok := resources[wc.Outbox]
+	out, ok := resources[wc.Outbox]
+	var outbox queue.Queue = nil
 
-	if !ok {
-		log.Fatalf("worker %s has no outbox %s", wc.Name, wc.Outbox)
+	if ok {
+		outbox = out.(queue.Queue)
 	}
+
+	// TODO some workers require outboxes, how can this be transparently handled at init time?
+	/*
+		if !ok {
+			log.Fatalf("worker %s has no outbox %s", wc.Name, wc.Outbox)
+		}
+	*/
 
 	switch wc.Manager {
 	case "worker":
@@ -239,12 +247,12 @@ func GetWorkerManager(wc config.Worker, resources map[string]interface{}, w work
 		m = worker.NewWorkerManager(
 			w,
 			inbox.(queue.Queue),
-			outbox.(queue.Queue),
+			outbox,
 		)
 	case "job":
 		m = worker.NewJobManager(
 			w,
-			outbox.(queue.Queue),
+			outbox,
 			wc.Interval,
 		)
 	default:
