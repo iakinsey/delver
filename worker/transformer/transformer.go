@@ -6,6 +6,7 @@ import (
 	"github.com/iakinsey/delver/transformers"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/worker"
+	log "github.com/sirupsen/logrus"
 )
 
 type transformer struct {
@@ -59,10 +60,14 @@ func (s *transformer) OnMessage(msg types.Message) (interface{}, error) {
 
 	if err := s.search.IndexMany(entities); err != nil {
 		tErr = multierror.Append(tErr, err)
+	} else {
+		log.Infof("transformer indexed %d entities", len(entities))
 	}
 
 	if err := s.streamer.Publish(entities); err != nil {
 		tErr = multierror.Append(tErr, err)
+	} else {
+		log.Infof("transformer published %d entities", len(entities))
 	}
 
 	return nil, tErr

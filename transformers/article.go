@@ -33,7 +33,7 @@ func (s *articleTransformer) Perform(msg json.RawMessage) ([]*types.Indexable, e
 		Url:       composite.URI,
 		UrlMd5:    fmt.Sprintf("%x", md5.Sum([]byte(composite.URI))),
 		OriginUrl: composite.Origin,
-		Type:      types.ArticleIndexable,
+		Type:      s.Name(),
 		Found:     composite.Timestamp,
 		Countries: composite.Countries,
 		Corporate: composite.Corporations,
@@ -72,8 +72,8 @@ func (s *articleTransformer) Perform(msg json.RawMessage) ([]*types.Indexable, e
 	return []*types.Indexable{
 		{
 			ID:         article.UrlMd5,
-			Index:      types.ArticleIndexable,
-			DataType:   types.ArticleIndexable,
+			Index:      s.Name(),
+			DataType:   s.Name(),
 			Streamable: s.Streamable(),
 			Data:       article,
 		},
@@ -86,4 +86,8 @@ func (s *articleTransformer) Input() types.MessageType {
 
 func (s *articleTransformer) Streamable() bool {
 	return true
+}
+
+func (s *articleTransformer) Name() string {
+	return types.ArticleIndexable
 }

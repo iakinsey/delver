@@ -24,8 +24,8 @@ func (s *metricTransformer) Perform(msg json.RawMessage) ([]*types.Indexable, er
 	for _, m := range metrics {
 		results = append(results, &types.Indexable{
 			ID:         string(types.NewV4()),
-			Index:      types.MetricIndexable,
-			DataType:   types.MetricIndexable,
+			Index:      s.Name(),
+			DataType:   s.Name(),
 			Data:       m,
 			Streamable: s.Streamable(),
 		})
@@ -39,4 +39,8 @@ func (s *metricTransformer) Input() types.MessageType {
 
 func (s *metricTransformer) Streamable() bool {
 	return true
+}
+
+func (s *metricTransformer) Name() string {
+	return types.MetricIndexable
 }
