@@ -111,12 +111,12 @@ var Indices = []Index{
 					"origin": {"type": "keyword"},
 					"protocol": {"type": "keyword"},
 					"content_md5": {"type": "keyword"},
-					"language": {"type": "keyword"}
+					"language": {"type": "keyword"},
 					"error": {"type": "text"},
 					"title": {"type": "text"},
 					"elapsed_time_ms": {"type": "integer"},
 					"timestamp": {"type": "integer"},
-					"http_code": {"type": "integer"},
+					"http_code": {"type": "integer"}
 				}
 			}
 		}`,

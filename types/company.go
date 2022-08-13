@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"io/ioutil"
+	"io"
 	"os"
 	"regexp"
 	"unicode"
@@ -36,7 +36,7 @@ func GetCompanies(path string) ([]*Company, error) {
 
 	defer f.Close()
 
-	bytes, err := ioutil.ReadAll(f)
+	bytes, err := io.ReadAll(f)
 
 	if err != nil {
 		return nil, err

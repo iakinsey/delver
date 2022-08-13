@@ -59,6 +59,7 @@ func NewSearchGateway(addresses []string) SearchGateway {
 
 	return &searchGateway{
 		client: client,
+		bulkIndexers: make(map[string]esutil.BulkIndexer),
 	}
 }
 

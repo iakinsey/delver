@@ -3,7 +3,7 @@ package types
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -36,7 +36,7 @@ func GetCountries(path string) (Countries, error) {
 		return nil, err
 	}
 
-	data, err := ioutil.ReadAll(f)
+	data, err := io.ReadAll(f)
 
 	if err != nil {
 		return nil, err
