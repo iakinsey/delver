@@ -84,6 +84,10 @@ func (s *workerManager) Stop() {
 }
 
 func (s *workerManager) publishResponse(result interface{}) {
+	if result == nil {
+		return
+	}
+
 	count := 1
 	switch d := result.(type) {
 	case types.MultiMessage:
@@ -102,14 +106,14 @@ func (s *workerManager) doPublish(result interface{}) {
 	messageType, err := message.GetMessageTypeMapping(result)
 
 	if err != nil {
-		log.Errorln("Unknown message type attempted to publish")
+		log.Errorf("%s: unknown message type attempted to publish: %s", s.workerName, err.Error())
 		return
 	}
 
 	msg, err := json.Marshal(result)
 
 	if err != nil {
-		log.Errorln("Failed to serialize message segment")
+		log.Errorf("%s: failed to serialize message segment: %s", s.workerName, err.Error())
 		return
 	}
 

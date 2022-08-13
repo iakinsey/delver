@@ -15,6 +15,6 @@ func GetMessageTypeMapping(msg interface{}) (types.MessageType, error) {
 	case CompositeAnalysis:
 		return types.CompositeAnalysisType, nil
 	default:
-		return types.NullMessage, fmt.Errorf("unmappable message type")
+		return types.NullMessage, fmt.Errorf("unmappable message type: %s", msg)
 	}
 }
