@@ -44,8 +44,8 @@ func (s *pageTransformer) Perform(msg json.RawMessage) ([]*types.Indexable, erro
 	return []*types.Indexable{
 		{
 			ID:         fmt.Sprintf("%x", md5.Sum([]byte(composite.URI))),
-			Index:      types.PageIndexable,
-			DataType:   types.PageIndexable,
+			Index:      s.Name(),
+			DataType:   s.Name(),
 			Streamable: s.Streamable(),
 			Data:       page,
 		},
@@ -58,4 +58,8 @@ func (s *pageTransformer) Input() types.MessageType {
 
 func (s *pageTransformer) Streamable() bool {
 	return true
+}
+
+func (s *pageTransformer) Name() string {
+	return types.PageIndexable
 }

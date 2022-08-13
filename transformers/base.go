@@ -13,6 +13,7 @@ type Transformer interface {
 	Perform(msg json.RawMessage) ([]*types.Indexable, error)
 	Input() types.MessageType
 	Streamable() bool
+	Name() string
 }
 
 func GetTransformer(name string) Transformer {
