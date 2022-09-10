@@ -306,10 +306,10 @@ func (s *clientStreamer) getFilter(conn *websocket.Conn) (map[string]rpc.FilterP
 		return nil, fmt.Errorf("unable to parse url: %s", url)
 	}
 
-	encoded := tokens[len(tokens)-1]
-	var decoded []byte
+	encoded := strings.Replace(tokens[len(tokens)-1], "_", "/", -1)
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
 
-	if _, err := base64.RawURLEncoding.Decode(decoded, []byte(encoded)); err != nil {
+	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse encoded filter")
 	}
 
@@ -317,29 +317,17 @@ func (s *clientStreamer) getFilter(conn *websocket.Conn) (map[string]rpc.FilterP
 }
 
 func (s *clientStreamer) decodeFilters(message []byte) (map[string]rpc.FilterParams, error) {
-	result := make(map[string]rpc.FilterParams)
-	decoded := make(map[string]json.RawMessage)
+	decoded := make([]rpc.FilterParams, 0)
+	result := make(map[string]rpc.FilterParams, 0)
 
 	if err := json.Unmarshal(message, &decoded); err != nil {
 		return nil, errors.Wrap(err, "failed to parse filter")
 	}
 
-	for key, val := range decoded {
-		var filter rpc.Filter
-
-		if err := json.Unmarshal(val, &filter); err != nil {
-			return nil, errors.Wrap(err, "failed to parse filter part")
-		}
-
-		var fp rpc.FilterParams
-
-		if err := json.Unmarshal(val, &fp); err != nil {
-			return nil, errors.Wrap(err, "failed to parse filter value")
-		}
-
+	for _, fp := range decoded {
 		var fq interface{}
 
-		switch filter.DataType {
+		switch fp.DataType {
 		case rpc.FilterTypeArticle:
 			fq = rpc.ArticleFilterQuery{}
 		case rpc.FilterTypePage:
@@ -347,15 +335,18 @@ func (s *clientStreamer) decodeFilters(message []byte) (map[string]rpc.FilterPar
 		case rpc.FilterTypeMetric:
 			fq = rpc.MetricFilterQuery{}
 		default:
-			return nil, fmt.Errorf("unknown filter type %s", filter.DataType)
+			return nil, fmt.Errorf("unknown filter type %s", fp.DataType)
 		}
 
-		if err := json.Unmarshal(fp.RawQuery, fq); err != nil {
-			return nil, errors.Wrap(err, "failed to parse filter query")
+		// If fp.RawQuery is of size 2, then it's liklely an empty map. Parsing can be skipped.
+		if len(fp.RawQuery) > 2 {
+			if err := json.Unmarshal(fp.RawQuery, &fq); err != nil {
+				return nil, errors.Wrap(err, "failed to parse filter query")
+			}
 		}
 
 		fp.Query = fq
-		result[key] = fp
+		result[string(types.NewV4())] = fp
 	}
 
 	return result, nil
