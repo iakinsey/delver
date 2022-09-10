@@ -6,10 +6,6 @@ const FilterTypeArticle = "article"
 const FilterTypePage = "page"
 const FilterTypeMetric = "metric"
 
-type Filter struct {
-	DataType string `json:"data_type"`
-}
-
 type Aggregator struct {
 	Name              string `json:"agg_name"`
 	TimeField         string `json:"time_field"`

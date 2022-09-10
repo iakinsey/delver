@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"strings"
 
 	"github.com/elastic/go-elasticsearch/v7"
@@ -58,7 +57,7 @@ func NewSearchGateway(addresses []string) SearchGateway {
 	}
 
 	return &searchGateway{
-		client: client,
+		client:       client,
 		bulkIndexers: make(map[string]esutil.BulkIndexer),
 	}
 }
@@ -217,7 +216,7 @@ func (s *searchGateway) doSearch(query io.Reader) ([]byte, error) {
 		return nil, fmt.Errorf("failed to search entity (code %d): %s", res.StatusCode, res.String())
 	}
 
-	data, err := ioutil.ReadAll(res.Body)
+	data, err := io.ReadAll(res.Body)
 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read search output")
