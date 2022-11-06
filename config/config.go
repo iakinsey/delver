@@ -36,8 +36,9 @@ type APIConfig struct {
 }
 
 type StreamerConfig struct {
-	Enabled bool   `json:"enabled"`
-	Address string `json:"address"`
+	Enabled         bool     `json:"enabled"`
+	Address         string   `json:"address"`
+	SearchAddresses []string `json:"search_addresses"`
 }
 
 type PersistentMapConfig struct {
@@ -51,10 +52,6 @@ type MetricsConfig struct {
 	Enabled bool `json:"enabled"`
 }
 
-type ClientStreamerConfig struct {
-	SearchAddresses []string
-}
-
 type TransformerConfig struct {
 	Enabled         []string `json:"enabled"`
 	SearchAddresses []string `json:"search_addresses"`
@@ -64,16 +61,15 @@ type Config struct {
 	WorkerCounts int           `json:"worker_counts"`
 	Metrics      MetricsConfig `json:"metrics"`
 	// TODO maybe this should be in the workers/resources mapping instead?
-	DefaultSaveInterval time.Duration        `json:"default_save_interval"`
-	CountriesPath       string               `json:"countries_path"`
-	CompaniesPath       string               `json:"companies_path"`
-	Adversarial         AdversarialConfig    `json:"adversarial"`
-	HTTPClient          HTTPClientConfig     `json:"http_client"`
-	API                 APIConfig            `json:"api"`
-	Streamer            StreamerConfig       `json:"streamer"`
-	Robots              RobotsConfig         `json:"robots"`
-	PersistentMap       PersistentMapConfig  `json:"persistent_map"`
-	ClientStreamer      ClientStreamerConfig `json:"client_streamer"`
+	DefaultSaveInterval time.Duration       `json:"default_save_interval"`
+	CountriesPath       string              `json:"countries_path"`
+	CompaniesPath       string              `json:"companies_path"`
+	Adversarial         AdversarialConfig   `json:"adversarial"`
+	HTTPClient          HTTPClientConfig    `json:"http_client"`
+	API                 APIConfig           `json:"api"`
+	Streamer            StreamerConfig      `json:"streamer"`
+	Robots              RobotsConfig        `json:"robots"`
+	PersistentMap       PersistentMapConfig `json:"persistent_map"`
 }
 
 func LoadConfig() Config {
