@@ -1,5 +1,7 @@
 package types
 
+import "encoding/json"
+
 const (
 	ArticleIndexable = "article"
 	MetricIndexable  = "metric"
@@ -22,8 +24,8 @@ type Index struct {
 }
 
 type ClientStreamerMessage struct {
-	Type string      `json:"type"`
-	Data interface{} `json:"data"`
+	Type string          `json:"type"`
+	Data json.RawMessage `json:"data"`
 }
 
 type Article struct {
