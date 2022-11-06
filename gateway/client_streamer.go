@@ -43,7 +43,7 @@ func StartClientStreamer() {
 }
 
 func NewClientStreamer() ClientStreamer {
-	conf := config.Get().ClientStreamer
+	conf := config.Get().Streamer
 	searchGateway := NewSearchGateway(conf.SearchAddresses)
 
 	return &clientStreamer{
