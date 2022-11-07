@@ -57,9 +57,14 @@ type TransformerConfig struct {
 	SearchAddresses []string `json:"search_addresses"`
 }
 
+type WorkersConfig struct {
+	Enabled      bool `json:"enabled"`
+	WorkerCounts int  `json:"worker_counts"`
+}
+
 type Config struct {
-	WorkerCounts int           `json:"worker_counts"`
-	Metrics      MetricsConfig `json:"metrics"`
+	Workers WorkersConfig `json:"workers"`
+	Metrics MetricsConfig `json:"metrics"`
 	// TODO maybe this should be in the workers/resources mapping instead?
 	DefaultSaveInterval time.Duration       `json:"default_save_interval"`
 	CountriesPath       string              `json:"countries_path"`
@@ -75,7 +80,10 @@ type Config struct {
 func LoadConfig() Config {
 	// Put defaults here
 	return Config{
-		WorkerCounts:        runtime.NumCPU() * 8,
+		Workers: WorkersConfig{
+			Enabled:      true,
+			WorkerCounts: runtime.NumCPU() * 8,
+		},
 		DefaultSaveInterval: 2 * time.Minute,
 		CompaniesPath:       DataFilePath("data", "companies.json"),
 		CountriesPath:       DataFilePath("data", "countries.json"),
