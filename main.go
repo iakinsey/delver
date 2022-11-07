@@ -74,6 +74,9 @@ func StartFromJsonConfig(path string) {
 		log.Fatalf("falsed to parse config: %s", path)
 	}
 
+	// Set config after parsing so defaults are set
+	app.Config = config.Get()
+
 	go api.StartHTTPServer()
 	go gateway.StartClientStreamer()
 	StartFromApplication(app)
@@ -105,10 +108,16 @@ func StartFromApplication(app config.Application) {
 }
 
 func StartApplication(app config.Application, resources map[string]interface{}, workers map[string]worker.WorkerManager) {
+	conf := app.Config.Workers
+
 	for _, resource := range resources {
 		if q, ok := resource.(queue.Queue); ok {
 			go q.Start()
 		}
+	}
+
+	if !conf.Enabled {
+		return
 	}
 
 	for _, wc := range app.Workers {
@@ -119,7 +128,7 @@ func StartApplication(app config.Application, resources map[string]interface{}, 
 		if count == 0 && wc.Manager == "job" {
 			count = 1
 		} else if count == 0 {
-			count = app.Config.WorkerCounts
+			count = conf.WorkerCounts
 		}
 
 		for i := 0; i < count; i++ {
