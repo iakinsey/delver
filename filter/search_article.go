@@ -28,7 +28,7 @@ const countryTemplate = `
 	{"match": {"countries": {"query": "%s"}}}
 `
 const keywordTemplate = `
-	{"query": "%s", "fields": ["summary", "content", "title"]}
+	{"multi_match": {"query": "%s", "fields": ["summary", "content", "title"]}}
 `
 const companyTemplate = `
 	{"match": {"corporate": {"query": "%s"}}}
@@ -106,15 +106,10 @@ func (s *articleSearchFilter) transformKeyword() {
 		return
 	}
 
-	var part map[string][]json.RawMessage = make(map[string][]json.RawMessage)
-	part["multi_match"] = make([]json.RawMessage, 0)
-
 	for _, keyword := range s.Keyword {
 		q := json.RawMessage(fmt.Sprintf(keywordTemplate, keyword))
-		part["multi_match"] = append(part["multi_match"], q)
+		s.Must = append(s.Must, q)
 	}
-
-	s.Must = append(s.Must, part)
 }
 
 func (s *articleSearchFilter) transformCompany() {
