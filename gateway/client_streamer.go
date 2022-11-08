@@ -325,27 +325,40 @@ func (s *clientStreamer) decodeFilters(message []byte) (map[string]rpc.FilterPar
 	}
 
 	for _, fp := range decoded {
-		var fq interface{}
+		// If fp.RawQuery is of size 2, then it's liklely an empty map. Parsing can be skipped.
+		if len(fp.RawQuery) <= 2 {
+			continue
+		}
 
 		switch fp.DataType {
 		case rpc.FilterTypeArticle:
-			fq = rpc.ArticleFilterQuery{}
+			afq := rpc.ArticleFilterQuery{}
+
+			if err := json.Unmarshal(fp.RawQuery, &afq); err != nil {
+				return nil, errors.Wrap(err, "failed to parse filter query")
+			}
+
+			fp.Query = afq
 		case rpc.FilterTypePage:
-			fq = rpc.PageFilterQuery{}
+			pfq := rpc.PageFilterQuery{}
+
+			if err := json.Unmarshal(fp.RawQuery, &pfq); err != nil {
+				return nil, errors.Wrap(err, "failed to parse filter query")
+			}
+
+			fp.Query = pfq
 		case rpc.FilterTypeMetric:
-			fq = rpc.MetricFilterQuery{}
+			mfq := rpc.MetricFilterQuery{}
+
+			if err := json.Unmarshal(fp.RawQuery, &mfq); err != nil {
+				return nil, errors.Wrap(err, "failed to parse filter query")
+			}
+
+			fp.Query = mfq
 		default:
 			return nil, fmt.Errorf("unknown filter type %s", fp.DataType)
 		}
 
-		// If fp.RawQuery is of size 2, then it's liklely an empty map. Parsing can be skipped.
-		if len(fp.RawQuery) > 2 {
-			if err := json.Unmarshal(fp.RawQuery, &fq); err != nil {
-				return nil, errors.Wrap(err, "failed to parse filter query")
-			}
-		}
-
-		fp.Query = fq
 		result[string(types.NewV4())] = fp
 	}
 
