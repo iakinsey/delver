@@ -1,0 +1,56 @@
+body {
+    background-color: #323232;
+    color: #eeeeec;
+    font-family: "Lucida Console", Monaco, monospace;
+}
+
+a {
+    text-decoration: none;
+    color: #eeeeec;
+}
+
+a:hover {
+    color: #4e9a06;
+}
+
+input[type="text"] {
+    font-family: "Lucida Console", Monaco, monospace;
+}
+
+
+select::-ms-expand {
+    display: none;
+}
+
+
+select{
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+
+@-moz-document url-prefix(){
+}
+
+
+select option {
+    font-size: 1.8em;
+}
+
+
+.react-grid-placeholder {
+    display: none;
+}
+
+
+.help h1 {
+    color: #a9d001;
+}
+
+.help h2 {
+    color: #c4a000;
+}
+
+.help h3 {
+    color: #8282a7;
+}

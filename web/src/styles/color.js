@@ -1,0 +1,10 @@
+export const BOX_BORDER = "#0b0b0b"
+export const BOX_BG = "#1c1c1c"
+export const LINK_TEXT = "#4e9a06"
+export const LINK_TEXT_ALT = "#add500"
+export const ERROR_TEXT = "#cc0000"
+export const ICON = "#6c6c6c"
+export const HEADER_BG = "#444444"
+export const HEADER_BORDER = "#3a3a3a"
+export const LOGO = "#8282a7"
+export const BUTTON_TEXT_ALT = '#add500'
