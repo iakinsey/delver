@@ -33,7 +33,7 @@ import (
 
 var resourceKeyLookupError = errors.New("failed to find resource key")
 
-const terminationWaitTime = 5 * time.Second
+const terminationWaitTime = 2 * time.Second
 
 type preparedApplication struct {
 	app       config.Application
@@ -144,12 +144,16 @@ func AwaitTermination(resources map[string]interface{}, workers map[string]worke
 
 	<-sigterm
 
-	Terminate(resources, workers, done)
+	go Terminate(resources, workers, done)
+
+	log.Info("terminating")
 
 	select {
 	case <-time.After(terminationWaitTime):
+		log.Info("termination grace period expired, exiting dirty")
 		os.Exit(1)
 	case <-done:
+		log.Info("terminated successfully")
 		os.Exit(0)
 	}
 }
