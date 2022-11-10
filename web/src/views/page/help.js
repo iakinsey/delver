@@ -203,12 +203,12 @@ function FAQ() {
             </div>
             <h2>Why are no articles from [source X]?</h2>
             <div>
-                Informe has limited article processing capabilities. We are
+                Delver has limited article processing capabilities. We are
                 currently working on a solution that will dramatically increase
                 the number of available articles.
             </div>
-            <h2>What is Informe's development status?</h2>
-            <div>Informe is pre-alpha software.</div>
+            <h2>What is Delver's development status?</h2>
+            <div>Delver is pre-alpha software.</div>
             <h2>How do I set the title of a cell?</h2>
             <div>
                 Click on the current title on the cell's header, type something
@@ -220,7 +220,7 @@ function FAQ() {
                     Naive Bayes.
                 </a>
             </div>
-            <h2>What browser does Informe work best in?</h2>
+            <h2>What browser does Delver work best in?</h2>
             <div><a href="/chad.png">Firefox</a>.</div>
         </div>
     )

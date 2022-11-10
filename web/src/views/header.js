@@ -5,7 +5,7 @@ import React from 'react';
 export default function Header() {
     return (
         <div style={styles.container}>
-            <a href="/"><span style={styles.logo}>Informe</span></a>
+            <a href="/"><span style={styles.logo}>Delver</span></a>
             <span style={styles.dropdown}>
                 <Dropdown />
             </span>
