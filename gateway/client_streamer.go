@@ -283,7 +283,7 @@ func (s *clientStreamer) applyTransforms(entities []json.RawMessage, filter rpc.
 			}
 
 			m2["callback"] = filter.Callback
-			results = append(results, entity)
+			results = append(results, m2)
 		} else {
 			results = append(results, entity)
 		}

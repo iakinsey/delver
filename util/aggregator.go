@@ -76,12 +76,10 @@ func (s *aggregator) Perform(entity map[string]float64) map[string]float64 {
 		s.reset(time)
 	}
 
-	if time < *s.nextTime {
+	if time < *s.nextTime || len(s.timeWindow) == 0 {
 		s.timeWindow = append(s.timeWindow, time)
 		s.valueWindow = append(s.valueWindow, val)
 
-		return nil
-	} else if len(s.timeWindow) == 0 {
 		return nil
 	}
 
