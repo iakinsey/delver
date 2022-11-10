@@ -10,7 +10,7 @@ const queryTemplate = `{
     "from": 0,
     "size": 10000,
     "sort": [
-        {"found": {"order": "desc"}}
+        {"found": {"order": "asc"}}
     ],
 	"_source": %s,
     "query": {
