@@ -11,6 +11,7 @@ import { updateCell } from '../../event/actions'
 import { connect } from 'react-redux'
 import md5 from 'md5'
 import store from "../../event/store"
+import MetricView from '../cell/metric';
 
 
 const getCellKey = (cell) => {
@@ -34,6 +35,8 @@ const renderCellContents = (cell, dimensions) => {
             return <EntityFeedView key={key} cell={cell} />
         case "search":
             return <SearchFeedView key={key} cell={cell} />
+        case "metric":
+            return <MetricView key={key} cell={cell} />
         default:
             return
     }

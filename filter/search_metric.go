@@ -18,7 +18,7 @@ type metricSearchFilter struct {
 }
 
 type metricRollup struct {
-	Value int64 `json:"value"`
+	Value float64 `json:"value"`
 }
 
 type aggEntity struct {
@@ -36,22 +36,26 @@ func NewMetricSearchFilter(params rpc.FilterParams) SearchFilter {
 }
 
 func (s *metricSearchFilter) IsAggregate() bool {
-	return false
+	return true
 }
 
 func (s *metricSearchFilter) Perform() (io.Reader, error) {
-	aggType, err := s.getAggType(s.Agg.Name)
+	aggType, err := s.getAggType()
 
 	if err != nil {
 		return nil, err
 	}
 
-	// XXX Hardcode 90 day window limit
-	if s.Start < time.Now().AddDate(0, 0, 90).Unix() {
+	start := s.Start
+	ninetyDaysAgo := time.Now().AddDate(0, 0, -90).Unix()
+
+	if start == 0 {
+		start = ninetyDaysAgo
+	} else if start < ninetyDaysAgo {
+		// XXX Hardcode 90 day window limit
 		return nil, fmt.Errorf("start time exceeds 90 days from current date")
 	}
 
-	start := s.Start
 	end := s.End
 
 	if end == 0 {
@@ -62,18 +66,18 @@ func (s *metricSearchFilter) Perform() (io.Reader, error) {
 		return nil, fmt.Errorf("end time before start time")
 	}
 
-	window := s.Agg.TimeWindowSeconds
+	window := 1
 
-	if window <= 0 {
-		window = 1
+	if s.Agg != nil && s.Agg.TimeWindowSeconds > 0 {
+		window = int(s.Agg.TimeWindowSeconds)
 	}
 
 	interval := fmt.Sprintf("%dm", window)
 	query := fmt.Sprintf(
 		metricQueryTemplate,
 		s.Key,
-		start,
-		end,
+		start*1000,
+		end*1000,
 		interval,
 		aggType,
 	)
@@ -92,7 +96,7 @@ func (s *metricSearchFilter) Postprocess(entities []json.RawMessage) (results []
 		metric := types.Metric{
 			Key:   s.Key,
 			When:  aggE.Key / 1000, // Result is unix millis, convert to unix seconds
-			Value: aggE.MetricRollup.Value,
+			Value: int64(aggE.MetricRollup.Value),
 		}
 
 		b, err := json.Marshal(metric)
@@ -107,8 +111,12 @@ func (s *metricSearchFilter) Postprocess(entities []json.RawMessage) (results []
 	return
 }
 
-func (s *metricSearchFilter) getAggType(name string) (string, error) {
-	switch name {
+func (s *metricSearchFilter) getAggType() (string, error) {
+	if s.Agg == nil {
+		return "sum", nil
+	}
+
+	switch s.Agg.Name {
 	case "":
 	case "sum":
 		return "sum", nil
@@ -116,5 +124,5 @@ func (s *metricSearchFilter) getAggType(name string) (string, error) {
 		return "mean", nil
 	}
 
-	return "", fmt.Errorf("unsupported metric agg type: %s", name)
+	return "", fmt.Errorf("unsupported metric agg type: %s", s.Agg.Name)
 }
