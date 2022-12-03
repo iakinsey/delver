@@ -9,12 +9,13 @@ import {
 } from '../../styles/color'
 
 const CELL_TYPES = {
-    entityFeed: "Entity Feed",
+    entityFeed: "Entity",
     textFeed: "Text Feed",
     chart: "Chart",
     map: "Map",
     video: "Video",
-    search: "Search"
+    search: "Search",
+    metric: "Metric"
     /*
     company: "Company",
     search: "Search"
