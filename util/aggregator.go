@@ -27,7 +27,7 @@ func getAggFn(name string) (func([]float64) float64, error) {
 	case "":
 	case "sum":
 		return Sum, nil
-	case "mean":
+	case "avg":
 		return Mean, nil
 	}
 

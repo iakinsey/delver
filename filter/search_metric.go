@@ -118,10 +118,11 @@ func (s *metricSearchFilter) getAggType() (string, error) {
 
 	switch s.Agg.Name {
 	case "":
+		return "avg", nil
 	case "sum":
 		return "sum", nil
-	case "mean":
-		return "mean", nil
+	case "avg":
+		return "avg", nil
 	}
 
 	return "", fmt.Errorf("unsupported metric agg type: %s", s.Agg.Name)
