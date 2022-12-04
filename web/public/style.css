@@ -42,6 +42,9 @@ select option {
     display: none;
 }
 
+.recharts-wrapper {
+    position: absolute;
+}
 
 .help h1 {
     color: #a9d001;

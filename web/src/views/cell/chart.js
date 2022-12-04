@@ -59,7 +59,7 @@ export default class _Chart extends Connectable {
         }
 
         return (
-            <ResponsiveContainer width="99.9%" height="99.8%" aspect={3}>
+            <ResponsiveContainer width="99%" height="92">
                 <LineChart data={this.state.data} margin={{ top: 5, right: 5, bottom: 5 }}>
                     <Line type="monotone" dataKey={this.cell.filter.key} stroke="#8884d8" strokeWidth={3} dot={false} />
                     <CartesianGrid stroke="#ccc" strokeDasharray="5 5" />
@@ -71,9 +71,9 @@ export default class _Chart extends Connectable {
     }
 
     render() {
-        return <div>
+        return <span>
             {this.renderConfig()}
             {this.renderChart()}
-        </div>
+        </span>
     }
 }
