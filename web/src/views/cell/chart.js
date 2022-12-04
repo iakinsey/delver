@@ -13,7 +13,7 @@ const DEFAULT_QUERY = {
         time_field: "found",
         agg_field: "binary_sentiment_naive_bayes_aggregate",
         time_window_seconds: 1800,
-        agg_name: "mean"
+        agg_name: "avg"
     },
     options: {
         preload: true
