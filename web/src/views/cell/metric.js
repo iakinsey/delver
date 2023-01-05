@@ -8,15 +8,16 @@ const TIMESTAMP_KEY = 'when'
 const DEFAULT_QUERY = {
     data_type: "metric",
     query: {
-        key: "fetcher.duration.millisecond"
+        key: "httpFetcher.message.in"
+    },
+    options: {
+        preload: true
     }
 }
 
 const formatXAxis = tickItem => {
     return moment.unix(tickItem).format('D MMM')
 }
-
-
 
 export default class MetricView extends Connectable {
     constructor(props) {
@@ -41,11 +42,10 @@ export default class MetricView extends Connectable {
         }
     }
 
-    onMessage(message) {
+    onMessage(message, reconnect) {
         const newData = this.state.data.concat(message.data)
-        console.log(newData)
         this.setState({ data: newData })
-    }
+  }
 
     renderMetric() {
         if (!this.cell.filter) {

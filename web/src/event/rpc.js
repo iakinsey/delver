@@ -73,7 +73,10 @@ export default class RPC {
 
     disablePreload() {
         for (let filter of Object.values(this.filters)) {
-            filter.preload = false
+            var options = filter.options ? filter.options : {}
+
+            options.preload = false
+            filter.options = options
         }
     }
 
