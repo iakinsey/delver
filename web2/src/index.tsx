@@ -1,10 +1,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Outlet, Link } from "react-router-dom";
-
-function Home() {
-    return <div>Home</div>
-}
+import Login from "./views/auth"
+import { Provider } from "react-redux"
+import { store } from "./store"
 
 function About() {
     return <div>About</div>
@@ -23,13 +22,15 @@ ReactDOM.createRoot(
 ).render(
   <React.StrictMode>
     {"index"}
-    <BrowserRouter>
-        <Routes>
-            <Route path="/" element={<Layout />}>
-                <Route index element={<Home />} />
-                <Route path="about" element={<About />} />
-            </Route>
-        </Routes>
-    </BrowserRouter>
+    <Provider store={store}>
+        <BrowserRouter>
+            <Routes>
+                <Route path="/" element={<Layout />}>
+                    <Route index element={<Login />} />
+                    <Route path="about" element={<About />} />
+                </Route>
+            </Routes>
+        </BrowserRouter>
+    </Provider>
   </React.StrictMode>
 );
