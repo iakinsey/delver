@@ -77,19 +77,25 @@ export default class Connectable extends React.Component {
         }))
     }
 
+    renderQueryBuilder() {
+        return (
+            <div>
+                <textarea
+                    onChange={(e) => this.setState({
+                        filterInProgress: e.target.value
+                    })}
+                    style={styles.configBox}
+                    value={this.state.filterInProgress} />
+            </div>
+        )
+    }
+
     renderConfig() {
         if (this.state.configOn) {
             return (
                 <div>
-                    <div>
-                        <textarea
-                            onChange={(e) => this.setState({
-                                filterInProgress: e.target.value
-                            })}
-                            style={styles.configBox}
-                            value={this.state.filterInProgress} />
-                    </div>
-                    <div>
+                   <div>
+                        {this.renderQueryBuilder()}
                         {this.renderError()}
                         <button 
                          style={Object.assign({}, btn, styles.saveButton)}
