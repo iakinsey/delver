@@ -1,5 +1,6 @@
 import React from 'react'
 import Connectable from '../connectable'
+import QueryBuilder from "../query"
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, ResponsiveContainer } from 'recharts';
 import moment from 'moment'
 
@@ -45,7 +46,11 @@ export default class MetricView extends Connectable {
     onMessage(message, reconnect) {
         const newData = this.state.data.concat(message.data)
         this.setState({ data: newData })
-  }
+    }
+
+    renderQueryBuilder() {
+        return <QueryBuilder />
+    }
 
     renderMetric() {
         if (!this.cell.filter) {
