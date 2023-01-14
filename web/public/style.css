@@ -57,3 +57,11 @@ select option {
 .help h3 {
     color: #8282a7;
 }
+
+.qb-drag-handler {
+    display: none;
+}
+
+.rule--operator {
+    display: none;
+}
