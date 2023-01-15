@@ -35,7 +35,6 @@ export default class Connectable extends React.Component {
     }
 
     updateConfig() {
-        console.log(this.state.filterInProgress)
         const err = validateJSON(this.state.filterInProgress)
 
         if (err) {

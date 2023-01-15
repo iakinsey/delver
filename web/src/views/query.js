@@ -3,13 +3,13 @@ import React, {Component} from 'react';
 import { Utils as QbUtils, Query, Builder, BasicConfig } from '@react-awesome-query-builder/ui';
 import '@react-awesome-query-builder/ui/css/compact_styles.css';
 
-export default class QueryBuilder extends Component {
+export default class gQueryBuilder extends Component {
   constructor(props) {
     super(props)
 
     const InitialConfig = BasicConfig;
     const queryValue = {"id": QbUtils.uuid(), "type": "group"};
-   
+    const updates = {}
     const config = {
       ...InitialConfig,
       settings: {
@@ -27,10 +27,20 @@ export default class QueryBuilder extends Component {
           mongoConj: '$and',
         },
       },
-      fields: this.props.fields
+      fields: props.fields
     };
 
-    this.updateParent = props.onChange;
+    for (const [k, v] of Object.entries(props.fields)) {
+      if (v.onUpdate) {
+        updates[k] = v.onUpdate
+      }
+    }
+
+    this.updates = updates
+    this.baseFilter = props.baseFilter
+    this.fields = props.fields
+    this.onError = props.onError ? props.onError : (msg) => {}
+    this.onUpdate = props.onUpdate
     this.state = {
       tree: QbUtils.checkTree(QbUtils.loadTree(queryValue), config),
       config: config
@@ -57,10 +67,39 @@ export default class QueryBuilder extends Component {
   }
 
   onChange(immutableTree, config) {
+    const data = QbUtils.getTree(immutableTree);
+    let seen = {}
+    let newFilter = JSON.parse(JSON.stringify(this.baseFilter))
+
     this.setState({tree: immutableTree, config: config});
 
-    const jsonTree = QbUtils.getTree(immutableTree);
+    for (const criterion of data.children1 ? data.children1 : []) {
+      let properties = criterion.properties
+      let key = properties.field
+      let value = properties.value
 
-    this.updateParent(jsonTree)
+      if (!key) {
+        continue
+      }
+
+      if (seen[key] || false) {
+        this.onError(`Duplicate key: ${key}`)
+        return
+      }
+
+      seen[key] = true
+
+      for (const v of value) {
+        if (v === undefined) {
+          continue
+        }
+      }
+
+      if (this.updates[key]) {
+        this.updates[key](newFilter, key, value)
+      }
+    }
+
+    this.onUpdate(newFilter)
   }
 }
