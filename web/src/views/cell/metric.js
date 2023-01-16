@@ -1,6 +1,7 @@
 import React from 'react'
 import Connectable from '../connectable'
 import QueryBuilder from "../query"
+import { getDateQueryString } from "../../util"
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, ResponsiveContainer } from 'recharts';
 import moment from 'moment'
 
@@ -59,7 +60,10 @@ export default class MetricView extends Connectable {
                 label: 'Range',
                 type: 'datetime',
                 operators: ['between'],
-                getter: (filter, key) => [new Date(filter.query.start * 1000), new Date(filter.query.end * 1000)],
+                getter: (filter, key) => [
+                    getDateQueryString(filter.query.start),
+                    getDateQueryString(filter.query.end)
+                ],
                 onUpdate: (filter, key, value) => {
                     filter.query.start = new Date(value[0]).getTime() / 1000
                     filter.query.end = new Date(value[1]).getTime() / 1000

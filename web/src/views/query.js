@@ -72,7 +72,7 @@ export default class QueryBuilder extends Component {
         val = value.getter(filter, key)
       } catch (e) {}
 
-      if (val === undefined || val === "" || val === null || val === NaN) {
+      if (val === undefined || val === "" || val === null) {
         continue
       }
 
@@ -140,10 +140,17 @@ export default class QueryBuilder extends Component {
 
       seen[key] = true
 
+      let undef = false
+
       for (const v of value) {
         if (v === undefined) {
-          continue
+          undef = true
+          break
         }
+      }
+
+      if (undef) {
+        continue
       }
 
       if (this.updates[key]) {
