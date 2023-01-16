@@ -4,8 +4,6 @@ import ArticleFeedView from "../cell/feed"
 import ChartView from "../cell/chart"
 import EntityFeedView from "../cell/entity"
 import MapView from "../cell/map"
-import SearchFeedView from "../cell/search"
-import VideoView from "../cell/video"
 import { getCells, getWindowSize } from '../../event/selectors'
 import { updateCell } from '../../event/actions'
 import { connect } from 'react-redux'
@@ -29,12 +27,8 @@ const renderCellContents = (cell, dimensions) => {
             return <ChartView key={key} cell={cell} />
         case "map":
             return <MapView key={key} cell={cell} />
-        case "video":
-            return <VideoView key={key} cell={cell} />
         case "entityFeed":
             return <EntityFeedView key={key} cell={cell} />
-        case "search":
-            return <SearchFeedView key={key} cell={cell} />
         case "metric":
             return <MetricView key={key} cell={cell} />
         default:

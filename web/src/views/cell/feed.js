@@ -1,9 +1,16 @@
 import React from 'react'
 import Connectable from '../connectable'
+import QueryBuilder from "../query"
 
 const MAX_SIZE = 250
 const DEFAULT_QUERY = {
     data_type: "article",
+    query: {
+        keyword: [],
+        country: [],
+        company: []
+    },
+ 
     options: {
         preload: true
     }
@@ -53,6 +60,53 @@ export default class ArticleFeedView extends Connectable {
                 </a>
             </div>
         ))
+    }
+
+    renderQueryBuilder() {
+        const fields = {
+            preload: {
+                label: 'Preload',
+                type: 'boolean',
+                operators: ['equal'],
+                defaultValue: true,
+                getter: (filter, key) => filter.options[key],
+                onUpdate: (filter, key, value) => filter.options[key] = value[0]
+            },
+            keyword: {
+                label: "Keywords",
+                type: 'text',
+                operators: ['equal'],
+                getter: (filter, key) => filter.query.keyword.join(" "),
+                onUpdate: (filter, key, value) => filter.query.keyword = value[0].split(" ")
+            },
+            country: {
+                label: "Countries (ISO 3166-1 alpha-2)",
+                type: 'text',
+                operators: ['equal'],
+                getter: (filter, key) => filter.query.country.join(" "),
+                onUpdate: (filter, key, value) => filter.query.country = value[0].split(" ")
+            },
+            company: {
+                label: "Company (Exchange:Ticker)",
+                type: 'text',
+                operators: ['equal'],
+                getter: (filter, key) => filter.query.company.join(" "),
+                onUpdate: (filter, key, value) => filter.query.company = value[0].split(" ")
+            }
+        }
+
+        return  (
+            <QueryBuilder
+             filter={this.state.filter}
+             fields={fields}
+             onError={(msg) => this.setState({err: msg})}
+             onUpdate={(d) => (
+                this.setState({
+                    filterInProgress: JSON.stringify(d),
+                    err: undefined
+                 })
+            )} />
+        )
     }
 
     render() {
