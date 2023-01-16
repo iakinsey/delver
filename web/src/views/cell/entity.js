@@ -1,12 +1,19 @@
 import React from 'react'
 import Connectable from '../connectable'
+import QueryBuilder from "../query"
 
 const MAX_SIZE = 250
 const DEFAULT_QUERY = {
     data_type: "page",
     key: "url",
     title_key: "title",
-    query: {},
+    query: {
+        url: [],
+        domain: [],
+        http_code: [],
+        title: [],
+        language: []
+    },
     options: {
         preload: true
     }
@@ -59,6 +66,68 @@ export default class EntityFeedView extends Connectable {
             </div>
         ))
     }
+
+    renderQueryBuilder() {
+        const fields = {
+            preload: {
+                label: 'Preload',
+                type: 'boolean',
+                operators: ['equal'],
+                defaultValue: true,
+                getter: (filter, key) => filter.options[key],
+                onUpdate: (filter, key, value) => filter.options[key] = value[0]
+            },
+            url: {
+                label: "URL",
+                type: 'text',
+                operators: ['equal'],
+                getter: (filter, key) => filter.query.url.join(" "),
+                onUpdate: (filter, key, value) => filter.query.url = value[0].split(" ")
+            },
+            domain: {
+                label: "Domain",
+                type: 'text',
+                operators: ['equal'],
+                getter: (filter, key) => filter.query.domain.join(" "),
+                onUpdate: (filter, key, value) => filter.query.domain = value[0].split(" ")
+            },
+            http_code: {
+                label: "HTTP Code",
+                type: 'text',
+                operators: ['equal'],
+                getter: (filter, key) => filter.query.http_code.join(" "),
+                onUpdate: (filter, key, value) => filter.query.http_code = value[0].split(" ").map((v) => Number(v))
+            },
+            title: {
+                label: "Title",
+                type: 'text',
+                operators: ['equal'],
+                getter: (filter, key) => filter.query.title.join(" "),
+                onUpdate: (filter, key, value) => filter.query.title = value[0].split(" ")
+            },
+            language: {
+                label: "Language",
+                type: 'text',
+                operators: ['equal'],
+                getter: (filter, key) => filter.query.language.join(" "),
+                onUpdate: (filter, key, value) => filter.query.language= value[0].split(" ")
+            }
+        }
+
+        return  (
+            <QueryBuilder
+             filter={this.state.filter}
+             fields={fields}
+             onError={(msg) => this.setState({err: msg})}
+             onUpdate={(d) => (
+                this.setState({
+                    filterInProgress: JSON.stringify(d),
+                    err: undefined
+                 })
+            )} />
+        )
+    }
+
 
     render() {
         return <div>
