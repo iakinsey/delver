@@ -10,7 +10,6 @@ const DEFAULT_QUERY = {
         country: [],
         company: []
     },
- 
     options: {
         preload: true
     }

@@ -2,6 +2,7 @@ import React from 'react'
 import Connectable from '../connectable'
 import { scaleLinear } from "d3-scale";
 import { getKey } from '../../util.js'
+import QueryBuilder from "../query"
 import {
     ComposableMap,
     Geographies,
@@ -19,6 +20,11 @@ const DEFAULT_QUERY = {
     key: SENTIMENT_KEY,
     title: "Sentiment",
     data_type: "article",
+     query: {
+        keyword: [],
+        country: [],
+        company: []
+    },
     options: {
         preload: true
     }
@@ -110,6 +116,45 @@ export default class Map extends Connectable {
                     }
                 </Geographies>
             </ComposableMap>
+        )
+    }
+
+     renderQueryBuilder() {
+        const fields = {
+            keyword: {
+                label: "Keywords",
+                type: 'text',
+                operators: ['equal'],
+                getter: (filter, key) => filter.query.keyword.join(" "),
+                onUpdate: (filter, key, value) => filter.query.keyword = value[0].split(" ")
+            },
+            country: {
+                label: "Countries (ISO 3166-1 alpha-2)",
+                type: 'text',
+                operators: ['equal'],
+                getter: (filter, key) => filter.query.country.join(" "),
+                onUpdate: (filter, key, value) => filter.query.country = value[0].split(" ")
+            },
+            company: {
+                label: "Company (Exchange:Ticker)",
+                type: 'text',
+                operators: ['equal'],
+                getter: (filter, key) => filter.query.company.join(" "),
+                onUpdate: (filter, key, value) => filter.query.company = value[0].split(" ")
+            }
+        }
+
+        return  (
+            <QueryBuilder
+             filter={this.state.filter}
+             fields={fields}
+             onError={(msg) => this.setState({err: msg})}
+             onUpdate={(d) => (
+                this.setState({
+                    filterInProgress: JSON.stringify(d),
+                    err: undefined
+                 })
+            )} />
         )
     }
 
