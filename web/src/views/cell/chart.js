@@ -10,6 +10,11 @@ const DEFAULT_QUERY = {
     key: "binary_sentiment_naive_bayes_aggregate",
     title: "Sentiment",
     data_type: "article",
+    query: {
+        keyword: [],
+        country: [],
+        company: []
+    },
     agg: {
         time_field: "found",
         agg_field: "binary_sentiment_naive_bayes_aggregate",
@@ -60,7 +65,7 @@ export default class _Chart extends Connectable {
         }
 
         return (
-            <ResponsiveContainer width="99%" height="92">
+            <ResponsiveContainer width="99%" height="92%">
                 <LineChart data={this.state.data} margin={{ top: 5, right: 5, bottom: 5 }}>
                     <Line type="monotone" dataKey={this.cell.filter.key} stroke="#8884d8" strokeWidth={3} dot={false} />
                     <CartesianGrid stroke="#ccc" strokeDasharray="5 5" />
@@ -72,21 +77,12 @@ export default class _Chart extends Connectable {
     }
 
     renderQueryBuilder() {
-        const baseFilter = {
-            data_type: "article",
-            query: {},
-            agg: {
-                agg_name: "avg"
-            },
-            options: {},
-            fields: []
-        }
-
         const fields = {
             key: {
                 label: 'Key',
                 type: 'text',
                 operators: ['equal'],
+                getter: (filter, key) => filter.query[key],
                 onUpdate: (filter, key, value) => filter.query[key] = value[0]
             },
             preload: {
@@ -94,12 +90,14 @@ export default class _Chart extends Connectable {
                 type: 'boolean',
                 operators: ['equal'],
                 defaultValue: true,
+                getter: (filter, key) => filter.options[key],
                 onUpdate: (filter, key, value) => filter.options[key] = value[0]
             },
             agg_field: {
                 label: "Aggregate Field",
                 type: 'text',
                 operators: ['equal'],
+                getter: (filter, key) => filter.agg.agg_field,
                 onUpdate: (filter, key, value) => {
                     filter.agg.agg_field = value[0]
                     filter.fields.push(value[0])
@@ -110,23 +108,46 @@ export default class _Chart extends Connectable {
                 type: 'text',
                 operators: ['equal'],
                 defaultValue: 'found',
+                getter: (filter, key) => filter.agg.time_field,
                 onUpdate: (filter, key, value) => {
                     filter.agg.time_field = value[0]
                     filter.fields.push(value[0])
                 }
+            },
+            keyword: {
+                label: "Keywords",
+                type: 'text',
+                operators: ['equal'],
+                getter: (filter, key) => filter.query.keyword.join(" "),
+                onUpdate: (filter, key, value) => filter.query.keyword = value[0].split(" ")
+            },
+            country: {
+                label: "Countries (ISO 3166-1 alpha-2)",
+                type: 'text',
+                operators: ['equal'],
+                getter: (filter, key) => filter.query.country.join(" "),
+                onUpdate: (filter, key, value) => filter.query.country = value[0].split(" ")
+            },
+            company: {
+                label: "Company (Exchange:Ticker)",
+                type: 'text',
+                operators: ['equal'],
+                getter: (filter, key) => filter.query.company.join(" "),
+                onUpdate: (filter, key, value) => filter.query.company = value[0].split(" ")
             },
             time_window: {
                 label: "Aggregate Time Window (Seconds)",
                 type: "number",
                 operators: ['equal'],
                 defaultValue: 1800,
+                getter: (filter, key) => filter.agg.time_window_seconds,
                 onUpdate: (filter, key, value) => filter.agg.time_window_seconds = value[0]
             }
         }
 
         return  (
             <QueryBuilder
-             baseFilter={baseFilter}
+             filter={this.state.filter}
              fields={fields}
              onError={(msg) => this.setState({err: msg})}
              onUpdate={(d) => (

@@ -65,3 +65,7 @@ select option {
 .rule--operator {
     display: none;
 }
+
+.widget--valuesrc {
+    display: none;
+}
