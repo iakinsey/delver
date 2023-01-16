@@ -13,13 +13,7 @@ const CELL_TYPES = {
     textFeed: "Text Feed",
     chart: "Chart",
     map: "Map",
-    video: "Video",
-    search: "Search",
     metric: "Metric"
-    /*
-    company: "Company",
-    search: "Search"
-    */
 }
 
 const CELL_ATTR_DEFAULT = {x: 0, y: 0, w: 32, h: 8}
