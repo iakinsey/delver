@@ -22,7 +22,7 @@ export default class QueryBuilder extends Component {
         maxNesting: 1,
         allowSelfNesting: false,
         showNot: false,
-        addRuleLabel: "+"
+        addRuleLabel: "Add filter"
       },
       conjunctions: {
         AND: {

@@ -69,3 +69,55 @@ select option {
 .widget--valuesrc {
     display: none;
 }
+
+.rule, .rule--body--wrapper, .rule--body, .rule--field, .rule--value, .rule--header {
+    display:inline-block
+}
+
+.rule--header button {
+    font-family: "Lucida Console", Monaco, monospace;
+    color: #eeeeec;
+    font-size: 1.2em;
+    background-color: transparent;
+    background-repeat: no-repeat;
+    border: none;
+    cursor: pointer;
+    overflow: hidden;
+    outline: none;
+}
+
+.rule--header button:hover {
+    color: #a9d001;
+}
+
+.rule--field select {
+    font-family: "Lucida Console", Monaco, monospace;
+    padding: 0.2em;
+}
+
+.widget--widget label {
+    font-family: "Lucida Console", Monaco, monospace;
+}
+
+.widget--widget input {
+    padding: 0.2em;
+}
+
+.group--actions button {
+    font-family: "Lucida Console", Monaco, monospace;
+    border: 2px solid rgb(11, 11, 11);
+    background-color: rgb(148, 148, 148);
+    margin: 0px;
+    font-size: 1em;
+    padding: 0.15em;
+}
+
+.widget--widget input[type=radio] {
+    border: 2px solid #eeeeec;
+    padding: 0.5em;
+    -webkit-appearance: none;
+}
+
+.widget--widget input[type=radio]:checked {
+    background-color: #a9d001;
+}
