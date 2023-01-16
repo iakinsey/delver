@@ -9,8 +9,8 @@ import {
 } from '../../styles/color'
 
 const CELL_TYPES = {
-    entityFeed: "Entity",
-    textFeed: "Text Feed",
+    entityFeed: "Page Feed",
+    textFeed: "News Feed",
     chart: "Chart",
     map: "Map",
     metric: "Metric"

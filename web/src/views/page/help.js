@@ -162,7 +162,7 @@ function API() {
                 {getSyntaxBox(QUERY_EXAMPLE)}
             </div>
             <h2>Cells</h2>
-            <h3>Text Feed</h3>
+            <h3>News Articles</h3>
             <h3>Chart</h3>
             <div>
                 Graphs a data point over time. A <strong>key</strong> must be
