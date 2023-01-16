@@ -1,6 +1,7 @@
 import React from 'react'
 import Connectable from '../connectable'
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, ResponsiveContainer } from 'recharts';
+import QueryBuilder from "../query"
 import moment from 'moment'
 
 const TIMESTAMP_KEY = 'found'
@@ -67,6 +68,73 @@ export default class _Chart extends Connectable {
                     <YAxis />
                 </LineChart>
             </ResponsiveContainer>
+        )
+    }
+
+    renderQueryBuilder() {
+        const baseFilter = {
+            data_type: "article",
+            query: {},
+            agg: {
+                agg_name: "avg"
+            },
+            options: {},
+            fields: []
+        }
+
+        const fields = {
+            key: {
+                label: 'Key',
+                type: 'text',
+                operators: ['equal'],
+                onUpdate: (filter, key, value) => filter.query[key] = value[0]
+            },
+            preload: {
+                label: 'Preload',
+                type: 'boolean',
+                operators: ['equal'],
+                defaultValue: true,
+                onUpdate: (filter, key, value) => filter.options[key] = value[0]
+            },
+            agg_field: {
+                label: "Aggregate Field",
+                type: 'text',
+                operators: ['equal'],
+                onUpdate: (filter, key, value) => {
+                    filter.agg.agg_field = value[0]
+                    filter.fields.push(value[0])
+                }
+            },
+            time_field: {
+                label: "Time Field",
+                type: 'text',
+                operators: ['equal'],
+                defaultValue: 'found',
+                onUpdate: (filter, key, value) => {
+                    filter.agg.time_field = value[0]
+                    filter.fields.push(value[0])
+                }
+            },
+            time_window: {
+                label: "Aggregate Time Window (Seconds)",
+                type: "number",
+                operators: ['equal'],
+                defaultValue: 1800,
+                onUpdate: (filter, key, value) => filter.agg.time_window_seconds = value[0]
+            }
+        }
+
+        return  (
+            <QueryBuilder
+             baseFilter={baseFilter}
+             fields={fields}
+             onError={(msg) => this.setState({err: msg})}
+             onUpdate={(d) => (
+                this.setState({
+                    filterInProgress: JSON.stringify(d),
+                    err: undefined
+                 })
+            )} />
         )
     }
 

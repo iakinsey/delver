@@ -2,13 +2,18 @@ import React, {Component} from 'react';
 
 import { Utils as QbUtils, Query, Builder, BasicConfig } from '@react-awesome-query-builder/ui';
 import '@react-awesome-query-builder/ui/css/compact_styles.css';
+import { uuid4 } from '../util'
 
-export default class gQueryBuilder extends Component {
+export default class QueryBuilder extends Component {
   constructor(props) {
     super(props)
 
     const InitialConfig = BasicConfig;
-    const queryValue = {"id": QbUtils.uuid(), "type": "group"};
+    const baseFilter = JSON.parse(props.filter)
+    const queryValue = this.getInitialQueryValue(
+      baseFilter,
+      props.fields
+    )
     const updates = {}
     const config = {
       ...InitialConfig,
@@ -37,7 +42,7 @@ export default class gQueryBuilder extends Component {
     }
 
     this.updates = updates
-    this.baseFilter = props.baseFilter
+    this.baseFilter = baseFilter
     this.fields = props.fields
     this.onError = props.onError ? props.onError : (msg) => {}
     this.onUpdate = props.onUpdate
@@ -45,6 +50,52 @@ export default class gQueryBuilder extends Component {
       tree: QbUtils.checkTree(QbUtils.loadTree(queryValue), config),
       config: config
     }
+  }
+
+  getInitialQueryValue(filter, fields) {
+    const queryValue = {"id": QbUtils.uuid(), "type": "group"};
+
+    if (!fields) {
+      return queryValue
+    }
+
+    let children1 = []
+
+    for (let [key, value] of Object.entries(fields)) {
+      if (!value.getter) {
+        continue
+      }
+
+      var val;
+
+      try {
+        val = value.getter(filter, key)
+      } catch (e) {}
+
+      if (val === undefined || val === "" || val === null || val === NaN) {
+        continue
+      }
+
+      let childVal = Array.isArray(val) ? val : [val]
+
+      children1.push({
+        id: uuid4(),
+        type: 'rule',
+        properties: {
+          field: key,
+          operator: "equal",
+          value: childVal,
+          valueSrc: childVal.map(() => "value"),
+          valueType: childVal.map(() => value.type)
+        }
+      })
+    }
+
+    if (children1) {
+      queryValue.children1 = children1
+    }
+
+    return queryValue
   }
  
   render() {

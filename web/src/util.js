@@ -79,3 +79,19 @@ export async function logout() {
 
     routeTo('/')
 }
+
+export function getDateQueryString(d) {
+    const datePart = [
+        d.getFullYear(),
+        String(d.getMonth() + 1).padStart(2, "0"),
+        String(d.getDate()).padStart(2, "0")
+    ].join('-')
+
+    const timePart = [
+        String(d.getHours()).padStart(2, "0"),
+        String(d.getMinutes()).padStart(2, "0"),
+        String(d.getMinutes()).padStart(2, "0")
+    ].join(":")
+
+    return `${datePart} ${timePart}`
+}
