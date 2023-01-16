@@ -4,8 +4,6 @@ import QueryBuilder from "../query"
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, ResponsiveContainer } from 'recharts';
 import moment from 'moment'
 
-const TIMESTAMP_KEY = 'when'
-
 const DEFAULT_QUERY = {
     data_type: "metric",
     query: {
@@ -49,40 +47,37 @@ export default class MetricView extends Connectable {
     }
 
     renderQueryBuilder() {
-        const baseFilter = {
-            data_type: "metric",
-            query: {},
-            options: {}
-        }
-
         const fields = {
             key: {
                 label: 'Key',
                 type: 'text',
                 operators: ['equal'],
-                onUpdate: (filter, key, value) => filter.query[key] = value[0]
+                getter: (filter, key) => filter.query[key],
+                onUpdate: (filter, key, value) => filter.query[key] = value[0],
             },
             range: {
                 label: 'Range',
                 type: 'datetime',
                 operators: ['between'],
+                getter: (filter, key) => [new Date(filter.query.start * 1000), new Date(filter.query.end * 1000)],
                 onUpdate: (filter, key, value) => {
                     filter.query.start = new Date(value[0]).getTime() / 1000
                     filter.query.end = new Date(value[1]).getTime() / 1000
-                }
+                },
             },
             preload: {
                 label: 'Preload',
                 type: 'boolean',
                 operators: ['equal'],
                 defaultValue: true,
+                getter: (filter, key) => filter.options[key],
                 onUpdate: (filter, key, value) => filter.options[key] = value[0]
             }
-      }
+        }
 
         return  (
             <QueryBuilder
-             baseFilter={baseFilter}
+             filter={this.state.filter}
              fields={fields}
              onError={(msg) => this.setState({err: msg})}
              onUpdate={(d) => (
