@@ -1,7 +1,6 @@
 package extractors
 
 import (
-	"fmt"
 	"net/url"
 	"os"
 
@@ -42,14 +41,4 @@ func (s *urlExtractor) Name() string {
 
 func (s *urlExtractor) Requires() []string {
 	return nil
-}
-
-func (s *urlExtractor) SetResult(result interface{}, composite *message.CompositeAnalysis) error {
-	switch d := result.(type) {
-	case features.URIs:
-		composite.URIs = d
-		return nil
-	default:
-		return fmt.Errorf("TextExtractor: attempt to cast unknown type")
-	}
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/iakinsey/delver/resource/bloom"
 	"github.com/iakinsey/delver/resource/maps"
 	"github.com/iakinsey/delver/types"
+	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/worker"
@@ -62,12 +63,17 @@ func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysi
 	var urlPairs [][2][]byte
 	var toVisit [][]byte
 	var source string
+	var URIs features.URIs
 
 	if meta, err := url.Parse(composite.URI); err == nil {
 		source = util.GetSLDAndTLD(meta.Host)
 	}
 
-	for _, u := range composite.URIs {
+	if composite.Has(message.UrlExtractor) {
+		URIs = composite.Get(message.UrlExtractor).(features.URIs)
+	}
+
+	for _, u := range URIs {
 		meta, err := url.Parse(u)
 
 		if err != nil {

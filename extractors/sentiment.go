@@ -1,7 +1,6 @@
 package extractors
 
 import (
-	"fmt"
 	"os"
 
 	log "github.com/sirupsen/logrus"
@@ -28,11 +27,14 @@ func NewSentimentExtractor() Extractor {
 }
 
 func (s *sentimentExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
-	if composite.Language.Name != features.LangEnglish {
+	textContent := composite.Get(message.TextExtractor).(string)
+	language := composite.Get(message.LanguageExtractor).(features.Language)
+
+	if language.Name != features.LangEnglish {
 		return nil, nil
 	}
 
-	analysis := s.model.SentimentAnalysis(string(composite.TextContent), sentiment.English)
+	analysis := s.model.SentimentAnalysis(textContent, sentiment.English)
 	score := int32(analysis.Score)
 
 	return features.Sentiment{
@@ -47,15 +49,5 @@ func (s *sentimentExtractor) Name() string {
 func (s *sentimentExtractor) Requires() []string {
 	return []string{
 		message.LanguageExtractor,
-	}
-}
-
-func (s *sentimentExtractor) SetResult(result interface{}, composite *message.CompositeAnalysis) error {
-	switch d := result.(type) {
-	case features.Sentiment:
-		composite.Sentiment = &d
-		return nil
-	default:
-		return fmt.Errorf("SentimentExtractor: attempt to cast unknown type")
 	}
 }

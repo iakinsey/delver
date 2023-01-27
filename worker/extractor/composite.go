@@ -48,6 +48,7 @@ func NewCompositeExtractorWorker(opts CompositeArgs) worker.Worker {
 func (s *compositeExtractor) executeExtractors(path string, meta message.FetcherResponse) (*message.CompositeAnalysis, error) {
 	composite := &message.CompositeAnalysis{
 		FetcherResponse: meta,
+		Features:        make(map[string]interface{}),
 	}
 	pending := s.getExtractors()
 	var completed []string
@@ -59,7 +60,7 @@ func (s *compositeExtractor) executeExtractors(path string, meta message.Fetcher
 		var toExecute []extractors.Extractor
 
 		for _, ext := range pending {
-			if s.canExecuteExtractor(ext, completed) {
+			if s.canExecuteExtractor(ext, completed, composite) {
 				toExecute = append(toExecute, ext)
 			}
 		}
@@ -92,7 +93,7 @@ func (s *compositeExtractor) getNextPending(pending []extractors.Extractor, comp
 	return
 }
 
-func (s *compositeExtractor) canExecuteExtractor(ext extractors.Extractor, completed []string) bool {
+func (s *compositeExtractor) canExecuteExtractor(ext extractors.Extractor, completed []string, composite *message.CompositeAnalysis) bool {
 	requires := ext.Requires()
 
 	if len(requires) == 0 {
@@ -100,7 +101,7 @@ func (s *compositeExtractor) canExecuteExtractor(ext extractors.Extractor, compl
 	}
 
 	for _, requirement := range requires {
-		if !util.StringInSlice(requirement, completed) {
+		if !util.StringInSlice(requirement, completed) || !composite.Has(requirement) {
 			return false
 		}
 	}
@@ -138,7 +139,8 @@ func (s *compositeExtractor) updateCompositeAnalysis(result compositeResult, com
 	case nil:
 		return name, nil
 	default:
-		return name, result.Extractor.SetResult(result.Result, composite)
+		composite.Features[name] = result.Result
+		return name, nil
 	}
 }
 

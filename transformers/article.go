@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/iakinsey/delver/types"
+	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/pkg/errors"
 )
@@ -28,19 +29,31 @@ func (s *articleTransformer) Perform(msg json.RawMessage) ([]*types.Indexable, e
 
 	article := types.Article{
 		Summary:   "",
-		Content:   string(composite.TextContent),
-		Title:     string(composite.Title),
 		Url:       composite.URI,
 		UrlMd5:    fmt.Sprintf("%x", md5.Sum([]byte(composite.URI))),
 		OriginUrl: composite.Origin,
 		Type:      s.Name(),
 		Found:     composite.Timestamp,
-		Countries: composite.Countries,
-		Corporate: composite.Corporations,
 	}
 
-	if composite.Ngrams != nil {
-		ngramMap := *composite.Ngrams
+	if composite.Has(message.TextExtractor) {
+		article.Content = composite.Get(message.TextExtractor).(string)
+	}
+
+	if composite.Has(message.TitleExtractor) {
+		article.Title = composite.Get(message.TitleExtractor).(string)
+	}
+
+	if composite.Has(message.CountryExtractor) {
+		article.Countries = composite.Get(message.CountryExtractor).(features.Countries)
+	}
+
+	if composite.Has(message.CompanyNameExtractor) {
+		article.Corporate = composite.Get(message.CompanyNameExtractor).(features.Corporations)
+	}
+
+	if composite.Has(message.NgramExtractor) {
+		ngramMap := composite.Get(message.NgramExtractor).(features.Ngrams)
 		ngrams := make([]string, 0)
 
 		if ngramsAsList, ok := ngramMap[3]; ok {
@@ -52,8 +65,8 @@ func (s *articleTransformer) Perform(msg json.RawMessage) ([]*types.Indexable, e
 		article.Ngrams = ngrams
 	}
 
-	if composite.Sentiment != nil {
-		sentiment := composite.Sentiment
+	if composite.Has(message.SentimentExtractor) {
+		sentiment := composite.Get(message.SentimentExtractor).(features.Sentiment)
 
 		if sentiment.BinaryNaiveBayesAggregate != nil {
 			article.BinarySentimentNaiveBayesAggregate = int(*sentiment.BinaryNaiveBayesAggregate)

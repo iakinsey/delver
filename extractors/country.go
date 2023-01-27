@@ -1,7 +1,6 @@
 package extractors
 
 import (
-	"fmt"
 	"os"
 
 	log "github.com/sirupsen/logrus"
@@ -34,9 +33,10 @@ func NewCountryExtractor() Extractor {
 
 func (s *countryExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
 	var results []string
+	textContent := []byte(composite.Get(message.TextExtractor).(string))
 
 	for iso3166Alpha2, regex := range s.countries {
-		if r := regex.Find([]byte(composite.TextContent)); r != nil {
+		if r := regex.Find(textContent); r != nil {
 			results = append(results, iso3166Alpha2)
 		}
 	}
@@ -51,15 +51,5 @@ func (s *countryExtractor) Name() string {
 func (s *countryExtractor) Requires() []string {
 	return []string{
 		message.TextExtractor,
-	}
-}
-
-func (s *countryExtractor) SetResult(result interface{}, composite *message.CompositeAnalysis) error {
-	switch d := result.(type) {
-	case features.Countries:
-		composite.Countries = d
-		return nil
-	default:
-		return fmt.Errorf("CountryExtractor: attempt to cast unknown type")
 	}
 }

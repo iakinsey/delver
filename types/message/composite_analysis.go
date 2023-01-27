@@ -1,9 +1,5 @@
 package message
 
-import (
-	"github.com/iakinsey/delver/types/features"
-)
-
 const (
 	AdversarialExtractor = "adversarial"
 	CompanyNameExtractor = "company_name"
@@ -19,15 +15,29 @@ const (
 type CompositeAnalysis struct {
 	FetcherResponse
 
-	Adversarial  *features.Adversarial `json:"adversarial,omitempty"`
-	Corporations features.Corporations `json:"corporations,omitempty"`
-	Countries    features.Countries    `json:"countries,omitempty"`
-	Language     *features.Language    `json:"language,omitempty"`
-	TextContent  features.TextContent  `json:"text_content,omitempty"`
-	Title        features.Title        `json:"title,omitempty"`
-	Sentiment    *features.Sentiment   `json:"sentiment,omitempty"`
-	Ngrams       *features.Ngrams      `json:"ngrams,omitempty"`
-	URIs         features.URIs         `json:"uris,omitempty"`
+	Features map[string]interface{} `json:"features"`
+
+	/*
+		Adversarial  *features.Adversarial `json:"adversarial,omitempty"`
+		Corporations features.Corporations `json:"corporations,omitempty"`
+		Countries    features.Countries    `json:"countries,omitempty"`
+		Language     *features.Language    `json:"language,omitempty"`
+		TextContent  features.TextContent  `json:"text_content,omitempty"`
+		Title        features.Title        `json:"title,omitempty"`
+		Sentiment    *features.Sentiment   `json:"sentiment,omitempty"`
+		Ngrams       *features.Ngrams      `json:"ngrams,omitempty"`
+		URIs         features.URIs         `json:"uris,omitempty"`
+	*/
+}
+
+func (s *CompositeAnalysis) Has(key string) bool {
+	_, ok := s.Features[key]
+
+	return ok
+}
+
+func (s *CompositeAnalysis) Get(key string) interface{} {
+	return s.Features[key]
 }
 
 var ParquetSchema = `{

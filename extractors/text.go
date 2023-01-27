@@ -7,7 +7,6 @@ import (
 	"os"
 	"unicode"
 
-	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/microcosm-cc/bluemonday"
 )
@@ -48,7 +47,7 @@ func (s *textExtractor) Perform(f *os.File, composite message.CompositeAnalysis)
 		prevIsSpacing = charIsSpacing
 	}
 
-	return features.TextContent(dedupeBuf.Bytes()), nil
+	return dedupeBuf.String(), nil
 }
 
 func (s *textExtractor) Name() string {
@@ -57,14 +56,4 @@ func (s *textExtractor) Name() string {
 
 func (s *textExtractor) Requires() []string {
 	return nil
-}
-
-func (s *textExtractor) SetResult(result interface{}, composite *message.CompositeAnalysis) error {
-	switch d := result.(type) {
-	case features.TextContent:
-		composite.TextContent = d
-		return nil
-	default:
-		return fmt.Errorf("TextExtractor: attempt to cast unknown type")
-	}
 }

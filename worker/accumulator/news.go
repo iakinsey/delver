@@ -11,6 +11,7 @@ import (
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/resource/bloom"
 	"github.com/iakinsey/delver/types"
+	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/worker"
@@ -131,8 +132,13 @@ func (s *newsAccumulator) processUrls(composite message.CompositeAnalysis) []int
 
 	origin := originParsed.Host
 	count := 0
+	var URIs features.URIs
 
-	for _, u := range composite.URIs {
+	if composite.Has(message.UrlExtractor) {
+		URIs = composite.Get(message.UrlExtractor).(features.URIs)
+	}
+
+	for _, u := range URIs {
 		parsed, err := url.Parse(u)
 
 		if err != nil {
