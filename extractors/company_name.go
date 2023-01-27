@@ -1,7 +1,6 @@
 package extractors
 
 import (
-	"fmt"
 	"os"
 
 	log "github.com/sirupsen/logrus"
@@ -32,9 +31,10 @@ func NewCompanyNameExtractor() Extractor {
 
 func (s *companyNameExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
 	var results []string
+	textContent := []byte(composite.Get(message.TextExtractor).(string))
 
 	for _, company := range s.companies {
-		if c := company.Regex.Find([]byte(composite.TextContent)); c != nil {
+		if c := company.Regex.Find(textContent); c != nil {
 			results = append(results, company.Identifier)
 		}
 	}
@@ -49,15 +49,5 @@ func (s *companyNameExtractor) Name() string {
 func (s *companyNameExtractor) Requires() []string {
 	return []string{
 		message.TextExtractor,
-	}
-}
-
-func (s *companyNameExtractor) SetResult(result interface{}, composite *message.CompositeAnalysis) error {
-	switch d := result.(type) {
-	case features.Corporations:
-		composite.Corporations = d
-		return nil
-	default:
-		return fmt.Errorf("CompanyNameExtractor: attempt to cast unknown type")
 	}
 }

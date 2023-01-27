@@ -15,9 +15,11 @@ var expectedCountries = features.Countries{"DEU", "KEN", "MCO", "USA"}
 
 func TestCountryExtractor(t *testing.T) {
 	extractor := NewCountryExtractor()
-	textContent := features.TextContent(testutil.TestData(testCountryNames))
+	textContent := testutil.TestData(testCountryNames)
 	composite := message.CompositeAnalysis{
-		TextContent: textContent,
+		Features: map[string]interface{}{
+			message.TextExtractor: textContent,
+		},
 	}
 
 	countries, err := extractor.Perform(nil, composite)

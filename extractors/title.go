@@ -1,7 +1,6 @@
 package extractors
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/iakinsey/delver/types/features"
@@ -36,20 +35,6 @@ func (s *titleExtractor) Name() string {
 
 func (s *titleExtractor) Requires() []string {
 	return nil
-}
-
-func (s *titleExtractor) SetResult(result interface{}, composite *message.CompositeAnalysis) error {
-	if result == nil {
-		return nil
-	}
-
-	switch d := result.(type) {
-	case features.Title:
-		composite.Title = d
-		return nil
-	default:
-		return fmt.Errorf("TitleExtractor: attempt to cast unknown type")
-	}
 }
 
 func seekTitle(node *html.Node) (string, bool) {

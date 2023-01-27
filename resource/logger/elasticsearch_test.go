@@ -46,10 +46,12 @@ func TestElasticsearchLogger(t *testing.T) {
 			},
 			HTTPCode: 200,
 		},
-		TextContent: "Test text content",
-		Corporations: []string{
-			"example1",
-			"example2",
+		Features: map[string]interface{}{
+			message.TextExtractor: "Test text content",
+			message.CompanyNameExtractor: []string{
+				"example1",
+				"example2",
+			},
 		},
 	}
 	err = l.LogResource(composite)

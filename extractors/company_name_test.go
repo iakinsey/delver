@@ -20,9 +20,11 @@ var expectedCompanyNames = features.Corporations{
 
 func TestCompanyNameExtractors(t *testing.T) {
 	extractor := NewCompanyNameExtractor()
-	textContent := features.TextContent(testutil.TestData(testCompanyNames))
+	textContent := testutil.TestData(testCompanyNames)
 	composite := message.CompositeAnalysis{
-		TextContent:     textContent,
+		Features: map[string]interface{}{
+			message.TextExtractor: textContent,
+		},
 	}
 
 	corp, err := extractor.Perform(nil, composite)

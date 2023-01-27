@@ -3,7 +3,6 @@ package extractors
 import (
 	"testing"
 
-	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util/testutil"
 	"github.com/stretchr/testify/assert"
@@ -18,6 +17,6 @@ func TestTextExtractor(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.NotNil(t, text)
-	assert.IsType(t, features.TextContent(""), text)
+	assert.IsType(t, "", text)
 	assert.Len(t, text, 3596)
 }

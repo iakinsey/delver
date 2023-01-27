@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/iakinsey/delver/types"
+	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/pkg/errors"
 )
@@ -33,12 +34,18 @@ func (s *pageTransformer) Perform(msg json.RawMessage) ([]*types.Indexable, erro
 		Error:         composite.Error,
 		Timestamp:     composite.Timestamp,
 		HttpCode:      composite.HTTPCode,
-		Text:          string(composite.TextContent),
-		Title:         string(composite.Title),
 	}
 
-	if composite.Language != nil {
-		page.Language = composite.Language.Name
+	if composite.Has(message.TextExtractor) {
+		page.Text = composite.Get(message.TextExtractor).(string)
+	}
+
+	if composite.Has(message.TitleExtractor) {
+		page.Title = composite.Get(message.TitleExtractor).(string)
+	}
+
+	if composite.Has(message.LanguageExtractor) {
+		page.Language = composite.Get(message.LanguageExtractor).(features.Language).Name
 	}
 
 	return []*types.Indexable{

@@ -12,15 +12,15 @@ import (
 
 func prepareAdvTest(origin string, uris []string) (interface{}, error) {
 	extractor := NewAdversarialExtractor()
-	inputUris := features.URIs(uris)
-
 	composite := message.CompositeAnalysis{
 		FetcherResponse: message.FetcherResponse{
 			FetcherRequest: message.FetcherRequest{
 				URI: origin,
 			},
 		},
-		URIs: inputUris,
+		Features: map[string]interface{}{
+			message.UrlExtractor: features.URIs(uris),
+		},
 	}
 
 	return extractor.Perform(nil, composite)

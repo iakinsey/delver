@@ -44,13 +44,15 @@ func TestDfsBasic(t *testing.T) {
 				Depth: 0,
 			},
 		},
-		URIs: features.URIs{
-			"http://example.com/1",
-			"http://example.com/2",
-			"http://example.com/3",
-			"http://example.com/4",
-			"http://old.example.com/5",
-			"http://non.com",
+		Features: map[string]interface{}{
+			message.UrlExtractor: features.URIs{
+				"http://example.com/1",
+				"http://example.com/2",
+				"http://example.com/3",
+				"http://example.com/4",
+				"http://old.example.com/5",
+				"http://non.com",
+			},
 		},
 	}, types.CompositeAnalysisType)
 
@@ -115,13 +117,15 @@ func TestDfsBasicMaxDepthExceeded(t *testing.T) {
 				Depth: 1,
 			},
 		},
-		URIs: features.URIs{
-			"http://example.com/1",
-			"http://example.com/2",
-			"http://example.com/3",
-			"http://example.com/4",
-			"http://old.example.com/5",
-			"http://non.com",
+		Features: map[string]interface{}{
+			message.UrlExtractor: features.URIs{
+				"http://example.com/1",
+				"http://example.com/2",
+				"http://example.com/3",
+				"http://example.com/4",
+				"http://old.example.com/5",
+				"http://non.com",
+			},
 		},
 	}, types.CompositeAnalysisType)
 

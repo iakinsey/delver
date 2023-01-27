@@ -19,7 +19,6 @@ func TestResourceAccumulator(t *testing.T) {
 
 	loggers := []logger.Logger{
 		logger.NewElasticsearchLogger(logger.ElasticsearchLoggerParams{Addresses: []string{"http://localhost:9200"}}),
-		logger.NewHDFSLogger(logger.HDFSLoggerParams{Namenode: "localhost:9000"}),
 	}
 	accumulator := NewResourceAccumulator(ResourceAccumulatorParams{Loggers: loggers})
 	composite, _ := json.Marshal(message.CompositeAnalysis{

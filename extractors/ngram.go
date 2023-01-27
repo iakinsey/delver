@@ -2,7 +2,6 @@ package extractors
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"unicode"
 
@@ -49,15 +48,15 @@ func NewNgramExtractor() Extractor {
 
 func (s *ngramExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
 	feature := make(features.Ngrams)
+	textContent := composite.Get(message.TextExtractor).(string)
 	var result [][]string
 	var ngrams []string
 	var buffer bytes.Buffer
 	r := '\n'
 
-	//for _, c := range composite.TextContent {
-	for i := 0; i <= len(composite.TextContent); i++ {
-		if i < len(composite.TextContent) {
-			r = rune(composite.TextContent[i])
+	for i := 0; i <= len(textContent); i++ {
+		if i < len(textContent) {
+			r = rune(textContent[i])
 		} else {
 			// Hack: set the last character to a terminator to allow
 			// proper procesisng of the remaining runes
@@ -94,14 +93,5 @@ func (s *ngramExtractor) Name() string {
 func (s *ngramExtractor) Requires() []string {
 	return []string{
 		message.TextExtractor,
-	}
-}
-func (s *ngramExtractor) SetResult(result interface{}, composite *message.CompositeAnalysis) error {
-	switch d := result.(type) {
-	case features.Ngrams:
-		composite.Ngrams = &d
-		return nil
-	default:
-		return fmt.Errorf("NgramExtractor: attempt to cast unknown type")
 	}
 }
