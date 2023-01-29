@@ -47,12 +47,16 @@ func NewNgramExtractor() Extractor {
 }
 
 func (s *ngramExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
+	var textContent string
 	feature := make(features.Ngrams)
-	textContent := composite.Get(message.TextExtractor).(string)
 	var result [][]string
 	var ngrams []string
 	var buffer bytes.Buffer
 	r := '\n'
+
+	if err := composite.Load(message.TextExtractor, &textContent); err != nil {
+		return nil, err
+	}
 
 	for i := 0; i <= len(textContent); i++ {
 		if i < len(textContent) {

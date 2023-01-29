@@ -1,5 +1,10 @@
 package message
 
+import (
+	"fmt"
+	"reflect"
+)
+
 const (
 	AdversarialExtractor string = "adversarial"
 	CompanyNameExtractor string = "company_name"
@@ -42,6 +47,25 @@ func (s *CompositeAnalysis) Get(key string) interface{} {
 
 func (s *CompositeAnalysis) GetList(key string) []interface{} {
 	return s.Get(key).([]interface{})
+}
+
+func (s *CompositeAnalysis) Load(key string, val interface{}) error {
+	rv := reflect.ValueOf(val)
+
+	if rv.Kind() != reflect.Pointer || rv.IsNil() {
+		return fmt.Errorf("value for key %s is not a pointer", key)
+	}
+
+	if feature, ok := s.Features[key]; !ok {
+		return fmt.Errorf("feature of key %s does not exist", key)
+	} else {
+		f := reflect.New(reflect.TypeOf(feature))
+
+		f.Elem().Set(reflect.ValueOf(feature))
+		rv.Elem().Set(f.Elem())
+	}
+
+	return nil
 }
 
 var ParquetSchema = `{
