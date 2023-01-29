@@ -27,7 +27,7 @@ func NewSentimentExtractor() Extractor {
 }
 
 func (s *sentimentExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
-	textContent := composite.Get(message.TextExtractor).(string)
+	textContent := composite.Get(message.TitleExtractor).(string)
 	language := composite.Get(message.LanguageExtractor).(features.Language)
 
 	if language.Name != features.LangEnglish {
@@ -49,5 +49,6 @@ func (s *sentimentExtractor) Name() string {
 func (s *sentimentExtractor) Requires() []string {
 	return []string{
 		message.LanguageExtractor,
+		message.TitleExtractor,
 	}
 }

@@ -1,15 +1,15 @@
 package message
 
 const (
-	AdversarialExtractor = "adversarial"
-	CompanyNameExtractor = "company_name"
-	CountryExtractor     = "country"
-	LanguageExtractor    = "language"
-	SentimentExtractor   = "sentiment"
-	TextExtractor        = "text"
-	NgramExtractor       = "ngram"
-	UrlExtractor         = "url"
-	TitleExtractor       = "title"
+	AdversarialExtractor string = "adversarial"
+	CompanyNameExtractor string = "company_name"
+	CountryExtractor     string = "country"
+	LanguageExtractor    string = "language"
+	SentimentExtractor   string = "sentiment"
+	TextExtractor        string = "text"
+	NgramExtractor       string = "ngram"
+	UrlExtractor         string = "url"
+	TitleExtractor       string = "title"
 )
 
 type CompositeAnalysis struct {
@@ -38,6 +38,10 @@ func (s *CompositeAnalysis) Has(key string) bool {
 
 func (s *CompositeAnalysis) Get(key string) interface{} {
 	return s.Features[key]
+}
+
+func (s *CompositeAnalysis) GetList(key string) []interface{} {
+	return s.Get(key).([]interface{})
 }
 
 var ParquetSchema = `{

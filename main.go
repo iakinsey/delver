@@ -309,10 +309,6 @@ func CreateResource(c config.Resource, preparedApp *preparedApplication) {
 		fosp := objectstore.FilesystemObjectStoreParams{}
 		parseParam(c.Parameters, &fosp)
 		r = objectstore.NewFilesystemObjectStore(fosp)
-	case "hdfs_logger":
-		hlp := logger.HDFSLoggerParams{}
-		parseParam(c.Parameters, &hlp)
-		r = logger.NewHDFSLogger(hlp)
 	case "elasticsearch_logger":
 		elp := logger.ElasticsearchLoggerParams{}
 		parseParam(c.Parameters, &elp)
