@@ -15,7 +15,12 @@ func NewLanguageExtractor() Extractor {
 }
 
 func (s *languageExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
-	textContent := composite.Get(message.TextExtractor).(string)
+	var textContent string
+
+	if err := composite.Load(message.TextExtractor, &textContent); err != nil {
+		return nil, err
+	}
+
 	info := whatlanggo.Detect(textContent)
 
 	return features.Language{

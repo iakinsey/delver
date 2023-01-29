@@ -31,10 +31,14 @@ func NewCompanyNameExtractor() Extractor {
 
 func (s *companyNameExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
 	var results []string
-	textContent := []byte(composite.Get(message.TextExtractor).(string))
+	var textContent string
+
+	if err := composite.Load(message.TextExtractor, &textContent); err != nil {
+		return nil, err
+	}
 
 	for _, company := range s.companies {
-		if c := company.Regex.Find(textContent); c != nil {
+		if c := company.Regex.Find([]byte(textContent)); c != nil {
 			results = append(results, company.Identifier)
 		}
 	}

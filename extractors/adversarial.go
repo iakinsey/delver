@@ -24,8 +24,13 @@ func NewAdversarialExtractor() Extractor {
 }
 
 func (s *adversarialExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
+	var uris features.URIs
+
+	if err := composite.Load(message.UrlExtractor, &uris); err != nil {
+		return nil, err
+	}
+
 	origin, err := url.Parse(composite.URI)
-	uris := composite.Get(message.UrlExtractor).(features.URIs)
 
 	if err != nil {
 		return nil, err
