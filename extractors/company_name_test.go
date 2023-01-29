@@ -23,7 +23,7 @@ func TestCompanyNameExtractors(t *testing.T) {
 	textContent := testutil.TestData(testCompanyNames)
 	composite := message.CompositeAnalysis{
 		Features: map[string]interface{}{
-			message.TextExtractor: textContent,
+			message.TextExtractor: string(textContent),
 		},
 	}
 
