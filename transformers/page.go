@@ -19,6 +19,7 @@ func NewPageTransformer() Transformer {
 
 func (s *pageTransformer) Perform(msg json.RawMessage) ([]*types.Indexable, error) {
 	composite := message.CompositeAnalysis{}
+	lang := features.Language{}
 
 	if err := json.Unmarshal(msg, &composite); err != nil {
 		return nil, errors.Wrap(err, "transformer failed to parse article")
@@ -36,16 +37,11 @@ func (s *pageTransformer) Perform(msg json.RawMessage) ([]*types.Indexable, erro
 		HttpCode:      composite.HTTPCode,
 	}
 
-	if composite.Has(message.TextExtractor) {
-		page.Text = composite.Get(message.TextExtractor).(string)
-	}
+	composite.LoadPermissive(features.TextField, &page.Text)
+	composite.LoadPermissive(features.TitleField, &page.Title)
 
-	if composite.Has(message.TitleExtractor) {
-		page.Title = composite.Get(message.TitleExtractor).(string)
-	}
-
-	if composite.Has(message.LanguageExtractor) {
-		page.Language = composite.Get(message.LanguageExtractor).(features.Language).Name
+	if ok := composite.LoadPermissive(features.LanguageField, &lang); ok {
+		page.Language = lang.Name
 	}
 
 	return []*types.Indexable{

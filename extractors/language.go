@@ -17,7 +17,7 @@ func NewLanguageExtractor() Extractor {
 func (s *languageExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
 	var textContent string
 
-	if err := composite.Load(message.TextExtractor, &textContent); err != nil {
+	if err := composite.Load(features.TextField, &textContent); err != nil {
 		return nil, err
 	}
 
@@ -30,11 +30,11 @@ func (s *languageExtractor) Perform(f *os.File, composite message.CompositeAnaly
 }
 
 func (s *languageExtractor) Name() string {
-	return message.LanguageExtractor
+	return features.LanguageField
 }
 
 func (s *languageExtractor) Requires() []string {
 	return []string{
-		message.TextExtractor,
+		features.TextField,
 	}
 }

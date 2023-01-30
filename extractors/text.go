@@ -7,6 +7,7 @@ import (
 	"os"
 	"unicode"
 
+	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/microcosm-cc/bluemonday"
 )
@@ -51,7 +52,7 @@ func (s *textExtractor) Perform(f *os.File, composite message.CompositeAnalysis)
 }
 
 func (s *textExtractor) Name() string {
-	return message.TextExtractor
+	return features.TextField
 }
 
 func (s *textExtractor) Requires() []string {

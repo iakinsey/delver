@@ -10,6 +10,7 @@ import (
 	"github.com/iakinsey/delver/resource/bloom"
 	"github.com/iakinsey/delver/resource/maps"
 	"github.com/iakinsey/delver/types"
+	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/worker"
@@ -36,6 +37,7 @@ func NewDfsBasicAccumulator(params DfsBasicAccumulatorParams) worker.Worker {
 }
 
 func (s *dfsBasicAccumulator) OnMessage(msg types.Message) (interface{}, error) {
+	var URIs features.URIs
 	composite := message.CompositeAnalysis{}
 
 	if err := json.Unmarshal(msg.Message, &composite); err != nil {
@@ -44,7 +46,11 @@ func (s *dfsBasicAccumulator) OnMessage(msg types.Message) (interface{}, error) 
 
 	s.markVisited(composite)
 
-	requests := s.prepareRequests(composite)
+	if err := composite.Load(features.UrlField, &URIs); err != nil {
+		return nil, err
+	}
+
+	requests := s.prepareRequests(composite, URIs)
 
 	log.Printf("published %d requests from uri %s", len(requests), composite.URI)
 
@@ -57,19 +63,17 @@ func (s *dfsBasicAccumulator) markVisited(composite message.CompositeAnalysis) {
 	}
 }
 
-func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysis) []interface{} {
+func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysis, URIs features.URIs) []interface{} {
 	var result []interface{}
 	var urlPairs [][2][]byte
 	var toVisit [][]byte
 	var source string
-	URIs := composite.Get(message.UrlExtractor).([]interface{})
 
 	if meta, err := url.Parse(composite.URI); err == nil {
 		source = util.GetSLDAndTLD(meta.Host)
 	}
 
-	for _, ui := range URIs {
-		u := ui.(string)
+	for _, u := range URIs {
 		meta, err := url.Parse(u)
 
 		if err != nil {

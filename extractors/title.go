@@ -30,7 +30,7 @@ func (s *titleExtractor) Perform(f *os.File, composite message.CompositeAnalysis
 }
 
 func (s *titleExtractor) Name() string {
-	return message.TitleExtractor
+	return features.TitleField
 }
 
 func (s *titleExtractor) Requires() []string {

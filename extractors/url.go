@@ -36,7 +36,7 @@ func (s *urlExtractor) Perform(f *os.File, composite message.CompositeAnalysis) 
 }
 
 func (s *urlExtractor) Name() string {
-	return message.UrlExtractor
+	return features.UrlField
 }
 
 func (s *urlExtractor) Requires() []string {

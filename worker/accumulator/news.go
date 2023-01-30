@@ -11,6 +11,7 @@ import (
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/resource/bloom"
 	"github.com/iakinsey/delver/types"
+	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/worker"
@@ -96,6 +97,7 @@ func NewNewsAccumulator(params NewsAccumulatorParams) worker.Worker {
 }
 
 func (s *newsAccumulator) OnMessage(msg types.Message) (interface{}, error) {
+	var URIs features.URIs
 	composite := message.CompositeAnalysis{}
 
 	if err := json.Unmarshal(msg.Message, &composite); err != nil {
@@ -106,7 +108,11 @@ func (s *newsAccumulator) OnMessage(msg types.Message) (interface{}, error) {
 		return nil, nil
 	}
 
-	urls := s.processUrls(composite)
+	if err := composite.Load(features.UrlField, &URIs); err != nil {
+		return nil, err
+	}
+
+	urls := s.processUrls(composite, URIs)
 	s.processArticle(composite)
 
 	log.Printf("published %d requests for uri %s", len(urls), composite.URI)
@@ -116,7 +122,7 @@ func (s *newsAccumulator) OnMessage(msg types.Message) (interface{}, error) {
 	}, nil
 }
 
-func (s *newsAccumulator) processUrls(composite message.CompositeAnalysis) []interface{} {
+func (s *newsAccumulator) processUrls(composite message.CompositeAnalysis, URIs features.URIs) []interface{} {
 	if composite.Depth >= s.maxDepth {
 		return nil
 	}
@@ -132,8 +138,7 @@ func (s *newsAccumulator) processUrls(composite message.CompositeAnalysis) []int
 	origin := originParsed.Host
 	count := 0
 
-	for _, ui := range composite.GetList(message.UrlExtractor) {
-		u := ui.(string)
+	for _, u := range URIs {
 		parsed, err := url.Parse(u)
 
 		if err != nil {
