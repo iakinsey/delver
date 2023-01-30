@@ -54,7 +54,7 @@ func (s *ngramExtractor) Perform(f *os.File, composite message.CompositeAnalysis
 	var buffer bytes.Buffer
 	r := '\n'
 
-	if err := composite.Load(message.TextExtractor, &textContent); err != nil {
+	if err := composite.Load(features.TextField, &textContent); err != nil {
 		return nil, err
 	}
 
@@ -91,11 +91,11 @@ func (s *ngramExtractor) Perform(f *os.File, composite message.CompositeAnalysis
 }
 
 func (s *ngramExtractor) Name() string {
-	return message.NgramExtractor
+	return features.NgramField
 }
 
 func (s *ngramExtractor) Requires() []string {
 	return []string{
-		message.TextExtractor,
+		features.TextField,
 	}
 }

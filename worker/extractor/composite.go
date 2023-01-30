@@ -14,6 +14,7 @@ import (
 	"github.com/iakinsey/delver/resource/objectstore"
 	"github.com/iakinsey/delver/transformers"
 	"github.com/iakinsey/delver/types"
+	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/worker"
@@ -218,24 +219,26 @@ func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 func (s *compositeExtractor) OnComplete() {}
 
 func (s *compositeExtractor) getExtractor(name string) extractors.Extractor {
+	// TODO extractors should be passed into composite on init time
+
 	switch name {
-	case message.UrlExtractor:
+	case features.UrlField:
 		return extractors.NewUrlExtractor()
-	case message.AdversarialExtractor:
+	case features.AdversarialField:
 		return extractors.NewAdversarialExtractor()
-	case message.CompanyNameExtractor:
+	case features.CompanyNameField:
 		return extractors.NewCompanyNameExtractor()
-	case message.CountryExtractor:
+	case features.CountryField:
 		return extractors.NewCountryExtractor()
-	case message.LanguageExtractor:
+	case features.LanguageField:
 		return extractors.NewLanguageExtractor()
-	case message.SentimentExtractor:
+	case features.SentimentField:
 		return extractors.NewSentimentExtractor()
-	case message.TextExtractor:
+	case features.TextField:
 		return extractors.NewTextExtractor()
-	case message.NgramExtractor:
+	case features.NgramField:
 		return extractors.NewNgramExtractor()
-	case message.TitleExtractor:
+	case features.TitleField:
 		return extractors.NewTitleExtractor()
 	default:
 		return nil

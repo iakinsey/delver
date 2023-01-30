@@ -19,11 +19,11 @@ var sentimentScenarios = map[string]uint8{
 func TestSentimentExtractor(t *testing.T) {
 	extractor := NewSentimentExtractor()
 
-	for text, expectedScore := range sentimentScenarios {
+	for title, expectedScore := range sentimentScenarios {
 		composite := message.CompositeAnalysis{
 			Features: map[string]interface{}{
-				message.TitleExtractor: text,
-				message.LanguageExtractor: features.Language{
+				features.TitleField: title,
+				features.LanguageField: features.Language{
 					Name: features.LangEnglish,
 				},
 			},

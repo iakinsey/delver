@@ -45,7 +45,7 @@ func TestDfsBasic(t *testing.T) {
 			},
 		},
 		Features: map[string]interface{}{
-			message.UrlExtractor: features.URIs{
+			features.UrlField: features.URIs{
 				"http://example.com/1",
 				"http://example.com/2",
 				"http://example.com/3",
@@ -118,7 +118,7 @@ func TestDfsBasicMaxDepthExceeded(t *testing.T) {
 			},
 		},
 		Features: map[string]interface{}{
-			message.UrlExtractor: features.URIs{
+			features.UrlField: features.URIs{
 				"http://example.com/1",
 				"http://example.com/2",
 				"http://example.com/3",

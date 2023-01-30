@@ -37,7 +37,7 @@ func TestNewsAccumulator(t *testing.T) {
 			},
 		},
 		Features: map[string]interface{}{
-			message.UrlExtractor: features.URIs{
+			features.UrlField: features.URIs{
 				"http://test.com/article/this-is-a-test-article-today",
 				"http://example.com",
 			},

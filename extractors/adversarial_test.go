@@ -19,7 +19,7 @@ func prepareAdvTest(origin string, uris []string) (interface{}, error) {
 			},
 		},
 		Features: map[string]interface{}{
-			message.UrlExtractor: features.URIs(uris),
+			features.UrlField: features.URIs(uris),
 		},
 	}
 

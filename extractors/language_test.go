@@ -23,7 +23,7 @@ func TestLanguageExtractor(t *testing.T) {
 	for text, expectedLang := range langScenarios {
 		composite := message.CompositeAnalysis{
 			Features: map[string]interface{}{
-				message.TextExtractor: text,
+				features.TextField: text,
 			},
 		}
 

@@ -35,7 +35,7 @@ func (s *countryExtractor) Perform(f *os.File, composite message.CompositeAnalys
 	var results []string
 	var textContent string
 
-	if err := composite.Load(message.TextExtractor, &textContent); err != nil {
+	if err := composite.Load(features.TextField, &textContent); err != nil {
 		return nil, err
 	}
 
@@ -49,11 +49,11 @@ func (s *countryExtractor) Perform(f *os.File, composite message.CompositeAnalys
 }
 
 func (s *countryExtractor) Name() string {
-	return message.CountryExtractor
+	return features.CountryField
 }
 
 func (s *countryExtractor) Requires() []string {
 	return []string{
-		message.TextExtractor,
+		features.TextField,
 	}
 }

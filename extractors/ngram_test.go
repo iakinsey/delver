@@ -40,7 +40,7 @@ func TestNgramExtractor(t *testing.T) {
 		composite := message.CompositeAnalysis{
 			FetcherResponse: message.FetcherResponse{},
 			Features: map[string]interface{}{
-				message.TextExtractor: basicText,
+				features.TextField: basicText,
 			},
 		}
 		ngrams, err := extractor.Perform(nil, composite)

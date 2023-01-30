@@ -18,7 +18,7 @@ func TestCountryExtractor(t *testing.T) {
 	textContent := testutil.TestData(testCountryNames)
 	composite := message.CompositeAnalysis{
 		Features: map[string]interface{}{
-			message.TextExtractor: string(textContent),
+			features.TextField: string(textContent),
 		},
 	}
 

@@ -33,7 +33,7 @@ func (s *companyNameExtractor) Perform(f *os.File, composite message.CompositeAn
 	var results []string
 	var textContent string
 
-	if err := composite.Load(message.TextExtractor, &textContent); err != nil {
+	if err := composite.Load(features.TextField, &textContent); err != nil {
 		return nil, err
 	}
 
@@ -47,11 +47,11 @@ func (s *companyNameExtractor) Perform(f *os.File, composite message.CompositeAn
 }
 
 func (s *companyNameExtractor) Name() string {
-	return message.CompanyNameExtractor
+	return features.CompanyNameField
 }
 
 func (s *companyNameExtractor) Requires() []string {
 	return []string{
-		message.TextExtractor,
+		features.TextField,
 	}
 }

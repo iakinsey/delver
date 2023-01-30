@@ -27,14 +27,14 @@ func NewSentimentExtractor() Extractor {
 }
 
 func (s *sentimentExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
-	var textContent string
+	var title string
 	var language features.Language
 
-	if err := composite.Load(message.TitleExtractor, &textContent); err != nil {
+	if err := composite.Load(features.TitleField, &title); err != nil {
 		return nil, err
 	}
 
-	if err := composite.Load(message.LanguageExtractor, &language); err != nil {
+	if err := composite.Load(features.LanguageField, &language); err != nil {
 		return nil, err
 	}
 
@@ -42,7 +42,7 @@ func (s *sentimentExtractor) Perform(f *os.File, composite message.CompositeAnal
 		return nil, nil
 	}
 
-	analysis := s.model.SentimentAnalysis(textContent, sentiment.English)
+	analysis := s.model.SentimentAnalysis(title, sentiment.English)
 	score := int32(analysis.Score)
 
 	return features.Sentiment{
@@ -51,12 +51,12 @@ func (s *sentimentExtractor) Perform(f *os.File, composite message.CompositeAnal
 }
 
 func (s *sentimentExtractor) Name() string {
-	return message.SentimentExtractor
+	return features.SentimentField
 }
 
 func (s *sentimentExtractor) Requires() []string {
 	return []string{
-		message.LanguageExtractor,
-		message.TitleExtractor,
+		features.LanguageField,
+		features.TitleField,
 	}
 }

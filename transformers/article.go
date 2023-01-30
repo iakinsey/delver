@@ -22,6 +22,8 @@ func NewArticleTransformer() Transformer {
 
 func (s *articleTransformer) Perform(msg json.RawMessage) ([]*types.Indexable, error) {
 	composite := message.CompositeAnalysis{}
+	ngramFeature := features.Ngrams{}
+	sentiment := features.Sentiment{}
 
 	if err := json.Unmarshal(msg, &composite); err != nil {
 		return nil, errors.Wrap(err, "transformer failed to parse article")
@@ -36,38 +38,24 @@ func (s *articleTransformer) Perform(msg json.RawMessage) ([]*types.Indexable, e
 		Found:     composite.Timestamp,
 	}
 
-	if composite.Has(message.TextExtractor) {
-		article.Content = composite.Get(message.TextExtractor).(string)
-	}
+	composite.LoadPermissive(features.TextField, &article.Content)
+	composite.LoadPermissive(features.TitleField, &article.Title)
+	composite.LoadPermissive(features.CountryField, &article.Countries)
+	composite.LoadPermissive(features.CompanyNameField, &article.Corporate)
 
-	if composite.Has(message.TitleExtractor) {
-		article.Title = composite.Get(message.TitleExtractor).(string)
-	}
-
-	if composite.Has(message.CountryExtractor) {
-		article.Countries = composite.Get(message.CountryExtractor).(features.Countries)
-	}
-
-	if composite.Has(message.CompanyNameExtractor) {
-		article.Corporate = composite.Get(message.CompanyNameExtractor).(features.Corporations)
-	}
-
-	if composite.Has(message.NgramExtractor) {
-		ngramMap := composite.Get(message.NgramExtractor).(features.Ngrams)
+	if ok := composite.LoadPermissive(features.NgramField, &ngramFeature); ok {
 		ngrams := make([]string, 0)
 
-		if ngramsAsList, ok := ngramMap[3]; ok {
+		if ngramsAsList, ok := ngramFeature[3]; ok {
 			for _, tokens := range ngramsAsList {
 				ngrams = append(ngrams, strings.Join(tokens, ngramDelimeter))
 			}
-		}
 
-		article.Ngrams = ngrams
+			article.Ngrams = ngrams
+		}
 	}
 
-	if composite.Has(message.SentimentExtractor) {
-		sentiment := composite.Get(message.SentimentExtractor).(features.Sentiment)
-
+	if ok := composite.LoadPermissive(features.SentimentField, &sentiment); ok {
 		if sentiment.BinaryNaiveBayesAggregate != nil {
 			article.BinarySentimentNaiveBayesAggregate = int(*sentiment.BinaryNaiveBayesAggregate)
 		}

@@ -8,6 +8,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/types"
+	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util/testutil"
 	"github.com/iakinsey/delver/worker"
@@ -32,11 +33,11 @@ func TestCompositeExtractorUrlOnly(t *testing.T) {
 	extractor := NewCompositeExtractorWorker(CompositeArgs{
 		ObjectStore: queues.ObjectStore,
 		Enabled: []string{
-			message.TextExtractor,
-			message.LanguageExtractor,
-			message.SentimentExtractor,
-			message.CountryExtractor,
-			message.CompanyNameExtractor,
+			features.TextField,
+			features.LanguageField,
+			features.SentimentField,
+			features.CountryField,
+			features.CompanyNameField,
 		},
 	})
 

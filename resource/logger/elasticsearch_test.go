@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/elastic/go-elasticsearch"
+	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/stretchr/testify/assert"
 )
@@ -47,8 +48,8 @@ func TestElasticsearchLogger(t *testing.T) {
 			HTTPCode: 200,
 		},
 		Features: map[string]interface{}{
-			message.TextExtractor: "Test text content",
-			message.CompanyNameExtractor: []string{
+			features.TextField: "Test text content",
+			features.CompanyNameField: []string{
 				"example1",
 				"example2",
 			},
