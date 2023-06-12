@@ -2,8 +2,7 @@ package rpc
 
 import "encoding/json"
 
-const FilterTypeArticle = "article"
-const FilterTypePage = "page"
+const FilterTypeComposite = "composite"
 const FilterTypeMetric = "metric"
 
 type Aggregator struct {
@@ -13,24 +12,21 @@ type Aggregator struct {
 	TimeWindowSeconds int64  `json:"time_window_seconds"`
 }
 
-type ArticleFilterQuery struct {
-	Keyword []string `json:"keyword"`
-	Country []string `json:"country"`
-	Company []string `json:"company"`
+type CompositeFilterQuery struct {
+	Keyword  []string `json:"keyword"`
+	Country  []string `json:"country"`
+	Company  []string `json:"company"`
+	Url      []string `json:"url"`
+	Domain   []string `json:"domain"`
+	HttpCode []int    `json:"http_code"`
+	Title    []string `json:"title"`
+	Language []string `json:"language"`
 }
 
 type MetricFilterQuery struct {
 	Key   string `json:"key"`
 	Start int64  `json:"start"`
 	End   int64  `json:"end"`
-}
-
-type PageFilterQuery struct {
-	Url      []string `json:"url"`
-	Domain   []string `json:"domain"`
-	HttpCode []int    `json:"http_code"`
-	Title    []string `json:"title"`
-	Language []string `json:"language"`
 }
 
 type FilterParams struct {

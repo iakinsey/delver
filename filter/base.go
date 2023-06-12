@@ -21,12 +21,10 @@ type SearchFilter interface {
 
 func GetStreamFilter(params rpc.FilterParams) StreamFilter {
 	switch params.DataType {
-	case types.ArticleIndexable:
-		return NewArticleStreamFilter(params)
+	case types.CompositeIndexable:
+		return NewCompositeStreamFilter(params)
 	case types.MetricIndexable:
 		return NewMetricStreamFilter(params)
-	case types.PageIndexable:
-		return NewPageStreamFilter(params)
 	}
 
 	log.Panicf("unknown filter data type: %s", params.DataType)
@@ -36,12 +34,10 @@ func GetStreamFilter(params rpc.FilterParams) StreamFilter {
 
 func GetSearchFilter(params rpc.FilterParams) SearchFilter {
 	switch params.DataType {
-	case types.ArticleIndexable:
-		return NewArticleSearchFilter(params)
+	case types.CompositeIndexable:
+		return NewCompositeSearchFilter(params)
 	case types.MetricIndexable:
 		return NewMetricSearchFilter(params)
-	case types.PageIndexable:
-		return NewPageSearchFilter(params)
 	}
 
 	log.Panicf("unknown filter data type: %s", params.DataType)

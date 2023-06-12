@@ -150,11 +150,11 @@ func (s *searchGateway) Declare(index types.Index) {
 	}
 
 	if res, err := request.Do(context.Background(), s.client); err != nil {
-		log.Panicf("failed to create index: %s", err)
+		log.Panicf("failed to create index %s: %s", index.Name, err)
 	} else if res.StatusCode == 400 && strings.Contains(res.String(), indexExist) {
 		return
 	} else if res.StatusCode >= 300 {
-		log.Panicf("failed to create index (code %d): %s", res.StatusCode, res.String())
+		log.Panicf("failed to create index %s (code %d): %s", index.Name, res.StatusCode, res.String())
 	}
 }
 

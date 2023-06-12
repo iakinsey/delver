@@ -331,22 +331,14 @@ func (s *clientStreamer) decodeFilters(message []byte) (map[string]rpc.FilterPar
 		}
 
 		switch fp.DataType {
-		case rpc.FilterTypeArticle:
-			afq := rpc.ArticleFilterQuery{}
+		case rpc.FilterTypeComposite:
+			cfq := rpc.CompositeFilterQuery{}
 
-			if err := json.Unmarshal(fp.RawQuery, &afq); err != nil {
+			if err := json.Unmarshal(fp.RawQuery, &cfq); err != nil {
 				return nil, errors.Wrap(err, "failed to parse filter query")
 			}
 
-			fp.Query = afq
-		case rpc.FilterTypePage:
-			pfq := rpc.PageFilterQuery{}
-
-			if err := json.Unmarshal(fp.RawQuery, &pfq); err != nil {
-				return nil, errors.Wrap(err, "failed to parse filter query")
-			}
-
-			fp.Query = pfq
+			fp.Query = cfq
 		case rpc.FilterTypeMetric:
 			mfq := rpc.MetricFilterQuery{}
 

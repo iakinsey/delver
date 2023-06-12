@@ -18,12 +18,10 @@ type Transformer interface {
 
 func GetTransformer(name string) Transformer {
 	switch name {
-	case types.ArticleIndexable:
-		return NewArticleTransformer()
 	case types.MetricIndexable:
 		return NewMetricTransformer()
-	case types.PageIndexable:
-		return NewPageTransformer()
+	case types.CompositeIndexable:
+		return NewCompositeTransformer()
 	default:
 		log.Panicf("unknown transformer: %s", name)
 	}
