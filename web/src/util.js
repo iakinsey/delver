@@ -95,3 +95,13 @@ export function getDateQueryString(d) {
 
     return `${datePart} ${timePart}`
 }
+
+export function getNestedAttribute(obj, path) {
+    var pos = 0, end, val = obj;
+    while ((end = path.indexOf('.', pos)) !== -1) {
+        val = val[path.substring(pos, end)];
+        if (val === undefined) return undefined;
+        pos = end + 1;
+    }
+    return val[path.substr(pos)];
+}

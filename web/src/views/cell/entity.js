@@ -1,12 +1,13 @@
 import React from 'react'
 import Connectable from '../connectable'
 import QueryBuilder from "../query"
+import { getNestedAttribute } from '../../util'
 
 const MAX_SIZE = 250
 const DEFAULT_QUERY = {
     data_type: "page",
     key: "url",
-    title_key: "title",
+    title_key: "features.title",
     query: {
         url: [],
         domain: [],
@@ -60,11 +61,21 @@ export default class EntityFeedView extends Connectable {
     renderEntityList() {
         return this.state.entities.map((entity) => (
             <div key={entity[this.state.key]}>
-                <a href={entity[this.state.key]} target="_blank" rel="noopener noreferrer">
-                    {entity[this.state.titleKey] ? entity[this.state.titleKey] : entity[this.state.key]}
+                <a href={getNestedAttribute(entity, this.state.key)} target="_blank" rel="noopener noreferrer">
+                    {this.getEntityValOrDefault(entity)}
                 </a>
             </div>
         ))
+    }
+
+    getEntityValOrDefault(entity) {
+        const val = getNestedAttribute(entity, this.state.titleKey)
+
+        if (val) {
+            return val
+        }
+
+        return getNestedAttribute(entity, this.state.key)
     }
 
     renderQueryBuilder() {
@@ -76,6 +87,27 @@ export default class EntityFeedView extends Connectable {
                 defaultValue: true,
                 getter: (filter, key) => filter.options[key],
                 onUpdate: (filter, key, value) => filter.options[key] = value[0]
+            },
+            keyword: {
+                label: "Keywords",
+                type: 'text',
+                operators: ['equal'],
+                getter: (filter, key) => filter.query.keyword.join(" "),
+                onUpdate: (filter, key, value) => filter.query.keyword = value[0].split(" ")
+            },
+            country: {
+                label: "Countries (ISO 3166-1 alpha-2)",
+                type: 'text',
+                operators: ['equal'],
+                getter: (filter, key) => filter.query.country.join(" "),
+                onUpdate: (filter, key, value) => filter.query.country = value[0].split(" ")
+            },
+            company: {
+                label: "Company (Exchange:Ticker)",
+                type: 'text',
+                operators: ['equal'],
+                getter: (filter, key) => filter.query.company.join(" "),
+                onUpdate: (filter, key, value) => filter.query.company = value[0].split(" ")
             },
             url: {
                 label: "URL",

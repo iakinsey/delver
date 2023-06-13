@@ -20,7 +20,6 @@ import (
 	"github.com/iakinsey/delver/instrument"
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/resource/bloom"
-	"github.com/iakinsey/delver/resource/logger"
 	"github.com/iakinsey/delver/resource/maps"
 	"github.com/iakinsey/delver/resource/objectstore"
 	"github.com/iakinsey/delver/worker"
@@ -198,10 +197,6 @@ func CreateWorker(wc config.Worker, preparedApp *preparedApplication) {
 		nap := accumulator.NewsAccumulatorParams{}
 		parseParamWithResources(wc.Parameters, &nap, preparedApp.resources)
 		w = accumulator.NewNewsAccumulator(nap)
-	case "resource_accumulator":
-		rap := accumulator.ResourceAccumulatorParams{}
-		parseParamWithResources(wc.Parameters, &rap, preparedApp.resources)
-		w = accumulator.NewResourceAccumulator(rap)
 	case "composite_extractor":
 		cap := extractor.CompositeArgs{}
 		parseParamWithResources(wc.Parameters, &cap, preparedApp.resources)
@@ -309,10 +304,6 @@ func CreateResource(c config.Resource, preparedApp *preparedApplication) {
 		fosp := objectstore.FilesystemObjectStoreParams{}
 		parseParam(c.Parameters, &fosp)
 		r = objectstore.NewFilesystemObjectStore(fosp)
-	case "elasticsearch_logger":
-		elp := logger.ElasticsearchLoggerParams{}
-		parseParam(c.Parameters, &elp)
-		r = logger.NewElasticsearchLogger(elp)
 	default:
 		log.Fatalf("unknown resource %s", c.Type)
 	}

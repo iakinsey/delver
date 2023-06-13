@@ -4,20 +4,20 @@ import { LineChart, Line, CartesianGrid, XAxis, YAxis, ResponsiveContainer } fro
 import QueryBuilder from "../query"
 import moment from 'moment'
 
-const TIMESTAMP_KEY = 'found'
+const TIMESTAMP_KEY = 'timestamp'
 const DEFAULT_QUERY = {
-    fields: ["binary_sentiment_naive_bayes_aggregate", "found"],
-    key: "binary_sentiment_naive_bayes_aggregate",
+    fields: ["features.sentiment.binary_sentiment_naive_bayes_aggregate", "timestamp"],
+    key: "features.sentiment.binary_sentiment_naive_bayes_aggregate",
     title: "Sentiment",
-    data_type: "article",
+    data_type: "composite",
     query: {
         keyword: [],
         country: [],
         company: []
     },
     agg: {
-        time_field: "found",
-        agg_field: "binary_sentiment_naive_bayes_aggregate",
+        time_field: "timestamp",
+        agg_field: "features.sentiment.binary_sentiment_naive_bayes_aggregate",
         time_window_seconds: 1800,
         agg_name: "avg"
     },
