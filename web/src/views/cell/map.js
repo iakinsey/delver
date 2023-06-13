@@ -1,7 +1,7 @@
 import React from 'react'
 import Connectable from '../connectable'
 import { scaleLinear } from "d3-scale";
-import { getKey } from '../../util.js'
+import { getKey, getNestedAttribute } from '../../util.js'
 import QueryBuilder from "../query"
 import {
     ComposableMap,
@@ -12,14 +12,14 @@ import {
 
 const DEFAULT_COLOR = "#323232"
 const GEO_URL = "/world-110m.json"
-const SENTIMENT_KEY = "binary_sentiment_naive_bayes_content"
-const COUNTRY_KEY = "countries"
-const TIMESTAMP_KEY = 'found'
+const SENTIMENT_KEY = "features.sentiment.binary_sentiment_naive_bayes_content"
+const COUNTRY_KEY = "features.country"
+const TIMESTAMP_KEY = 'timestamp'
 const DEFAULT_QUERY = {
     fields: [SENTIMENT_KEY, TIMESTAMP_KEY, COUNTRY_KEY],
     key: SENTIMENT_KEY,
     title: "Sentiment",
-    data_type: "article",
+    data_type: "composite",
      query: {
         keyword: [],
         country: [],
@@ -66,13 +66,16 @@ export default class Map extends Connectable {
         let newState = {}
 
         for (let entity of message.data) {
-            if (!entity[COUNTRY_KEY] || !entity[SENTIMENT_KEY]) {
+            let countries = getNestedAttribute(entity, COUNTRY_KEY)
+            let sentiment = getNestedAttribute(entity, SENTIMENT_KEY)
+
+            if (!countries || !sentiment) {
                 continue
             }
 
             changed = true
 
-            for (let country of entity[COUNTRY_KEY]) {
+            for (let country of countries) {
                 var entry
 
                 if (!this.state[country]) {
@@ -82,7 +85,7 @@ export default class Map extends Connectable {
                 }
 
                 entry.count += 1
-                entry.sum += entity[SENTIMENT_KEY]
+                entry.sum += sentiment
 
                 newState[country] = entry
             }

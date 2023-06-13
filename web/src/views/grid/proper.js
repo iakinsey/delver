@@ -1,6 +1,5 @@
 import GridLayout from 'react-grid-layout';
 import React from 'react';
-import ArticleFeedView from "../cell/feed"
 import ChartView from "../cell/chart"
 import EntityFeedView from "../cell/entity"
 import MapView from "../cell/map"
@@ -21,8 +20,6 @@ const renderCellContents = (cell, dimensions) => {
     const key = getCellKey(cell)
 
     switch (cell.type) {
-        case "textFeed": 
-            return <ArticleFeedView key={key} cell={cell} />
         case "chart":
             return <ChartView key={key} cell={cell} />
         case "map":
