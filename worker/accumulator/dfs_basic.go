@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/resource/bloom"
@@ -47,7 +48,7 @@ func (s *dfsBasicAccumulator) OnMessage(msg types.Message) (interface{}, error) 
 	s.markVisited(composite)
 
 	if err := composite.Load(features.UrlField, &URIs); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "dfs basic accumulator")
 	}
 
 	requests := s.prepareRequests(composite, URIs)

@@ -7,6 +7,7 @@ import (
 
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
+	"github.com/pkg/errors"
 	"golang.org/x/text/unicode/rangetable"
 )
 
@@ -55,7 +56,7 @@ func (s *ngramExtractor) Perform(f *os.File, composite message.CompositeAnalysis
 	r := '\n'
 
 	if err := composite.Load(features.TextField, &textContent); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "ngram extractor")
 	}
 
 	for i := 0; i <= len(textContent); i++ {

@@ -3,6 +3,7 @@ package extractors
 import (
 	"os"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/config"
@@ -36,7 +37,7 @@ func (s *countryExtractor) Perform(f *os.File, composite message.CompositeAnalys
 	var textContent string
 
 	if err := composite.Load(features.TextField, &textContent); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "country extractor")
 	}
 
 	for iso3166Alpha2, regex := range s.countries {
