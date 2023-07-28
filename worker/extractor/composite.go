@@ -184,22 +184,22 @@ func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 		return nil, err
 	}
 
-	composite, err := s.executeExtractors(path, meta)
+	composite, extractorErr := s.executeExtractors(path, meta)
 
 	if composite != nil {
 		result = *composite
 	}
 
-	if objectStoreErr := s.ObjectStore.Delete(meta.StoreKey); err != nil {
+	if objectStoreErr := s.ObjectStore.Delete(meta.StoreKey); objectStoreErr != nil {
 		log.Errorf("failed to delete object in store after extraction: %s", objectStoreErr)
 	}
 
-	if exists, err := util.PathExists(path); exists {
-		if delErr := os.Remove(path); err != nil {
+	if exists, pathErr := util.PathExists(path); exists {
+		if delErr := os.Remove(path); delErr != nil {
 			log.Errorf("failed to delete file after extraction: %s", delErr)
 		}
-	} else if err != nil {
-		log.Errorf("failed to stat file for deletion: %s", err)
+	} else if pathErr != nil {
+		log.Errorf("failed to stat file for deletion: %s", pathErr)
 	}
 
 	transformerErr := transformers.Send(
@@ -210,10 +210,10 @@ func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 	)
 
 	if transformerErr != nil {
-		log.Errorf("composite failed to send transformer data: %s", err)
+		log.Errorf("composite failed to send transformer data: %s", transformerErr)
 	}
 
-	return result, err
+	return result, extractorErr
 }
 
 func (s *compositeExtractor) OnComplete() {}

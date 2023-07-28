@@ -6,6 +6,7 @@ import (
 	"github.com/abadojack/whatlanggo"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
+	"github.com/pkg/errors"
 )
 
 type languageExtractor struct{}
@@ -18,7 +19,7 @@ func (s *languageExtractor) Perform(f *os.File, composite message.CompositeAnaly
 	var textContent string
 
 	if err := composite.Load(features.TextField, &textContent); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "language extractor")
 	}
 
 	info := whatlanggo.Detect(textContent)

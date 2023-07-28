@@ -3,6 +3,7 @@ package extractors
 import (
 	"os"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/config"
@@ -34,7 +35,7 @@ func (s *companyNameExtractor) Perform(f *os.File, composite message.CompositeAn
 	var textContent string
 
 	if err := composite.Load(features.TextField, &textContent); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "company name extractor")
 	}
 
 	for _, company := range s.companies {

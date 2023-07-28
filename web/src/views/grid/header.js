@@ -9,7 +9,7 @@ import {
 } from '../../styles/color'
 
 const CELL_TYPES = {
-    entityFeed: "Entity Feed",
+    entityFeed: "Feed",
     chart: "Chart",
     map: "Map",
     metric: "Metric"

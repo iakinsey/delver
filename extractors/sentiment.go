@@ -3,6 +3,7 @@ package extractors
 import (
 	"os"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/cdipaolo/sentiment"
@@ -31,11 +32,11 @@ func (s *sentimentExtractor) Perform(f *os.File, composite message.CompositeAnal
 	var language features.Language
 
 	if err := composite.Load(features.TitleField, &title); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "sentiment extractor getting title")
 	}
 
 	if err := composite.Load(features.LanguageField, &language); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "sentiment extractor getting language")
 	}
 
 	if language.Name != features.LangEnglish {

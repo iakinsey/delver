@@ -109,7 +109,7 @@ func (s *newsAccumulator) OnMessage(msg types.Message) (interface{}, error) {
 	}
 
 	if err := composite.Load(features.UrlField, &URIs); err != nil {
-		return nil, err
+		return nil, nil
 	}
 
 	urls := s.processUrls(composite, URIs)

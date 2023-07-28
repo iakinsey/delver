@@ -8,6 +8,7 @@ import (
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
+	"github.com/pkg/errors"
 )
 
 type adversarialExtractor struct {
@@ -27,7 +28,7 @@ func (s *adversarialExtractor) Perform(f *os.File, composite message.CompositeAn
 	var uris features.URIs
 
 	if err := composite.Load(features.UrlField, &uris); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "adversarial extractor")
 	}
 
 	origin, err := url.Parse(composite.URI)
