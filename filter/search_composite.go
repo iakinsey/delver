@@ -22,7 +22,7 @@ type compositeSearchFilter struct {
 }
 
 const dateRangeTemplate = `{
-	"range": {"found": {"gte": %d}}
+	"range": {"timestamp": {"gte": %d}}
 }`
 const countryTemplate = `
 	{"match": {"features.country": {"query": "%s"}}}

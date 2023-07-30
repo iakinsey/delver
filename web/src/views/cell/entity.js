@@ -5,7 +5,7 @@ import { getNestedAttribute } from '../../util'
 
 const MAX_SIZE = 250
 const DEFAULT_QUERY = {
-    data_type: "page",
+    data_type: "composite",
     key: "url",
     title_key: "features.title",
     query: {
