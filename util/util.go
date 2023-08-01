@@ -216,3 +216,23 @@ func IsNullByCheckingStructTag(s interface{}, name string) bool {
 
 	return false
 }
+
+func FlattenJSON(entity map[string]interface{}, prefix string, result map[string]float64) error {
+	for k, v := range entity {
+		if prefix != "" {
+			k = prefix + "." + k
+		}
+		switch child := v.(type) {
+		case map[string]interface{}:
+			if err := FlattenJSON(child, k, result); err != nil {
+				return err
+			}
+		case float64:
+			result[k] = child
+		default:
+			return fmt.Errorf("invalid type when flattening map %T", v)
+		}
+	}
+
+	return nil
+}

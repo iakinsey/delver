@@ -75,7 +75,8 @@ func newPersistentRollingBloomFilter(bloomCount int, maxN uint64, p float64, pat
 	} else if f, err := os.Open(path); err != nil {
 		return nil, errors.Wrap(err, "failed to open existing bloom file")
 	} else if bloom, err := LoadBloomFilter(f); err != nil {
-		return nil, errors.Wrap(err, "failed to load bloom filter")
+		// Load a new bloom filter if the exiting one doesn't work
+		rbf.blooms = []BloomFilter{NewBloomFilter(bloomParams)}
 	} else {
 		defer f.Close()
 		if bloomStruct, ok := bloom.(*bloomFilter); !ok {

@@ -17,7 +17,7 @@ const queryTemplate = `{
     "sort": [
         {"timestamp": {"order": "asc"}}
     ],
-	"_source": %s,
+	"_source": {"includes": %s},
     "query": {
         "bool": {
             "must": %s

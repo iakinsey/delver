@@ -6,8 +6,8 @@ import moment from 'moment'
 
 const TIMESTAMP_KEY = 'timestamp'
 const DEFAULT_QUERY = {
-    fields: ["features.sentiment.binary_sentiment_naive_bayes_aggregate", "timestamp"],
-    key: "features.sentiment.binary_sentiment_naive_bayes_aggregate",
+    fields: ["features.sentiment.binary_naive_bayes_content", "timestamp"],
+    key: "features.sentiment.binary_naive_bayes_content",
     title: "Sentiment",
     data_type: "composite",
     query: {
@@ -17,7 +17,7 @@ const DEFAULT_QUERY = {
     },
     agg: {
         time_field: "timestamp",
-        agg_field: "features.sentiment.binary_sentiment_naive_bayes_aggregate",
+        agg_field: "features.sentiment.binary_naive_bayes_content",
         time_window_seconds: 1800,
         agg_name: "avg"
     },
