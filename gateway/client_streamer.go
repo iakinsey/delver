@@ -263,12 +263,18 @@ func (s *clientStreamer) applyTransforms(entities []json.RawMessage, filter rpc.
 	var results []interface{}
 
 	for _, rawEntity := range entities {
-		var entity map[string]float64
+		var entityJson map[string]interface{}
+		entity := make(map[string]float64)
 
-		if err := json.Unmarshal(rawEntity, &entity); err != nil {
+		if err := json.Unmarshal(rawEntity, &entityJson); err != nil {
 			return nil, errors.Wrap(err, "failed to parse entity while preparing aggregate output data")
 		}
 
+		if err := util.FlattenJSON(entityJson, "", entity); err != nil {
+			return nil, errors.Wrap(err, "failed to flatten json map when preparing aggregate output data")
+		}
+
+		//func FlattenJSON(entity map[string]interface{}, prefix string, result map[string]float64) error {
 		m := agg.Perform(entity)
 
 		if m == nil {
