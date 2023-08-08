@@ -66,7 +66,7 @@ export default class QueryBuilder extends Component {
         continue
       }
 
-      var val;
+      let val = ''
 
       try {
         val = value.getter(filter, key)
