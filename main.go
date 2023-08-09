@@ -166,7 +166,7 @@ func Terminate(resources map[string]interface{}, workers map[string]worker.Worke
 
 			go func() {
 				defer wg.Done()
-				q.Stop()
+				go q.Stop()
 			}()
 		}
 	}
