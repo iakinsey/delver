@@ -52,22 +52,48 @@ var Indices = []Index{
 		Spec: `{
 			"settings": {},
 			"mappings": {
-				"properties": {
-					"store_key": {"type": "keyword"},
-					"content_md5": {"type": "keyword"},
-					"elapsed_time_ms": {"type": "keyword"},
-					"error": {"type": "text"},
-					"http_code": {"type": "integer"},
-					"success": {"type": "boolean"},
-					"timestamp": {"type": "long"},
-					"request_id": {"type": "keyword"},
-					"uri": {"type": "keyword"},
-					"host": {"type": "keyword"},
-					"origin": {"type": "keyword"},
-					"protocol": {"type": "keyword"},
-					"depth": {"type": "integer"},
-					"features": {"type": "nested"}
+			  "properties": {
+				"store_key": { "type": "keyword" },
+				"content_md5": { "type": "keyword" },
+				"elapsed_time_ms": { "type": "keyword" },
+				"error": { "type": "text" },
+				"http_code": { "type": "integer" },
+				"success": { "type": "boolean" },
+				"timestamp": { "type": "long" },
+				"request_id": { "type": "keyword" },
+				"uri": { "type": "keyword" },
+				"host": { "type": "keyword" },
+				"origin": { "type": "keyword" },
+				"protocol": { "type": "keyword" },
+				"depth": { "type": "integer" },
+				"features": {
+				  "type": "object",
+				  "properties": {
+					"country": { "type": "keyword" },
+					"company_name": { "type": "keyword" },
+					"adversarial": {
+					  "properties": {
+						"enumeration": { "type": "boolean" },
+						"subdomain_explosion": { "type": "boolean" }
+					  }
+					},
+					"language": {
+					  "properties": {
+						"confidence": { "type": "float" },
+						"name": { "type": "keyword" }
+					  }
+					},
+					"text": { "type": "text" },
+					"title": { "type": "text" },
+					"url": { "type": "keyword" }
+				  }
+				},
+				"header": {
+				  "type": "object",
+				  "properties": {
+				  }
 				}
+			  }
 			}
 		}`,
 	},
