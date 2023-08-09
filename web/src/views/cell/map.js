@@ -12,7 +12,7 @@ import {
 
 const DEFAULT_COLOR = "#323232"
 const GEO_URL = "/world-110m.json"
-const SENTIMENT_KEY = "features.sentiment.binary_sentiment_naive_bayes_content"
+const SENTIMENT_KEY = "features.sentiment.binary_naive_bayes_content"
 const COUNTRY_KEY = "features.country"
 const TIMESTAMP_KEY = 'timestamp'
 const DEFAULT_QUERY = {
