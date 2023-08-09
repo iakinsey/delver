@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -36,10 +37,12 @@ type fileQueue struct {
 	channel        chan types.Message
 	terminate      chan bool
 	terminated     chan bool
+	terminating    bool
 	resilient      bool
 	messageCounter uint64
 	entityRegex    *regexp.Regexp
 	reset          bool
+	termLock       sync.Mutex
 }
 
 type FileQueueParams struct {
@@ -84,6 +87,7 @@ func NewFileQueue(params FileQueueParams) Queue {
 		maxPollDelay:   time.Duration(params.MaxPollDelayMs) * time.Millisecond,
 		maxSize:        params.MaxSize,
 		channel:        make(chan types.Message),
+		terminating:    false,
 		terminate:      make(chan bool),
 		terminated:     make(chan bool),
 		resilient:      params.Resilient,
@@ -100,10 +104,25 @@ func (s *fileQueue) Start() error {
 }
 
 func (s *fileQueue) Stop() error {
+	s.setTerminating()
 	s.terminate <- true
 	<-s.terminated
 
 	return nil
+}
+
+func (s *fileQueue) setTerminating() {
+	s.termLock.Lock()
+	defer s.termLock.Unlock()
+
+	s.terminating = true
+}
+
+func (s *fileQueue) isTerminating() bool {
+	s.termLock.Lock()
+	defer s.termLock.Unlock()
+
+	return s.terminating
 }
 
 func (s *fileQueue) GetChannel() chan types.Message {
@@ -201,6 +220,11 @@ func (s *fileQueue) perform() {
 
 		select {
 		case <-time.After(sleepTime):
+			if s.isTerminating() {
+				s.terminated <- true
+				return
+			}
+
 			message, err := s.next()
 
 			if err == errQueueEmpty {

@@ -3,6 +3,7 @@ package worker
 import (
 	"encoding/json"
 	"reflect"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -19,26 +20,29 @@ type WorkerManager interface {
 	Stop()
 }
 type workerManager struct {
-	inbox      queue.Queue
-	outbox     queue.Queue
-	priority   int
-	worker     Worker
-	terminate  chan bool
-	terminated chan bool
-	metrics    metrics.MetricSink
-	workerName string
+	inbox       queue.Queue
+	outbox      queue.Queue
+	priority    int
+	worker      Worker
+	terminating bool
+	terminate   chan bool
+	terminated  chan bool
+	metrics     metrics.MetricSink
+	workerName  string
+	termLock    sync.Mutex
 }
 
 func NewWorkerManager(worker Worker, inbox queue.Queue, outbox queue.Queue) WorkerManager {
 	return &workerManager{
-		inbox:      inbox,
-		outbox:     outbox,
-		priority:   0,
-		worker:     worker,
-		terminate:  make(chan bool),
-		terminated: make(chan bool),
-		metrics:    instrument.GetMetrics(),
-		workerName: reflect.TypeOf(worker).Elem().Name(),
+		inbox:       inbox,
+		outbox:      outbox,
+		priority:    0,
+		worker:      worker,
+		terminating: false,
+		terminate:   make(chan bool),
+		terminated:  make(chan bool),
+		metrics:     instrument.GetMetrics(),
+		workerName:  reflect.TypeOf(worker).Elem().Name(),
 	}
 }
 
@@ -46,6 +50,12 @@ func (s *workerManager) Start() {
 	for {
 		select {
 		case message := <-s.inbox.GetChannel():
+			if s.isTerminating() {
+				s.metrics.IncrCounter([]string{s.workerName, "terminated"}, 1)
+				s.terminated <- true
+				return
+			}
+
 			s.metrics.IncrCounter([]string{s.workerName, "message", "in"}, 1)
 			start := time.Now().UnixMilli()
 			result, err := s.worker.OnMessage(message)
@@ -79,8 +89,23 @@ func (s *workerManager) Start() {
 func (s *workerManager) Stop() {
 	defer s.worker.OnComplete()
 
+	s.setTerminating()
 	s.terminate <- true
 	<-s.terminated
+}
+
+func (s *workerManager) setTerminating() {
+	s.termLock.Lock()
+	defer s.termLock.Unlock()
+
+	s.terminating = true
+}
+
+func (s *workerManager) isTerminating() bool {
+	s.termLock.Lock()
+	defer s.termLock.Unlock()
+
+	return s.terminating
 }
 
 func (s *workerManager) publishResponse(result interface{}) {
