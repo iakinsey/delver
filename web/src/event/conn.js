@@ -9,23 +9,32 @@ export default class Connection {
         this.onDisconnect = onDisconnect
         this.host = RPC_HOST
         this.port = RPC_PORT
+        this.intentionalClose = false
         this.connected = false
         this.ws = null
     }
 
     disconnect() {
-        if (this.connected) {
+        this.intentionalClose = true
+        if (this.ws) {
             this.ws.close()
         }
     }
 
     connect() {
-        const filter = btoa(this.filters).replace('/', '_')
+        const filter = btoa(unescape(encodeURIComponent(this.filters))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
         
-        const url = "ws://" + this.host + ":" + this.port + '/' + filter
+        const protocol = window.location.protocol === "https:" ? "wss://" : "ws://"
+        const url = protocol + this.host + ":" + this.port + '/' + filter
         this.ws = new WebSocket(url)
 
         return new Promise((resolve, reject) => {
+            this.ws.onclose = () => {
+                const wasConnected = this.connected
+                this.connected = false
+                if (!wasConnected) { reject(new Error("Connection closed before opening")); return }
+                if (!this.intentionalClose && this.onDisconnect) this.onDisconnect()
+            }
             this.ws.onopen = () => { this.onOpen(this.ws, resolve) }
             this.ws.onerror = (error) => { this.onError(error, reject) }
         })
@@ -43,7 +52,7 @@ export default class Connection {
 
     onError(error, reject) {
         if (this.connected && this.onDisconnect) {
-            this.onDisconnect(error)
+            this.ws.close()
         } else {
             reject(error)
         }

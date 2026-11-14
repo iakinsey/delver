@@ -128,9 +128,18 @@ func (s *userGateway) Delete(userID string) error {
 		return errs.NewAuthError("User doesnt exist")
 	}
 
-	_, err := s.db.Exec(deleteUser, userID)
-
-	return err
+	transaction, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer transaction.Rollback()
+	if _, err = transaction.Exec(clearTokens, userID); err != nil {
+		return err
+	}
+	if _, err = transaction.Exec(deleteUser, userID); err != nil {
+		return err
+	}
+	return transaction.Commit()
 }
 
 func (s *userGateway) Authenticate(email, pass string) (*types.Token, error) {
@@ -283,3 +292,5 @@ func CreateToken() string {
 
 	return hex.EncodeToString(b)
 }
+
+func (s *userGateway) Close() error { return s.db.Close() }

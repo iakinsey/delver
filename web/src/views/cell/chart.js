@@ -3,11 +3,12 @@ import Connectable from '../connectable'
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, ResponsiveContainer } from 'recharts';
 import QueryBuilder from "../query"
 import moment from 'moment'
+import { mergeSeries } from '../../util'
 
 const TIMESTAMP_KEY = 'timestamp'
 const DEFAULT_QUERY = {
-    fields: ["features.sentiment.binary_naive_bayes_content", "timestamp"],
-    key: "features.sentiment.binary_naive_bayes_content",
+    fields: ["features.sentiment.binary_naive_bayes_title", "timestamp"],
+    key: "features.sentiment.binary_naive_bayes_title",
     title: "Sentiment",
     data_type: "composite",
     query: {
@@ -17,7 +18,7 @@ const DEFAULT_QUERY = {
     },
     agg: {
         time_field: "timestamp",
-        agg_field: "features.sentiment.binary_naive_bayes_content",
+        agg_field: "features.sentiment.binary_naive_bayes_title",
         time_window_seconds: 1800,
         agg_name: "avg"
     },
@@ -54,8 +55,7 @@ export default class _Chart extends Connectable {
     }
 
     onMessage(message) {
-        const newData = this.state.data.concat(message.data)
-        this.setState({ data: newData })
+        this.setState(state => ({ data: mergeSeries(state.data, message.data, 'timestamp') }))
     }
 
 
@@ -70,7 +70,7 @@ export default class _Chart extends Connectable {
                     <Line type="monotone" dataKey={this.cell.filter.key} stroke="#8884d8" strokeWidth={3} dot={false} />
                     <CartesianGrid stroke="#ccc" strokeDasharray="5 5" />
                     <XAxis dataKey={TIMESTAMP_KEY} tickFormatter={formatXAxis} />
-                    <YAxis />
+                    <YAxis domain={(this.cell.filter.key || "").startsWith("features.sentiment.") ? [0, 1] : ["auto", "auto"]} />
                 </LineChart>
             </ResponsiveContainer>
         )
@@ -122,7 +122,7 @@ export default class _Chart extends Connectable {
                 onUpdate: (filter, key, value) => filter.query.keyword = value[0].split(" ")
             },
             country: {
-                label: "Countries (ISO 3166-1 alpha-2)",
+                label: "Countries (ISO 3166-1 alpha-3)",
                 type: 'text',
                 operators: ['equal'],
                 getter: (filter, key) => filter.query.country.join(" "),

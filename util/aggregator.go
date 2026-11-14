@@ -13,90 +13,74 @@ type Aggregator interface {
 }
 
 type aggregator struct {
-	aggFn             func([]float64) float64
-	timeField         string
-	aggField          string
-	timeWindowSeconds int64
-	nextTime          *float64
-	timeWindow        []float64
-	valueWindow       []float64
+	name                string
+	timeField, aggField string
+	window              float64
+	start               *float64
+	sum, count          float64
 }
 
-func getAggFn(name string) (func([]float64) float64, error) {
-	switch name {
-	case "":
-	case "sum":
-		return Sum, nil
-	case "avg":
-		return Mean, nil
+func NewAggregator(name, timeField, aggField string, window int64) (Aggregator, error) {
+	if name == "" {
+		name = "sum"
 	}
-
-	return nil, fmt.Errorf("no such agg function: %s", name)
+	if name != "sum" && name != "avg" {
+		return nil, fmt.Errorf("no such agg function: %s", name)
+	}
+	if timeField == "" || aggField == "" || window <= 0 {
+		return nil, errors.New("aggregation requires fields and a positive window")
+	}
+	return &aggregator{name: name, timeField: timeField, aggField: aggField, window: float64(window)}, nil
 }
-
-func NewAggregator(name string, timeField string, aggField string, timeWindowSeconds int64) (Aggregator, error) {
-	aggFn, err := getAggFn(name)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if timeField == "" || aggField == "" {
-		return nil, errors.New("time field and agg field cannot be empty")
-	}
-
-	if timeWindowSeconds <= 0 {
-		return nil, errors.New("time window cannot be less than or equal to 0")
-	}
-
-	return &aggregator{
-		aggFn:             aggFn,
-		timeField:         timeField,
-		aggField:          aggField,
-		timeWindowSeconds: timeWindowSeconds,
-		timeWindow:        make([]float64, 0),
-		valueWindow:       make([]float64, 0),
-	}, nil
-}
-
 func (s *aggregator) Perform(entity map[string]float64) map[string]float64 {
-	time, ok := entity[s.timeField]
-
+	timestamp, ok := entity[s.timeField]
 	if !ok {
 		return nil
 	}
-
-	val, ok := entity[s.aggField]
-
+	value, ok := entity[s.aggField]
 	if !ok {
 		return nil
 	}
-
-	if s.nextTime == nil {
-		s.reset(time)
-	}
-
-	if time < *s.nextTime || len(s.timeWindow) == 0 {
-		s.timeWindow = append(s.timeWindow, time)
-		s.valueWindow = append(s.valueWindow, val)
-
+	start := math.Floor(timestamp/s.window) * s.window
+	if s.start != nil && start < *s.start {
 		return nil
 	}
-
-	next := map[string]float64{
-		s.aggField:  s.aggFn(s.valueWindow),
-		s.timeField: Min(s.timeWindow),
+	var result map[string]float64
+	if s.start == nil || start > *s.start {
+		result = s.Snapshot()
+		s.start = &start
+		s.sum = 0
+		s.count = 0
 	}
-
-	s.reset(time)
-
-	return next
+	s.sum += value
+	s.count++
+	return result
 }
-
-func (s *aggregator) reset(time float64) {
-	s.timeWindow = make([]float64, 0)
-	s.valueWindow = make([]float64, 0)
-	s.nextTime = &time
+func (s *aggregator) Snapshot() map[string]float64 {
+	if s.start == nil || s.count == 0 {
+		return nil
+	}
+	value := s.sum
+	if s.name == "avg" {
+		value /= s.count
+	}
+	return map[string]float64{s.timeField: *s.start, s.aggField: value}
+}
+func (s *aggregator) Seed(timestamp, value, count float64) {
+	start := math.Floor(timestamp/s.window) * s.window
+	s.start = &start
+	s.count = count
+	s.sum = value
+	if s.name == "avg" {
+		s.sum = value * count
+	}
+}
+func (s *aggregator) Flush() map[string]float64 {
+	result := s.Snapshot()
+	s.start = nil
+	s.sum = 0
+	s.count = 0
+	return result
 }
 
 // Agg functions

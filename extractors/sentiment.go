@@ -4,7 +4,6 @@ import (
 	"os"
 
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 
 	"github.com/cdipaolo/sentiment"
 	"github.com/iakinsey/delver/types/features"
@@ -19,7 +18,7 @@ func NewSentimentExtractor() Extractor {
 	model, err := sentiment.Restore()
 
 	if err != nil {
-		log.Fatalf("unable to restore sentiment model")
+		panic(err)
 	}
 
 	return &sentimentExtractor{
@@ -47,7 +46,7 @@ func (s *sentimentExtractor) Perform(f *os.File, composite message.CompositeAnal
 	score := int32(analysis.Score)
 
 	return features.Sentiment{
-		BinaryNaiveBayesContent: &score,
+		BinaryNaiveBayesTitle: &score,
 	}, nil
 }
 

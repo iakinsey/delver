@@ -3,12 +3,15 @@ package queue
 import (
 	"encoding/json"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/iakinsey/delver/types"
 )
 
 type timerQueue struct {
+	startOnce  sync.Once
+	stopOnce   sync.Once
 	delay      time.Duration
 	channel    chan types.Message
 	terminate  chan bool
@@ -29,12 +32,13 @@ func NewTimerQueue(params TimerQueueParams) Queue {
 }
 
 func (s *timerQueue) Start() error {
-	go s.perform()
+	s.startOnce.Do(func() { go s.perform() })
 
 	return nil
 }
 
 func (s *timerQueue) perform() {
+	defer close(s.terminated)
 	s.notify()
 
 	for {
@@ -42,7 +46,7 @@ func (s *timerQueue) perform() {
 		case <-time.After(s.delay):
 			s.notify()
 		case <-s.terminate:
-			s.terminated <- true
+
 			return
 		}
 	}
@@ -51,16 +55,20 @@ func (s *timerQueue) perform() {
 func (s *timerQueue) notify() {
 	time, _ := json.Marshal(time.Now().Unix())
 
-	s.channel <- types.Message{
+	select {
+	case s.channel <- types.Message{
 		ID:          string(types.NewV4()),
 		MessageType: types.TimerType,
 		Message:     json.RawMessage(time),
+	}:
+	case <-s.terminate:
 	}
 
 }
 
 func (s *timerQueue) Stop() error {
-	s.terminate <- true
+	s.startOnce.Do(func() { close(s.terminated) })
+	s.stopOnce.Do(func() { close(s.terminate) })
 	<-s.terminated
 
 	return nil

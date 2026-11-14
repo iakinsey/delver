@@ -1,7 +1,7 @@
 import React from 'react'
 import Connectable from '../connectable'
 import { scaleLinear } from "d3-scale";
-import { getKey, getNestedAttribute } from '../../util.js'
+import { getNestedAttribute } from '../../util.js'
 import QueryBuilder from "../query"
 import {
     ComposableMap,
@@ -12,11 +12,11 @@ import {
 
 const DEFAULT_COLOR = "#323232"
 const GEO_URL = "/world-110m.json"
-const SENTIMENT_KEY = "features.sentiment.binary_naive_bayes_content"
+const SENTIMENT_KEY = "features.sentiment.binary_naive_bayes_title"
 const COUNTRY_KEY = "features.country"
 const TIMESTAMP_KEY = 'timestamp'
 const DEFAULT_QUERY = {
-    fields: [SENTIMENT_KEY, TIMESTAMP_KEY, COUNTRY_KEY],
+    fields: [SENTIMENT_KEY, TIMESTAMP_KEY, COUNTRY_KEY, "request_id"],
     key: SENTIMENT_KEY,
     title: "Sentiment",
     data_type: "composite",
@@ -32,7 +32,7 @@ const DEFAULT_QUERY = {
 
 const colorScale = scaleLinear()
     .domain([0, 0.5, 1])
-    .range(["#4d9508", "#ffeb00", "#cb0000"])
+    .range(["#cb0000", "#ffeb00", "#4d9508"])
 
 
 
@@ -59,41 +59,25 @@ export default class Map extends Connectable {
         }
 
         this.defaultLen = Object.keys(this.state).length
+        this.seen = new Set()
     }
 
     onMessage(message) {
-        let changed = false;
-        let newState = {}
-
-        for (let entity of message.data) {
-            let countries = getNestedAttribute(entity, COUNTRY_KEY)
-            let sentiment = getNestedAttribute(entity, SENTIMENT_KEY)
-
-            if (!countries || !sentiment) {
-                continue
-            }
-
-            changed = true
-
-            for (let country of countries) {
-                var entry
-
-                if (!this.state[country]) {
-                    entry = this.state[country] = { count: 0, sum: 0 }
-                } else {
-                    entry = Object.assign({}, this.state[country])
+        this.setState(state => {
+            const updates = {}
+            for (const entity of message.data) {
+                const countries = getNestedAttribute(entity, COUNTRY_KEY)
+                const sentiment = getNestedAttribute(entity, SENTIMENT_KEY)
+                if (!countries || typeof sentiment !== 'number' || !Number.isFinite(sentiment)) continue
+                if (entity.request_id && this.seen.has(entity.request_id)) continue
+                if (entity.request_id) this.seen.add(entity.request_id)
+                for (const country of countries) {
+                    const previous = updates[country] || state[country] || { count: 0, sum: 0 }
+                    updates[country] = { count: previous.count + 1, sum: previous.sum + sentiment }
                 }
-
-                entry.count += 1
-                entry.sum += sentiment
-
-                newState[country] = entry
             }
-        }
-
-        if (changed) {
-            this.setState(newState)
-        }
+            return updates
+        })
     }
 
     renderMap() {
@@ -108,11 +92,11 @@ export default class Map extends Connectable {
             <ComposableMap>
                 <Geographies geography={GEO_URL}>
                     {({ geographies }) =>
-                        geographies.map((geo) => {
+                        geographies.map((geo, index) => {
                             const data = this.state[geo.properties.ISO_A3]
-                            const key = getKey(geo.properties.ISO_A3, data ? data : {})
+                            const key = geo.rsmKey || geo.id || `${geo.properties.ISO_A3}-${index}`
                             const sentiment = data ? data.sum / data.count : null
-                            const color = sentiment ? colorScale(sentiment) : DEFAULT_COLOR
+                            const color = sentiment !== null ? colorScale(sentiment) : DEFAULT_COLOR
 
                             return <Geography key={key} geography={geo} fill={color} />
                         })
@@ -132,7 +116,7 @@ export default class Map extends Connectable {
                 onUpdate: (filter, key, value) => filter.query.keyword = value[0].split(" ")
             },
             country: {
-                label: "Countries (ISO 3166-1 alpha-2)",
+                label: "Countries (ISO 3166-1 alpha-3)",
                 type: 'text',
                 operators: ['equal'],
                 getter: (filter, key) => filter.query.country.join(" "),

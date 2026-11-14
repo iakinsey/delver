@@ -1,7 +1,10 @@
 package worker
 
 import (
+	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"sync"
 	"time"
@@ -20,6 +23,8 @@ type WorkerManager interface {
 	Stop()
 }
 type workerManager struct {
+	ctx         context.Context
+	cancel      context.CancelFunc
 	inbox       queue.Queue
 	outbox      queue.Queue
 	priority    int
@@ -30,10 +35,14 @@ type workerManager struct {
 	metrics     metrics.MetricSink
 	workerName  string
 	termLock    sync.Mutex
+	active      sync.WaitGroup
+	stopOnce    sync.Once
 }
 
 func NewWorkerManager(worker Worker, inbox queue.Queue, outbox queue.Queue) WorkerManager {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &workerManager{
+		ctx: ctx, cancel: cancel,
 		inbox:       inbox,
 		outbox:      outbox,
 		priority:    0,
@@ -42,56 +51,79 @@ func NewWorkerManager(worker Worker, inbox queue.Queue, outbox queue.Queue) Work
 		terminate:   make(chan bool),
 		terminated:  make(chan bool),
 		metrics:     instrument.GetMetrics(),
-		workerName:  reflect.TypeOf(worker).Elem().Name(),
+		workerName:  workerTypeName(worker),
 	}
 }
 
 func (s *workerManager) Start() {
+	s.termLock.Lock()
+	if s.terminating {
+		s.termLock.Unlock()
+		return
+	}
+	s.active.Add(1)
+	s.termLock.Unlock()
+	defer s.active.Done()
 	for {
 		select {
-		case message := <-s.inbox.GetChannel():
+		case message, ok := <-s.inbox.GetChannel():
+			if !ok {
+				return
+			}
 			if s.isTerminating() {
 				s.metrics.IncrCounter([]string{s.workerName, "terminated"}, 1)
-				s.terminated <- true
+
 				return
 			}
 
-			s.metrics.IncrCounter([]string{s.workerName, "message", "in"}, 1)
+			sink := s.metrics
+			if message.MessageType == types.MetricType {
+				sink = &metrics.BlackholeSink{}
+			}
+			sink.IncrCounter([]string{s.workerName, "message", "in"}, 1)
 			start := time.Now().UnixMilli()
-			result, err := s.worker.OnMessage(message)
+			outputs, err := s.process(message)
 			end := time.Now().UnixMilli()
-			success := err == nil
-
-			s.metrics.AddSample([]string{s.workerName, "duration", "millisecond"}, float32(end-start))
-
-			if success {
-				s.metrics.IncrCounter([]string{s.workerName, "success"}, 1)
-				s.publishResponse(result)
+			sink.AddSample([]string{s.workerName, "duration", "millisecond"}, float32(end-start))
+			if err == nil {
+				for _, output := range outputs {
+					if err = s.put(output); err != nil {
+						break
+					}
+				}
+			}
+			if err != nil {
+				log.Error(err)
+				sink.IncrCounter([]string{s.workerName, "error"}, 1)
 			} else {
-				s.metrics.IncrCounter([]string{s.workerName, "error"}, 1)
-				log.Errorf("Error occured while processing message: %s", err)
+				sink.IncrCounter([]string{s.workerName, "success"}, 1)
+				sink.IncrCounter([]string{s.workerName, "message", "out"}, float32(len(outputs)))
 			}
 
-			if err := s.inbox.EndTransaction(message, err == nil); err != nil {
-				s.metrics.IncrCounter([]string{s.workerName, "inbox", "transaction", "error"}, 1)
+			processingSucceeded := err == nil
+			if err := s.inbox.EndTransaction(message, processingSucceeded); err != nil {
+				sink.IncrCounter([]string{s.workerName, "inbox", "transaction", "error"}, 1)
 				log.Error(err)
 			} else {
-				s.metrics.IncrCounter([]string{s.workerName, "inbox", "transaction", "success"}, 1)
+				if processingSucceeded {
+					if committer, ok := s.worker.(MessageCommitter); ok {
+						if cleanupErr := committer.OnCommit(message); cleanupErr != nil {
+							log.Error(cleanupErr)
+						}
+					}
+				}
+				sink.IncrCounter([]string{s.workerName, "inbox", "transaction", "success"}, 1)
 			}
 		case <-s.terminate:
 			s.metrics.IncrCounter([]string{s.workerName, "terminated"}, 1)
-			s.terminated <- true
+
 			return
 		}
 	}
 }
 
 func (s *workerManager) Stop() {
-	defer s.worker.OnComplete()
-
-	s.setTerminating()
-	s.terminate <- true
-	<-s.terminated
+	s.stopOnce.Do(func() { s.setTerminating(); close(s.terminate); s.cancel(); s.active.Wait(); s.worker.OnComplete() })
 }
 
 func (s *workerManager) setTerminating() {
@@ -108,43 +140,107 @@ func (s *workerManager) isTerminating() bool {
 	return s.terminating
 }
 
-func (s *workerManager) publishResponse(result interface{}) {
+func (s *workerManager) publishResponse(result interface{}) error {
 	if result == nil {
-		return
+		return nil
 	}
-
-	count := 1
-	switch d := result.(type) {
-	case types.MultiMessage:
-		for _, r := range d.Values {
-			count += 1
-			s.doPublish(r)
+	values := []interface{}{result}
+	if multi, ok := result.(types.MultiMessage); ok {
+		values = multi.Values
+	}
+	for _, value := range values {
+		if err := s.doPublish(value); err != nil {
+			return err
 		}
-	default:
-		s.doPublish(result)
 	}
-
-	s.metrics.IncrCounter([]string{s.workerName, "message", "out"}, float32(count))
+	s.metrics.IncrCounter([]string{s.workerName, "message", "out"}, float32(len(values)))
+	return nil
+}
+func (s *workerManager) doPublish(result interface{}) error {
+	if s.outbox == nil {
+		return fmt.Errorf("%s requires an outbox", s.workerName)
+	}
+	if envelope, ok := result.(types.Message); ok {
+		return s.put(envelope)
+	}
+	kind, err := message.GetMessageTypeMapping(result)
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+	return s.put(types.Message{ID: string(types.NewV4()), MessageType: kind, Message: data})
 }
 
-func (s *workerManager) doPublish(result interface{}) {
-	messageType, err := message.GetMessageTypeMapping(result)
-
-	if err != nil {
-		log.Errorf("%s: unknown message type attempted to publish: %s", s.workerName, err.Error())
-		return
+func (s *workerManager) put(msg types.Message) error {
+	if q, ok := s.outbox.(interface {
+		PutContext(context.Context, types.Message, int) error
+	}); ok {
+		return q.PutContext(s.ctx, msg, s.priority)
 	}
+	return s.outbox.Put(msg, s.priority)
+}
 
-	msg, err := json.Marshal(result)
-
-	if err != nil {
-		log.Errorf("%s: failed to serialize message segment: %s", s.workerName, err.Error())
-		return
+func (s *workerManager) process(input types.Message) ([]types.Message, error) {
+	store, staged := s.inbox.(queue.OutputStore)
+	if staged {
+		outputs, found, err := store.LoadOutputs(input)
+		if err != nil || found {
+			return outputs, err
+		}
 	}
+	var result interface{}
+	var err error
+	if contextual, ok := s.worker.(ContextWorker); ok {
+		result, err = contextual.OnMessageContext(s.ctx, input)
+	} else {
+		result, err = s.worker.OnMessage(input)
+	}
+	if err != nil {
+		return nil, err
+	}
+	outputs := []types.Message{}
+	if result != nil {
+		values := []interface{}{result}
+		if multi, ok := result.(types.MultiMessage); ok {
+			values = multi.Values
+		}
+		for index, value := range values {
+			output, ok := value.(types.Message)
+			if !ok {
+				kind, err := message.GetMessageTypeMapping(value)
+				if err != nil {
+					return nil, err
+				}
+				data, err := json.Marshal(value)
+				if err != nil {
+					return nil, err
+				}
+				output = types.Message{MessageType: kind, Message: data}
+			}
+			if output.ID == "" {
+				output.ID = fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", input.ID, index))))
+			}
+			outputs = append(outputs, output)
+		}
+	}
+	if len(outputs) > 0 && s.outbox == nil {
+		return nil, fmt.Errorf("%s requires outbox", s.workerName)
+	}
+	if staged {
+		if err = store.SaveOutputs(input, outputs); err != nil {
+			return nil, err
+		}
+	}
+	return outputs, nil
+}
 
-	message := types.Message{}
-	message.MessageType = messageType
-	message.Message = json.RawMessage(msg)
-
-	s.outbox.Put(message, s.priority)
+func workerTypeName(w Worker) string {
+	t := reflect.TypeOf(w)
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	return t.Name()
 }

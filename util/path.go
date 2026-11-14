@@ -16,9 +16,12 @@ func GetOrCreateDir(path string) (err error) {
 	info, err := os.Stat(path)
 
 	if os.IsNotExist(err) {
-		return os.Mkdir(path, folderQueueDefaultPerms)
+		return os.MkdirAll(path, folderQueueDefaultPerms)
 	}
 
+	if err != nil {
+		return err
+	}
 	if !info.IsDir() {
 		return fmt.Errorf("path exists and is not a directory: %s", path)
 	}

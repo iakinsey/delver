@@ -124,6 +124,7 @@ func (s *dashboardGateway) List(userID string) ([]types.Dashboard, error) {
 		return nil, err
 	}
 
+	defer rows.Close()
 	var result []types.Dashboard
 
 	for rows.Next() {
@@ -141,15 +142,19 @@ func (s *dashboardGateway) List(userID string) ([]types.Dashboard, error) {
 		result = append(result, d)
 	}
 
-	return result, nil
+	return result, rows.Err()
 }
 
 func (s *dashboardGateway) isAuthorized(userID, dashID string) error {
 	if dash, err := s.Get(dashID); errors.Is(err, NoDashErr) {
 		return nil
+	} else if err != nil {
+		return err
 	} else if dash.UserID != userID {
 		return errs.NewAuthError("Unauthorized")
 	}
 
 	return nil
 }
+
+func (s *dashboardGateway) Close() error { return s.db.Close() }

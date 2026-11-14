@@ -1,6 +1,7 @@
 package maps
 
 import (
+	"sync"
 	"time"
 
 	"github.com/iakinsey/delver/config"
@@ -11,6 +12,8 @@ import (
 )
 
 type persistentMap struct {
+	done      chan struct{}
+	closeOnce sync.Once
 	db        *badger.DB
 	terminate chan bool
 	conf      config.PersistentMapConfig
@@ -23,14 +26,16 @@ type PersistentMapParams struct {
 func NewPersistentMap(params PersistentMapParams) Map {
 	opts := badger.DefaultOptions(params.Path)
 	opts.Logger = nil
+	opts.SyncWrites = true
 	db, err := badger.Open(opts)
 
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 
 	m := &persistentMap{
 		db:        db,
+		done:      make(chan struct{}),
 		terminate: make(chan bool),
 		conf:      config.Get().PersistentMap,
 	}
@@ -53,7 +58,7 @@ func (s *persistentMap) Get(key []byte) ([]byte, error) {
 		}
 
 		err = item.Value(func(val []byte) error {
-			result = val
+			result = append([]byte(nil), val...)
 
 			return nil
 		})
@@ -138,28 +143,36 @@ func (s *persistentMap) Iter(fn func([]byte, []byte) error) error {
 }
 
 func (s *persistentMap) Close() {
-	if err := s.db.Close(); err != nil {
-		log.Errorf("error when closing persistentMap: %s", err)
-	}
-	s.terminate <- true
+	s.closeOnce.Do(func() {
+		close(s.terminate)
+		<-s.done
+		if err := s.db.Close(); err != nil {
+			log.Error(err)
+		}
+	})
 }
-
 func (s *persistentMap) handleGc() {
-	errs := 0
-
+	defer close(s.done)
+	if s.conf.GCInterval <= 0 {
+		return
+	}
+	failures := 0
+	timer := time.NewTicker(s.conf.GCInterval)
+	defer timer.Stop()
 	for {
 		select {
-		case <-time.After(s.conf.GCInterval):
-			if err := s.db.RunValueLogGC(s.conf.GCDiscardRatio); err != nil {
-				log.Error(errors.Wrap(err, "persistentMap gc error"))
-				errs += 1
-			}
 		case <-s.terminate:
 			return
-		}
-
-		if errs == s.conf.GCErrThreshold {
-			return
+		case <-timer.C:
+			if err := s.db.RunValueLogGC(s.conf.GCDiscardRatio); err != nil && err != badger.ErrNoRewrite {
+				log.Error(err)
+				failures++
+				if s.conf.GCErrThreshold > 0 && failures >= s.conf.GCErrThreshold {
+					return
+				}
+			} else {
+				failures = 0
+			}
 		}
 	}
 }

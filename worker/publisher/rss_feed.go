@@ -58,6 +58,7 @@ func (s *rssFeedPublisher) getRssUrls(feedUri string, done chan []interface{}) {
 		return
 	}
 
+	defer res.Body.Close()
 	parser := gofeed.NewParser()
 	feed, err := parser.Parse(res.Body)
 
@@ -68,7 +69,11 @@ func (s *rssFeedPublisher) getRssUrls(feedUri string, done chan []interface{}) {
 	}
 
 	for _, item := range feed.Items {
-		for _, uri := range item.Links {
+		links := append([]string(nil), item.Links...)
+		if item.Link != "" {
+			links = append(links, item.Link)
+		}
+		for _, uri := range util.DedupeStrSlice(links) {
 			meta, err := url.Parse(uri)
 
 			if err != nil {

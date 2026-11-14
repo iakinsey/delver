@@ -51,6 +51,8 @@ func (s *documentReaderFSM) GetResult() []string {
 }
 
 func (s *documentReaderFSM) Init(f *os.File) {
+	s.hasNext = true
+	s.result = nil
 	s.file = f
 	s.next = s.readNewChar
 }

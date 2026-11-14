@@ -45,8 +45,9 @@ func (s *dfsBasicAccumulator) OnMessage(msg types.Message) (interface{}, error) 
 		return nil, err
 	}
 
-	s.markVisited(composite)
-
+	if !composite.Success {
+		return nil, nil
+	}
 	if err := composite.Load(features.UrlField, &URIs); err != nil {
 		return nil, errors.Wrap(err, "dfs basic accumulator")
 	}
@@ -67,7 +68,6 @@ func (s *dfsBasicAccumulator) markVisited(composite message.CompositeAnalysis) {
 func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysis, URIs features.URIs) []interface{} {
 	var result []interface{}
 	var urlPairs [][2][]byte
-	var toVisit [][]byte
 	var source string
 
 	if meta, err := url.Parse(composite.URI); err == nil {
@@ -86,7 +86,7 @@ func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysi
 
 		if source == target && composite.Depth < s.maxDepth {
 			// do not fall back after bloom filter check
-			if !s.visitedUrls.ContainsString(u) {
+			if s.visitedUrls == nil || !s.visitedUrls.ContainsString(u) {
 				result = append(result, message.FetcherRequest{
 					RequestID: types.NewV4(),
 					URI:       u,
@@ -95,7 +95,6 @@ func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysi
 					Protocol:  types.ProtocolHTTP,
 					Depth:     composite.Depth + 1,
 				})
-				toVisit = append(toVisit, []byte(u))
 			}
 		} else if source != target {
 			// TODO
@@ -118,10 +117,6 @@ func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysi
 		}
 	}
 
-	if err := s.visitedUrls.SetMany(toVisit); err != nil {
-		fmt.Printf("error saving urls to visit: %s", err)
-	}
-
 	if err := s.urlStore.SetMany(urlPairs); err != nil {
 		fmt.Printf("error saving urls in urlStore: %s", err)
 	}
@@ -130,6 +125,16 @@ func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysi
 }
 
 func (s *dfsBasicAccumulator) OnComplete() {
-	s.urlStore.Close()
-	s.visitedUrls.Close()
+
+}
+
+func (s *dfsBasicAccumulator) OnCommit(msg types.Message) error {
+	var c message.CompositeAnalysis
+	if err := json.Unmarshal(msg.Message, &c); err != nil {
+		return err
+	}
+	if s.visitedUrls == nil {
+		return nil
+	}
+	return s.visitedUrls.SetString(c.URI)
 }

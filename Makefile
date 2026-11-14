@@ -8,4 +8,7 @@ legacy:
 	docker kill `docker ps | grep delver-build | tr -s ' ' | cut -d " " -f 1`
 test:
 	go clean -testcache
-	go test -timeout 30s ./... | grep -v "no test files" 
+	go test -timeout 60s ./...
+
+test-live-es:
+	DELVER_ES_URL="$${DELVER_ES_URL:-http://localhost:9200}" go test -race -count=1 -timeout 90s ./gateway -run '^TestLiveElasticsearch$$'

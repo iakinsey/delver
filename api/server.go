@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"net"
 	"net/http"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/iakinsey/delver/api/controller"
 	"github.com/iakinsey/delver/config"
@@ -38,41 +40,53 @@ type APIResponse struct {
 }
 
 func StartHTTPServer() {
-	conf := config.Get().API
-
-	if !conf.Enabled {
+	server, cleanup, err := NewServer(config.Get().API)
+	if err != nil {
+		log.Error(err)
 		return
 	}
-
-	// TODO set user gateway path
-	user := gateway.NewUserGateway(conf.UserDBPath)
-	handler := http.NewServeMux()
-	l, err := net.Listen("tcp", conf.Address)
-	routes := getRoutes(conf, user)
-
-	if err != nil {
-		log.Fatalf("failed to start http server %s", err)
+	defer cleanup()
+	if server == nil {
+		return
 	}
-
-	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		h := requestHandler{
-			user:   user,
-			conf:   conf,
-			routes: routes,
-			req:    r,
-			resp:   w,
+	if err := server.ListenAndServe(); err != http.ErrServerClosed {
+		log.Error(err)
+	}
+}
+func NewServer(conf config.APIConfig) (*http.Server, func(), error) {
+	if !conf.Enabled {
+		return nil, func() {}, nil
+	}
+	for _, path := range []string{conf.UserDBPath, conf.DashDBPath} {
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			return nil, nil, err
 		}
-
+	}
+	user := gateway.NewUserGateway(conf.UserDBPath)
+	dash := gateway.NewDashboardGateway(conf.DashDBPath)
+	routes := routesWithGateways(user, dash)
+	handler := http.NewServeMux()
+	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		h := requestHandler{user: user, conf: conf, routes: routes, req: r, resp: w}
 		h.Perform()
 	})
-
-	log.Infof("http server listening on %s", conf.Address)
-	log.Fatal(http.Serve(l, handler))
+	cleanup := func() {
+		if c, ok := user.(io.Closer); ok {
+			c.Close()
+		}
+		if c, ok := dash.(io.Closer); ok {
+			c.Close()
+		}
+	}
+	return &http.Server{Addr: conf.Address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second}, cleanup, nil
 }
 
 func getRoutes(conf config.APIConfig, user gateway.UserGateway) map[string]Controller {
+	return routesWithGateways(user, gateway.NewDashboardGateway(conf.DashDBPath))
+}
+func routesWithGateways(user gateway.UserGateway, dashboard gateway.DashboardGateway) map[string]Controller {
 	routes := make(map[string]Controller)
-	dash := controller.NewDashboardController(gateway.NewDashboardGateway(conf.DashDBPath))
+	dash := controller.NewDashboardController(dashboard)
 	auth := controller.NewAuthController(user)
 
 	routes["/dashboard/save"] = dash.Save
@@ -126,7 +140,7 @@ func (s *requestHandler) handle() (interface{}, error) {
 		return nil, errs.NewRequestError("Not found")
 	}
 
-	b, err := io.ReadAll(s.req.Body)
+	b, err := io.ReadAll(http.MaxBytesReader(s.resp, s.req.Body, 1<<20))
 
 	if err != nil {
 		log.Errorf("failed to read request body: %s", err)

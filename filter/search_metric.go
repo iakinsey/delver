@@ -22,6 +22,7 @@ type metricRollup struct {
 }
 
 type aggEntity struct {
+	DocCount     int64        `json:"doc_count"`
 	Key          int64        `json:"key"`
 	MetricRollup metricRollup `json:"metric_rollup"`
 }
@@ -72,12 +73,13 @@ func (s *metricSearchFilter) Perform() (io.Reader, error) {
 		window = int(s.Agg.TimeWindowSeconds)
 	}
 
-	interval := fmt.Sprintf("%dm", window)
+	interval := fmt.Sprintf("%ds", window)
+	encodedKey, _ := json.Marshal(s.Key)
 	query := fmt.Sprintf(
 		metricQueryTemplate,
-		s.Key,
-		start*1000,
-		end*1000,
+		string(encodedKey),
+		start,
+		end,
 		interval,
 		aggType,
 	)
@@ -94,9 +96,10 @@ func (s *metricSearchFilter) Postprocess(entities []json.RawMessage) (results []
 		}
 
 		metric := types.Metric{
-			Key:   s.Key,
-			When:  aggE.Key / 1000, // Result is unix millis, convert to unix seconds
-			Value: int64(aggE.MetricRollup.Value),
+			Samples: aggE.DocCount,
+			Key:     s.Key,
+			When:    aggE.Key / 1000, // Result is unix millis, convert to unix seconds
+			Value:   aggE.MetricRollup.Value,
 		}
 
 		b, err := json.Marshal(metric)

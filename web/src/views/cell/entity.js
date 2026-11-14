@@ -43,18 +43,15 @@ export default class EntityFeedView extends Connectable {
     }
 
     onMessage(message) {
-        let entities = this.state.entities.slice()
-
-        for (let value of message.data) {
-            entities.push(value)
-        }
-
-        while (entities.length > MAX_SIZE) {
-            entities.shift()
-        }
-
-        this.setState({
-            entities: entities
+        this.setState(state => {
+            const entities = state.entities.slice()
+            for (const value of message.data) {
+                const key = getNestedAttribute(value, state.key)
+                const index = key === undefined ? -1 : entities.findIndex(entity => getNestedAttribute(entity, state.key) === key)
+                if (index < 0) entities.push(value)
+                else entities[index] = value
+            }
+            return { entities: entities.slice(-MAX_SIZE) }
         })
     }
 
@@ -96,7 +93,7 @@ export default class EntityFeedView extends Connectable {
                 onUpdate: (filter, key, value) => filter.query.keyword = value[0].split(" ")
             },
             country: {
-                label: "Countries (ISO 3166-1 alpha-2)",
+                label: "Countries (ISO 3166-1 alpha-3)",
                 type: 'text',
                 operators: ['equal'],
                 getter: (filter, key) => filter.query.country.join(" "),

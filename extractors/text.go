@@ -33,19 +33,13 @@ func (s *textExtractor) Perform(f *os.File, composite message.CompositeAnalysis)
 
 	content := html.UnescapeString(buf.String())
 	var dedupeBuf bytes.Buffer
-	prevIsSpacing := unicode.IsOneOf(spacing, rune(content[0]))
-
-	dedupeBuf.WriteByte(content[0])
-
-	for i := 1; i < len(content); i++ {
-		char := content[i]
-		charIsSpacing := unicode.IsOneOf(spacing, rune(char))
-
-		if !(prevIsSpacing && charIsSpacing) {
-			dedupeBuf.WriteByte(char)
+	prevIsSpacing := false
+	for _, char := range content {
+		isSpacing := unicode.IsOneOf(spacing, char)
+		if !(prevIsSpacing && isSpacing) {
+			dedupeBuf.WriteRune(char)
 		}
-
-		prevIsSpacing = charIsSpacing
+		prevIsSpacing = isSpacing
 	}
 
 	return dedupeBuf.String(), nil

@@ -1,7 +1,7 @@
 import React from 'react'
 import GridHeader from './header'
 import GridProper from './proper'
-import { routeTo, request } from '../../util'
+import { routeTo, request, hasUserInfo } from '../../util'
 import { setCells, setDashboard } from '../../event/actions'
 import store from "../../event/store"
 
@@ -14,6 +14,7 @@ export default class Grid extends React.Component {
     }
 
     async getDashOrReset() {
+        if (!hasUserInfo()) return routeTo("/login")
         const dashUuid = this.getDashUuid()
 
         if (!dashUuid) {
@@ -21,9 +22,9 @@ export default class Grid extends React.Component {
         }
 
         const args = {id: dashUuid}
-        const {data, err} = await request('dashboard/load', args)
+        const {data, error} = await request('dashboard/load', args)
 
-        if (err) {
+        if (error || !data) {
             return routeTo("/dashboards")
         }
 

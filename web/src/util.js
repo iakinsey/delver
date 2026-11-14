@@ -54,7 +54,7 @@ export function hasUserInfo() {
 export async function request(url, data) {
     if (!hasUserInfo()) {
         routeTo('/login')
-        return
+        return { success: false, error: 'Authentication required' }
     }
 
     const requestUrl = `${API_SERVER}/${url}`
@@ -81,6 +81,7 @@ export async function logout() {
 }
 
 export function getDateQueryString(d) {
+    if (!(d instanceof Date)) d = new Date(Number(d) * 1000)
     const datePart = [
         d.getFullYear(),
         String(d.getMonth() + 1).padStart(2, "0"),
@@ -90,7 +91,7 @@ export function getDateQueryString(d) {
     const timePart = [
         String(d.getHours()).padStart(2, "0"),
         String(d.getMinutes()).padStart(2, "0"),
-        String(d.getMinutes()).padStart(2, "0")
+        String(d.getSeconds()).padStart(2, "0")
     ].join(":")
 
     return `${datePart} ${timePart}`
@@ -104,4 +105,10 @@ export function getNestedAttribute(obj, path) {
         pos = end + 1;
     }
     return val[path.substr(pos)];
+}
+
+export function mergeSeries(previous, incoming, timeKey = 'timestamp') {
+    const points = new Map(previous.map(point => [getNestedAttribute(point, timeKey), point]))
+    for (const point of incoming) points.set(getNestedAttribute(point, timeKey), point)
+    return Array.from(points.values()).sort((a, b) => getNestedAttribute(a, timeKey) - getNestedAttribute(b, timeKey))
 }

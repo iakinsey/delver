@@ -1,39 +1,38 @@
 package util
 
-import (
-	"sync"
+import "sync"
 
-	log "github.com/sirupsen/logrus"
-)
-
+type keyedLock struct {
+	mutex sync.Mutex
+	refs  int
+}
 type KeyedMutex struct {
-	mutexes *sync.Map
+	mu    sync.Mutex
+	locks map[interface{}]*keyedLock
 }
 
-func NewKeyedMutex() *KeyedMutex {
-	return &KeyedMutex{
-		mutexes: &sync.Map{},
-	}
-}
-
+func NewKeyedMutex() *KeyedMutex { return &KeyedMutex{locks: make(map[interface{}]*keyedLock)} }
 func (s *KeyedMutex) Lock(key interface{}) {
-	mut := sync.Mutex{}
-	mut_, _ := s.mutexes.LoadOrStore(key, &mut)
-	mutCast := mut_.(*sync.Mutex)
-
-	mutCast.Lock()
-
-	if mutCast != &mut {
-		mutCast.Unlock()
-		s.Lock(key)
+	s.mu.Lock()
+	entry := s.locks[key]
+	if entry == nil {
+		entry = &keyedLock{}
+		s.locks[key] = entry
 	}
+	entry.refs++
+	s.mu.Unlock()
+	entry.mutex.Lock()
 }
-
 func (s *KeyedMutex) Unlock(key interface{}) {
-	if mut, ok := s.mutexes.Load(key); ok {
-		mut.(*sync.Mutex).Unlock()
-		s.mutexes.Delete(key)
-	} else {
-		log.Panicf("attempted to unlock mutex with no key loaded %s", key)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entry := s.locks[key]
+	if entry == nil {
+		panic("unlock of unknown key")
+	}
+	entry.mutex.Unlock()
+	entry.refs--
+	if entry.refs == 0 {
+		delete(s.locks, key)
 	}
 }

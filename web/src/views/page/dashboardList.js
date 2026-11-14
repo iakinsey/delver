@@ -25,9 +25,9 @@ export default class DashboardList extends React.Component {
     }
 
     async getDashboards() {
-        const {data, err} = await request('dashboard/list')
+        const {data, error} = await request('dashboard/list')
 
-        if (err) {
+        if (error) {
             return
         }
 
@@ -95,15 +95,18 @@ export default class DashboardList extends React.Component {
     }
 
     async addDash() {
+        let value
+        try { value = JSON.parse(this.state.newDashConfig || "{}") }
+        catch (error) { this.setState({ createError: "Invalid dashboard JSON" }); return }
         const args = {
             name: this.state.newDashName,
             description: this.state.newDashDesc,
-            value: JSON.parse(this.state.newDashConfig ? this.state.newDashConfig : '{}')
+            value: value
         }
-        const {err} = await request('dashboard/save', args)
+        const {error} = await request('dashboard/save', args)
 
-        if (err) {
-            this.setState({createError: err})
+        if (error) {
+            this.setState({createError: error})
             return
         }
 

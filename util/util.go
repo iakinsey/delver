@@ -3,9 +3,11 @@ package util
 import (
 	"bufio"
 	"bytes"
-	"fmt"
+	"encoding/json"
+	"golang.org/x/net/publicsuffix"
 	"io"
 	"math/rand"
+	"net"
 	"net/url"
 	"os"
 	"reflect"
@@ -90,14 +92,17 @@ func GetSLD(host string) string {
 }
 
 func GetSLDAndTLD(host string) string {
-	tokens := strings.Split(host, ".")
-	size := len(tokens)
-
-	if size == 1 {
-		return host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
 	}
-
-	return fmt.Sprintf("%s.%s", tokens[size-2], tokens[size-1])
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	if net.ParseIP(strings.Trim(host, "[]")) != nil {
+		return strings.Trim(host, "[]")
+	}
+	if domain, err := publicsuffix.EffectiveTLDPlusOne(host); err == nil {
+		return domain
+	}
+	return host
 }
 
 func StringInSlice(a string, l []string) bool {
@@ -126,15 +131,7 @@ func PanicIfErr(err error, msg string) {
 	}
 }
 
-func ToEscapedStringList(strs []string) string {
-	var vals []string
-
-	for _, s := range strs {
-		vals = append(vals, fmt.Sprintf(`"%s"`, s))
-	}
-
-	return fmt.Sprintf("[%s]", strings.Join(vals, ","))
-}
+func ToEscapedStringList(strs []string) string { data, _ := json.Marshal(strs); return string(data) }
 
 func ToParquet(id string, schema string, msg interface{}) (io.Reader, error) {
 	fw, err := mem.NewMemFileWriter(id, nil)
@@ -230,7 +227,7 @@ func FlattenJSON(entity map[string]interface{}, prefix string, result map[string
 		case float64:
 			result[k] = child
 		default:
-			return fmt.Errorf("invalid type when flattening map %T", v)
+			continue
 		}
 	}
 

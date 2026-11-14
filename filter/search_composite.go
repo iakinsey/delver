@@ -59,10 +59,10 @@ func (s *compositeSearchFilter) Perform() (io.Reader, error) {
 	s.transformCompany()
 	s.transformDateRange()
 	s.transformFields()
-	s.transformMatchString("url", s.Url)
-	s.transformMatchString("domain", s.Domain)
-	s.transformMatchString("title", s.Title)
-	s.transformMatchString("language", s.Language)
+	s.transformMatchString("uri", s.Url)
+	s.transformMatchString("host", s.Domain)
+	s.transformMatchString("features.title", s.Title)
+	s.transformMatchString("features.language.name", s.Language)
 	s.transformMatchInt("http_code", s.HttpCode)
 
 	s.Complete = true
@@ -75,16 +75,22 @@ func (s *compositeSearchFilter) Postprocess(entities []json.RawMessage) ([]json.
 }
 
 func (s *compositeSearchFilter) transformMatchString(key string, vals []string) {
-	for _, val := range vals {
-		q := `{"match": {"%s": {"query": "%s"}}}`
-		s.Must = append(s.Must, json.RawMessage(fmt.Sprintf(q, key, val)))
+	if len(vals) == 0 {
+		return
 	}
+	clauses := []interface{}{}
+	for _, v := range vals {
+		field := key
+		if key == "features.title" {
+			field = "features.title.exact"
+		}
+		clauses = append(clauses, map[string]interface{}{"term": map[string]interface{}{field: v}})
+	}
+	s.Must = append(s.Must, map[string]interface{}{"bool": map[string]interface{}{"should": clauses, "minimum_should_match": 1}})
 }
-
 func (s *compositeSearchFilter) transformMatchInt(key string, vals []int) {
-	for _, val := range vals {
-		q := `{"match": {"%s": {"query": "%d"}}}`
-		s.Must = append(s.Must, json.RawMessage(fmt.Sprintf(q, key, val)))
+	if len(vals) > 0 {
+		s.Must = append(s.Must, map[string]interface{}{"terms": map[string]interface{}{key: vals}})
 	}
 }
 
@@ -115,7 +121,7 @@ func (s *compositeSearchFilter) transformCountry() {
 	}
 
 	for _, country := range s.Country {
-		q := json.RawMessage(fmt.Sprintf(countryTemplate, country))
+		q := map[string]interface{}{"term": map[string]interface{}{"features.country": country}}
 		s.Must = append(s.Must, q)
 	}
 }
@@ -126,7 +132,13 @@ func (s *compositeSearchFilter) transformKeyword() {
 	}
 
 	for _, keyword := range s.Keyword {
-		q := json.RawMessage(fmt.Sprintf(keywordTemplate, keyword))
+		escaped := strings.NewReplacer("\\", "\\\\", "*", "\\*", "?", "\\?").Replace(keyword)
+		clauses := []interface{}{}
+		for _, field := range []string{"features.text.literal", "features.title.literal"} {
+			clauses = append(clauses, map[string]interface{}{"wildcard": map[string]interface{}{field: map[string]interface{}{"value": "*" + escaped + "*", "case_insensitive": true}}})
+		}
+		q := map[string]interface{}{"bool": map[string]interface{}{"should": clauses, "minimum_should_match": 1}}
+
 		s.Must = append(s.Must, q)
 	}
 }
@@ -137,7 +149,7 @@ func (s *compositeSearchFilter) transformCompany() {
 	}
 
 	for _, company := range s.Company {
-		q := json.RawMessage(fmt.Sprintf(companyTemplate, company))
+		q := map[string]interface{}{"term": map[string]interface{}{"features.company_name": company}}
 		s.Must = append(s.Must, q)
 	}
 }

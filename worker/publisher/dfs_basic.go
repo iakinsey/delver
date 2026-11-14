@@ -44,7 +44,7 @@ func NewDfsBasicPublisher(params DfsBasicPublisherParams) worker.Worker {
 		urlStorePath: params.UrlStorePath,
 		visitedHosts: params.VisitedHosts,
 		rotateAfter:  params.RotateAfter,
-		robots:       frontier.NewMemoryRobots(),
+		robots:       frontier.NewNullFilter(),
 		lock:         sync.Mutex{},
 		firstPass:    true,
 	}
@@ -52,6 +52,7 @@ func NewDfsBasicPublisher(params DfsBasicPublisherParams) worker.Worker {
 
 func (s *dfsBasicPublisher) OnMessage(msg types.Message) (interface{}, error) {
 	s.lock.Lock()
+	defer s.lock.Unlock()
 
 	now := time.Now()
 	queueEmpty := s.outputQueue.Len() == 0
@@ -72,8 +73,6 @@ func (s *dfsBasicPublisher) OnMessage(msg types.Message) (interface{}, error) {
 		s.timeSinceEmpty = nil
 	}
 
-	s.lock.Unlock()
-
 	return nil, nil
 }
 
@@ -84,6 +83,7 @@ func (s *dfsBasicPublisher) fillQueue() error {
 		return errors.Wrap(err, "failed to stat domain directory")
 	}
 
+	defer f.Close()
 	encodedHosts, err := f.Readdirnames(-1)
 
 	if err != nil {
@@ -96,17 +96,22 @@ func (s *dfsBasicPublisher) fillQueue() error {
 		if err != nil {
 			log.Errorf("Unable to decode host: %s", encodedHost)
 			// TODO maybe move this somewhere for inspection later?
-			os.RemoveAll(path.Join(s.urlStorePath, encodedHost))
 			continue
 		}
 
 		if _, err := s.visitedHosts.Get(host); err == maps.ErrKeyNotFound {
 			n, err := s.publishUrls(string(host), path.Join(s.urlStorePath, encodedHost))
 
+			if err != nil {
+				return err
+			}
 			if n == 0 {
 				continue
 			}
 
+			if err := s.visitedHosts.Set(host, []byte(time.Now().Format(time.RFC3339))); err != nil {
+				return err
+			}
 			if os.RemoveAll(path.Join(s.urlStorePath, encodedHost)) != nil {
 				log.Errorf("Failed to delete host folder: %s", string(host))
 			}
@@ -125,6 +130,7 @@ func (s *dfsBasicPublisher) fillQueue() error {
 
 func (s *dfsBasicPublisher) publishUrls(host string, hostDbPath string) (int, error) {
 	m := maps.NewPersistentMap(maps.PersistentMapParams{Path: hostDbPath})
+	defer m.Close()
 	count := 0
 
 	err := m.Iter(func(k, v []byte) error {
@@ -169,8 +175,7 @@ func (s *dfsBasicPublisher) publishUrls(host string, hostDbPath string) (int, er
 		}
 
 		if err = s.outputQueue.Put(msg, 0); err != nil {
-			log.Errorf("unable to queue url: %s", req.URI)
-			return nil
+			return errors.Wrap(err, "unable to queue URL")
 		}
 
 		count += 1
@@ -183,5 +188,7 @@ func (s *dfsBasicPublisher) publishUrls(host string, hostDbPath string) (int, er
 }
 
 func (s *dfsBasicPublisher) OnComplete() {
-	s.visitedHosts.Close()
+	if closer, ok := s.robots.(interface{ Close() error }); ok {
+		closer.Close()
+	}
 }

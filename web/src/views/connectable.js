@@ -18,8 +18,13 @@ export default class Connectable extends React.Component {
         this.uuid = uuid4()
 
         if (props.cell.filter) {
-            setTimeout(() => this.connect(), 0)
+            this.connectTimer = setTimeout(() => this.connect(), 0)
         }
+    }
+
+    componentWillUnmount() {
+        clearTimeout(this.connectTimer)
+        rpc.removeFilter(this.uuid)
     }
 
     async connect() {

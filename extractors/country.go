@@ -4,7 +4,6 @@ import (
 	"os"
 
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/types"
@@ -24,7 +23,7 @@ func NewCountryExtractor() Extractor {
 	countries, err := types.GetCountryRegexes(conf.CountriesPath)
 
 	if err != nil {
-		log.Fatalf(err.Error())
+		panic(err)
 	}
 
 	return &countryExtractor{
@@ -40,9 +39,9 @@ func (s *countryExtractor) Perform(f *os.File, composite message.CompositeAnalys
 		return nil, errors.Wrap(err, "country extractor")
 	}
 
-	for iso3166Alpha2, regex := range s.countries {
+	for iso3166Alpha3, regex := range s.countries {
 		if r := regex.Find([]byte(textContent)); r != nil {
-			results = append(results, iso3166Alpha2)
+			results = append(results, iso3166Alpha3)
 		}
 	}
 

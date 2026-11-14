@@ -28,9 +28,10 @@ type ClientStreamerMessage struct {
 }
 
 type Metric struct {
-	Key   string `json:"key"`
-	When  int64  `json:"when"`
-	Value int64  `json:"value"`
+	Samples int64   `json:"sample_count,omitempty"`
+	Key     string  `json:"key"`
+	When    int64   `json:"when"`
+	Value   float64 `json:"value"`
 }
 
 var Indices = []Index{
@@ -42,7 +43,7 @@ var Indices = []Index{
 				"properties": {
 					"key": {"type":"keyword"},
 					"when": {"type": "date", "format": "epoch_second"},
-					"value": {"type": "integer"}
+					"value": {"type": "double"}
 				}
 			}
 		}`,
@@ -83,8 +84,8 @@ var Indices = []Index{
 						"name": { "type": "keyword" }
 					  }
 					},
-					"text": { "type": "text" },
-					"title": { "type": "text" },
+					"text": { "type": "text", "fields":{"literal":{"type":"wildcard"}} },
+					"title": { "type": "text", "fields":{"literal":{"type":"wildcard"},"exact":{"type":"keyword"}} },
 					"url": { "type": "keyword" }
 				  }
 				},

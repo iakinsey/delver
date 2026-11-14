@@ -54,7 +54,7 @@ func (s *authController) DeleteUser(ctx context.Context, msg json.RawMessage) (i
 		return nil, err
 	}
 
-	return nil, s.auth.Delete(req.Email)
+	return nil, s.auth.Delete(GetCurrentUser(ctx).ID)
 }
 
 func (s *authController) Authenticate(ctx context.Context, msg json.RawMessage) (interface{}, error) {

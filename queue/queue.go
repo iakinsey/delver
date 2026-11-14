@@ -11,3 +11,8 @@ type Queue interface {
 	EndTransaction(types.Message, bool) error
 	Len() int64
 }
+
+type OutputStore interface {
+	LoadOutputs(types.Message) ([]types.Message, bool, error)
+	SaveOutputs(types.Message, []types.Message) error
+}

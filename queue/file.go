@@ -1,16 +1,21 @@
 package queue
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -28,6 +33,9 @@ const identifierRegex = `^\d+-\d+-\d+-` + nameRegex + "$"
 var errQueueEmpty = errors.New("queue is empty")
 
 type fileQueue struct {
+	putLock      sync.Mutex
+	lockFile     *os.File
+	maxAttempts  int
 	name         string
 	path         string
 	dlqPath      string
@@ -36,6 +44,8 @@ type fileQueue struct {
 	maxSize        int
 	channel        chan types.Message
 	terminate      chan bool
+	startOnce      sync.Once
+	stopOnce       sync.Once
 	terminated     chan bool
 	terminating    bool
 	resilient      bool
@@ -46,6 +56,7 @@ type fileQueue struct {
 }
 
 type FileQueueParams struct {
+	MaxAttempts    int    `json:"max_attempts"`
 	Name           string `json:"name"`
 	Path           string `json:"path"`
 	DlqPath        string `json:"dlq_path"`
@@ -56,32 +67,33 @@ type FileQueueParams struct {
 }
 
 func NewFileQueue(params FileQueueParams) Queue {
-	nameRegexp, err := regexp.Compile(nameRegex)
+	nameRegexp, err := regexp.Compile("^" + nameRegex + "$")
 
 	if err != nil {
-		log.Fatalf(err.Error())
+		panic(err)
 	}
 
 	if !nameRegexp.MatchString(params.Name) {
-		log.Fatalf("Queue name %s does not conform to regex %s", params.Name, nameRegexp)
+		panic(fmt.Errorf("queue name %s does not conform to %s", params.Name, nameRegexp))
 	}
 
 	if err := util.GetOrCreateDir(params.Path); err != nil {
-		log.Fatalf(err.Error())
+		panic(err)
 	}
 
 	if err := util.GetOrCreateDir(params.DlqPath); err != nil {
-		log.Fatalf(err.Error())
+		panic(err)
 	}
 
 	entityRegex, err := regexp.Compile(identifierRegex)
 
 	if err != nil {
-		log.Fatalf(err.Error())
+		panic(err)
 	}
 
 	return &fileQueue{
 		name:           params.Name,
+		maxAttempts:    params.MaxAttempts,
 		path:           params.Path,
 		dlqPath:        params.DlqPath,
 		maxPollDelay:   time.Duration(params.MaxPollDelayMs) * time.Millisecond,
@@ -98,16 +110,37 @@ func NewFileQueue(params FileQueueParams) Queue {
 }
 
 func (s *fileQueue) Start() error {
-	go s.perform()
-
-	return nil
+	var startErr error
+	s.startOnce.Do(func() {
+		f, err := os.OpenFile(filepath.Join(s.path, ".lock"), os.O_CREATE|os.O_RDWR, 0600)
+		if err != nil {
+			startErr = err
+			close(s.terminated)
+			return
+		}
+		if err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+			f.Close()
+			startErr = errors.Wrap(err, "queue directory already in use")
+			close(s.terminated)
+			return
+		}
+		s.lockFile = f
+		if err = s.Prepare(); err != nil {
+			startErr = err
+			syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+			f.Close()
+			close(s.terminated)
+			return
+		}
+		go s.perform()
+	})
+	return startErr
 }
 
 func (s *fileQueue) Stop() error {
-	s.setTerminating()
-	s.terminate <- true
+	s.startOnce.Do(func() { close(s.terminated) })
+	s.stopOnce.Do(func() { close(s.terminate) })
 	<-s.terminated
-
 	return nil
 }
 
@@ -130,34 +163,51 @@ func (s *fileQueue) GetChannel() chan types.Message {
 }
 
 func (s *fileQueue) Put(message types.Message, priority int) error {
-	atomic.AddUint64(&s.messageCounter, 1)
+	s.putLock.Lock()
+	defer s.putLock.Unlock()
+	select {
+	case <-s.terminate:
+		return errors.New("queue stopped")
+	default:
+	}
+	if s.maxSize > 0 && s.Len() >= int64(s.maxSize) {
+		return errors.New("queue capacity exceeded")
+	}
+	sequence := atomic.AddUint64(&s.messageCounter, 1)
 
-	timestamp := time.Now().Unix()
-	fileName := fmt.Sprintf("%d-%d-%d-%s", priority, timestamp, s.messageCounter, s.name)
+	timestamp := time.Now().UnixNano()
+	fileName := fmt.Sprintf("%d-%d-%d-%s", priority, timestamp, sequence, s.name)
 	finalPath := filepath.Join(s.path, fileName)
 	writingPath := fmt.Sprintf("%s%s", finalPath, writingSuffix)
-	message.ID = fileName
+	if message.ID == "" {
+		message.ID = string(types.NewV4())
+	}
 	payload, err := json.Marshal(message)
 
 	if err != nil {
 		return err
 	}
 
-	f, err := os.Create(writingPath)
+	f, err := os.OpenFile(writingPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 
 	if err != nil {
 		return errors.Wrap(err, "failed to create path for queue put")
 	}
 
+	defer os.Remove(writingPath)
+	defer f.Close()
 	if _, err = f.Write(payload); err != nil {
 		return errors.Wrap(err, "failed to write payload for queue put")
 	}
 
+	if err = f.Sync(); err != nil {
+		return err
+	}
 	if err = f.Close(); err != nil {
 		return errors.Wrap(err, "failed to close file for queue put")
 	}
 
-	if os.Rename(writingPath, finalPath); err != nil {
+	if err := os.Rename(writingPath, finalPath); err != nil {
 		return errors.Wrap(err, "failed to rename file for queue put")
 	}
 
@@ -194,13 +244,38 @@ func (s *fileQueue) Prepare() error {
 }
 
 func (s *fileQueue) EndTransaction(message types.Message, success bool) error {
-	messagePath := filepath.Join(s.path, message.ID) + claimedSuffix
+	delivery := message.DeliveryID
+	if delivery == "" {
+		delivery = message.ID
+	}
+	messagePath := filepath.Join(s.path, delivery) + claimedSuffix
 
 	if success {
-		return os.Remove(messagePath)
+		if err := os.Remove(messagePath); err != nil {
+			return err
+		}
+		os.Remove(messagePath + ".outputs")
+		return nil
 	}
 
-	return os.Rename(messagePath, filepath.Join(s.path, message.ID))
+	message.Attempts++
+	if s.maxAttempts > 0 && message.Attempts >= s.maxAttempts {
+		if err := os.Rename(messagePath, filepath.Join(s.dlqPath, delivery)); err != nil {
+			return err
+		}
+		if err := os.Rename(messagePath+".outputs", filepath.Join(s.dlqPath, delivery)+claimedSuffix+".outputs"); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	payload, err := json.Marshal(message)
+	if err != nil {
+		return err
+	}
+	if err = os.WriteFile(messagePath, payload, 0600); err != nil {
+		return err
+	}
+	return os.Rename(messagePath, filepath.Join(s.path, delivery))
 }
 
 func (s *fileQueue) Len() int64 {
@@ -211,17 +286,31 @@ func (s *fileQueue) Len() int64 {
 		return -1
 	}
 
-	return int64(len(files))
+	var count int64
+	for _, file := range files {
+		name := strings.TrimSuffix(file.Name(), claimedSuffix)
+		if s.entityRegex.MatchString(name) {
+			count++
+		}
+	}
+	return count
 }
 
 func (s *fileQueue) perform() {
+	defer close(s.terminated)
+	defer func() {
+		if s.lockFile != nil {
+			syscall.Flock(int(s.lockFile.Fd()), syscall.LOCK_UN)
+			s.lockFile.Close()
+		}
+	}()
 	for {
-		sleepTime := time.Duration(rand.Intn(int(s.maxPollDelay)))
+		sleepTime := time.Duration(rand.Intn(int(maxPollDelay(s.maxPollDelay))))
 
 		select {
 		case <-time.After(sleepTime):
 			if s.isTerminating() {
-				s.terminated <- true
+
 				return
 			}
 
@@ -230,7 +319,7 @@ func (s *fileQueue) perform() {
 			if err == errQueueEmpty {
 				continue
 			} else if err != nil && !s.resilient {
-				log.Fatalf(err.Error())
+				panic(err)
 			} else if err != nil {
 				log.Error(err)
 			} else if message == nil && !s.resilient {
@@ -238,10 +327,14 @@ func (s *fileQueue) perform() {
 			} else if message == nil {
 				log.Errorf("Queue %s got nil message", s.name)
 			} else {
-				s.channel <- *message
+				select {
+				case s.channel <- *message:
+				case <-s.terminate:
+					return
+				}
 			}
 		case <-s.terminate:
-			s.terminated <- true
+
 			return
 		}
 	}
@@ -250,6 +343,7 @@ func (s *fileQueue) perform() {
 func (s *fileQueue) next() (*types.Message, error) {
 	// TODO regex filter results
 	files, err := util.ReadDirAlphabetized(s.path)
+	sortQueueFiles(files)
 
 	if err != nil {
 		return nil, err
@@ -266,7 +360,15 @@ func (s *fileQueue) next() (*types.Message, error) {
 		claimedPath, err := s.claimFile(workFile)
 
 		if err == nil {
-			return s.getFileMessage(claimedPath)
+			msg, err := s.getFileMessage(claimedPath)
+			if err != nil {
+				if moveErr := os.Rename(claimedPath, filepath.Join(s.dlqPath, name)); moveErr != nil {
+					return nil, moveErr
+				}
+				return nil, err
+			}
+			msg.DeliveryID = name
+			return msg, nil
 		}
 	}
 
@@ -290,4 +392,101 @@ func (s *fileQueue) getFileMessage(path string) (*types.Message, error) {
 	err = json.Unmarshal(contents, &message)
 
 	return &message, errors.Wrap(err, "error while parsing message json")
+}
+
+func maxPollDelay(d time.Duration) time.Duration {
+	if d <= 0 {
+		return time.Millisecond
+	}
+	return d
+}
+func sortQueueFiles(files []fs.FileInfo) {
+	sort.SliceStable(files, func(i, j int) bool {
+		a, b := strings.SplitN(files[i].Name(), "-", 4), strings.SplitN(files[j].Name(), "-", 4)
+		if len(a) < 4 || len(b) < 4 {
+			return files[i].Name() < files[j].Name()
+		}
+		for k := 0; k < 3; k++ {
+			x, _ := strconv.ParseUint(a[k], 10, 64)
+			y, _ := strconv.ParseUint(b[k], 10, 64)
+			if x != y {
+				return x < y
+			}
+		}
+		return files[i].Name() < files[j].Name()
+	})
+}
+
+func (s *fileQueue) PutContext(ctx context.Context, msg types.Message, priority int) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.Put(msg, priority)
+}
+
+func (s *fileQueue) outputPath(msg types.Message) string {
+	delivery := msg.DeliveryID
+	if delivery == "" {
+		delivery = msg.ID
+	}
+	return filepath.Join(s.path, delivery) + claimedSuffix + ".outputs"
+}
+func (s *fileQueue) LoadOutputs(msg types.Message) ([]types.Message, bool, error) {
+	data, err := os.ReadFile(s.outputPath(msg))
+	if os.IsNotExist(err) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	var outputs []types.Message
+	err = json.Unmarshal(data, &outputs)
+	return outputs, true, err
+}
+func (s *fileQueue) SaveOutputs(msg types.Message, outputs []types.Message) error {
+	data, err := json.Marshal(outputs)
+	if err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(s.path, ".outputs-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	defer f.Close()
+	if _, err = f.Write(data); err != nil {
+		return err
+	}
+	if err = f.Sync(); err != nil {
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), s.outputPath(msg))
+}
+
+func (s *fileQueue) ReferencedObjects() ([]types.UUID, error) {
+	var result []types.UUID
+	for _, directory := range []string{s.path, s.dlqPath} {
+		entries, err := os.ReadDir(directory)
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || entry.Name() == ".lock" || strings.HasSuffix(entry.Name(), writingSuffix) {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(directory, entry.Name()))
+			if err != nil {
+				return nil, err
+			}
+			refs, err := objectReferences(data)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, refs...)
+		}
+	}
+	return result, nil
 }

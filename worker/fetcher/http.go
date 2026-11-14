@@ -1,7 +1,14 @@
 package fetcher
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"github.com/iakinsey/delver/config"
+	"github.com/iakinsey/delver/frontier"
+	"io"
+	"net/http"
+	"net/url"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -14,27 +21,54 @@ import (
 	"github.com/pkg/errors"
 )
 
-// TODO put these values into a config module
 type HttpFetcherParams struct {
-	MaxRetries  int                     `json:"max_retries"`
 	ObjectStore objectstore.ObjectStore `json:"-" resource:"object_store"`
 }
 
 type httpFetcher struct {
-	MaxRetries  int
+	robots      frontier.ClosableFilter
 	ObjectStore objectstore.ObjectStore
 	Client      util.DelverHTTPClient
 }
 
 func NewHttpFetcher(args HttpFetcherParams) worker.Worker {
+	client := util.NewHTTPClient()
+	conf := config.Get().HTTPClient
+	robots := frontier.NewMemoryRobots()
+	util.SetHTTPPolicy(client, func(u *url.URL) error {
+		if len(conf.AllowedDomains) > 0 {
+			allowed := false
+			for _, domain := range conf.AllowedDomains {
+				if u.Hostname() == domain || util.GetSLDAndTLD(u.Hostname()) == domain {
+					allowed = true
+				}
+			}
+			if !allowed {
+				return fmt.Errorf("URL outside allowed domains: %s", u)
+			}
+		}
+		if conf.RespectRobots {
+			allowed, err := robots.IsAllowed(u.String())
+			if err != nil {
+				return err
+			}
+			if !allowed {
+				return fmt.Errorf("robots disallows %s", u)
+			}
+		}
+		return nil
+	})
 	return &httpFetcher{
-		MaxRetries:  args.MaxRetries,
 		ObjectStore: args.ObjectStore,
-		Client:      util.NewHTTPClient(),
+		robots:      robots,
+		Client:      client,
 	}
 }
 
 func (s *httpFetcher) OnMessage(msg types.Message) (interface{}, error) {
+	return s.OnMessageContext(context.Background(), msg)
+}
+func (s *httpFetcher) OnMessageContext(ctx context.Context, msg types.Message) (interface{}, error) {
 	request := message.FetcherRequest{}
 
 	if err := json.Unmarshal(msg.Message, &request); err != nil {
@@ -45,21 +79,28 @@ func (s *httpFetcher) OnMessage(msg types.Message) (interface{}, error) {
 		FetcherRequest: request,
 	}
 
-	s.doHttpRequestWithRetry(request, &response)
+	s.doHttpRequestWithRetry(ctx, request, &response)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	return response, nil
 }
 
-func (s *httpFetcher) OnComplete() {}
+func (s *httpFetcher) OnComplete() {
+	if s.robots != nil {
+		s.robots.Close()
+	}
+}
 
-func (s *httpFetcher) doHttpRequestWithRetry(request message.FetcherRequest, response *message.FetcherResponse) {
+func (s *httpFetcher) doHttpRequestWithRetry(ctx context.Context, request message.FetcherRequest, response *message.FetcherResponse) {
 	var key types.UUID
 	var err error
 
 	start := time.Now()
 	response.Timestamp = start.Unix()
 
-	key, err = s.doHttpRequest(request, response)
+	key, err = s.doHttpRequest(ctx, request, response)
 
 	if err == nil {
 		response.StoreKey = key
@@ -73,8 +114,15 @@ func (s *httpFetcher) doHttpRequestWithRetry(request message.FetcherRequest, res
 	}
 }
 
-func (s *httpFetcher) doHttpRequest(request message.FetcherRequest, response *message.FetcherResponse) (key types.UUID, err error) {
-	res, err := s.Client.Perform(request.URI)
+func (s *httpFetcher) doHttpRequest(ctx context.Context, request message.FetcherRequest, response *message.FetcherResponse) (key types.UUID, err error) {
+	var res *http.Response
+	if client, ok := s.Client.(interface {
+		PerformContext(context.Context, string) (*http.Response, error)
+	}); ok {
+		res, err = client.PerformContext(ctx, request.URI)
+	} else {
+		res, err = s.Client.Perform(request.URI)
+	}
 
 	if err != nil {
 		return key, err
@@ -84,17 +132,49 @@ func (s *httpFetcher) doHttpRequest(request message.FetcherRequest, response *me
 		defer res.Body.Close()
 	}
 
+	if res == nil || res.Body == nil {
+		return key, errors.New("empty HTTP response")
+	}
+	if res.Request != nil && res.Request.URL != nil {
+		response.EffectiveURI = res.Request.URL.String()
+	}
 	response.HTTPCode = res.StatusCode
 	response.Header = res.Header
 	key = types.NewV4()
 
 	log.Printf("GET %d %s", response.HTTPCode, request.URI)
 
-	hash, err := s.ObjectStore.Put(key, res.Body)
+	limit := config.Get().HTTPClient.MaxResponseBytes
+	if limit <= 0 {
+		limit = 16 << 20
+	}
+	hash, err := s.ObjectStore.Put(key, &boundedBody{reader: res.Body, remaining: limit})
 
 	if err == nil {
 		response.ContentMD5 = hash
 	}
 
 	return key, errors.Wrap(err, "store object failure")
+}
+
+type boundedBody struct {
+	reader    io.Reader
+	remaining int64
+}
+
+func (b *boundedBody) Read(p []byte) (int, error) {
+	if b.remaining == 0 {
+		var probe [1]byte
+		n, err := b.reader.Read(probe[:])
+		if n > 0 {
+			return 0, fmt.Errorf("response exceeds configured size limit")
+		}
+		return 0, err
+	}
+	if int64(len(p)) > b.remaining {
+		p = p[:b.remaining]
+	}
+	n, err := b.reader.Read(p)
+	b.remaining -= int64(n)
+	return n, err
 }

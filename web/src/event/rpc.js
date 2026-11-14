@@ -3,7 +3,7 @@ import { sleep } from '../util'
 
 
 const MAX_RETRIES = 10
-const RETRY_DELAY = 5
+const RETRY_DELAY = 5000
 
 
 const ERR_NO_CALLBACK_UUID = 'No callback UUID specified.'
@@ -24,7 +24,6 @@ export default class RPC {
     }
 
     addFilter(uuid, filter, callback) {
-        this.disablePreload()
 
         // Copy filter before mutation
         filter = JSON.parse(filter)
@@ -33,19 +32,18 @@ export default class RPC {
         this.filters[uuid] = filter
         this.callbacks[uuid] = callback
 
-        this.reconnect()
+        this.reconnect().catch(() => this.onDisconnect())
     }
 
     removeFilter(uuid) {
-        if (this.filters[uuid]) {
+        if (!this.filters[uuid]) {
             return
         }
 
         delete this.filters[uuid]
         delete this.callbacks[uuid]
 
-        this.disablePreload()
-        this.reconnect()
+        this.reconnect().catch(() => this.onDisconnect())
     }
 
     onMessage(msg) {
@@ -80,35 +78,33 @@ export default class RPC {
         }
     }
 
-    reconnect() {
+    async reconnect() {
         if (this.conn) {
             this.conn.disconnect()
+            this.conn = null
         }
 
-        if (this.filters.length === 0) {
+        if (Object.keys(this.filters).length === 0) {
             return
         }
 
-        this.conn = new Connection(
+        const connection = new Connection(
             this.getFilters(),
-            this.onMessage.bind(this),
-            this.onDisconnect.bind(this)
+            message => { if (this.conn === connection) this.onMessage(message) },
+            error => { if (this.conn === connection) this.onDisconnect(error) }
         )
-        this.conn.connect()
+        this.conn = connection
+        return await connection.connect()
     }
 
     async onDisconnect() {
-        for (var i = 0; i < MAX_RETRIES; i++) {
-            if (this.filters.length > 0) {
-                return
+        if (this.retrying) return
+        this.retrying = true
+        try {
+            for (let i = 0; i < MAX_RETRIES; i++) {
+                if (Object.keys(this.filters).length === 0) return
+                try { await this.reconnect(); return } catch (e) { await sleep(RETRY_DELAY) }
             }
-
-            try {
-                this.reconnect()
-                return
-            } catch (e) {
-                await sleep(RETRY_DELAY)
-            }
-        }
+        } finally { this.retrying = false }
     }
 }

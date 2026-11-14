@@ -5,6 +5,8 @@ import (
 )
 
 type Message struct {
+	DeliveryID  string          `json:"-"`
+	Attempts    int             `json:"attempts,omitempty"`
 	ID          string          `json:"id"`
 	MessageType MessageType     `json:"message_type"`
 	Message     json.RawMessage `json:"message"`
@@ -22,7 +24,7 @@ func NewMessage(in interface{}, t MessageType) (Message, error) {
 	}
 
 	return Message{
-		ID:          "0-0-0-TestName",
+		ID:          string(NewV4()),
 		MessageType: t,
 		Message:     json.RawMessage(jsonMessage),
 	}, nil

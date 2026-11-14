@@ -10,7 +10,6 @@ import (
 
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/elastic/go-elasticsearch/v7/esapi"
-	"github.com/elastic/go-elasticsearch/v7/esutil"
 	"github.com/iakinsey/delver/types"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -19,8 +18,9 @@ import (
 const indexExist = "resource_already_exists_exception"
 
 type searchGateway struct {
-	client       *elasticsearch.Client
-	bulkIndexers map[string]esutil.BulkIndexer
+	client         *elasticsearch.Client
+	compositeIndex string
+	metricIndex    string
 }
 
 type SearchGateway interface {
@@ -57,13 +57,13 @@ func NewSearchGateway(addresses []string) SearchGateway {
 	}
 
 	return &searchGateway{
-		client:       client,
-		bulkIndexers: make(map[string]esutil.BulkIndexer),
+		client:         client,
+		compositeIndex: types.CompositeIndexable, metricIndex: types.MetricIndexable,
 	}
 }
 
 func (s *searchGateway) Search(query io.Reader) (entities []json.RawMessage, err error) {
-	data, err := s.doSearch(query)
+	data, err := s.doSearch(query, s.compositeIndex)
 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to perform search")
@@ -83,7 +83,7 @@ func (s *searchGateway) Search(query io.Reader) (entities []json.RawMessage, err
 }
 
 func (s *searchGateway) SearchAggregate(query io.Reader) (entities []json.RawMessage, err error) {
-	data, err := s.doSearch(query)
+	data, err := s.doSearch(query, s.metricIndex)
 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to perform aggregate search")
@@ -96,7 +96,7 @@ func (s *searchGateway) SearchAggregate(query io.Reader) (entities []json.RawMes
 	}
 
 	if len(result.Aggregations) != 1 {
-		return nil, errors.Wrapf(err, "too many aggregations, have: %d, want: 1", len(result.Aggregations))
+		return nil, fmt.Errorf("expected one aggregation, got %d", len(result.Aggregations))
 	}
 
 	key := ""
@@ -135,9 +135,11 @@ func (s *searchGateway) Index(indexable *types.Indexable) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to index entity")
 	} else if res.StatusCode >= 300 {
+		defer res.Body.Close()
 		return fmt.Errorf("failed to index entity (code %d): %s", res.StatusCode, res.String())
 	}
 
+	res.Body.Close()
 	return nil
 }
 
@@ -149,9 +151,12 @@ func (s *searchGateway) Declare(index types.Index) {
 		Body:   strings.NewReader(index.Spec),
 	}
 
-	if res, err := request.Do(context.Background(), s.client); err != nil {
+	res, err := request.Do(context.Background(), s.client)
+	if err != nil {
 		log.Panicf("failed to create index %s: %s", index.Name, err)
-	} else if res.StatusCode == 400 && strings.Contains(res.String(), indexExist) {
+	}
+	defer res.Body.Close()
+	if res.StatusCode == 400 && strings.Contains(res.String(), indexExist) {
 		return
 	} else if res.StatusCode >= 300 {
 		log.Panicf("failed to create index %s (code %d): %s", index.Name, res.StatusCode, res.String())
@@ -159,63 +164,57 @@ func (s *searchGateway) Declare(index types.Index) {
 }
 
 func (s *searchGateway) IndexMany(entities []*types.Indexable) error {
-	for _, indexable := range entities {
-		indexer, err := s.getOrCreateBulkIndexer(indexable.Index)
-
-		if err != nil {
-			return errors.Wrap(err, "IndexMany get bulk indexer")
-		}
-
-		data, err := json.Marshal(indexable.Data)
-
-		if err != nil {
-			return errors.Wrap(err, "IndexMany serialize json")
-		}
-
-		indexer.Add(
-			context.Background(),
-			esutil.BulkIndexerItem{
-				Action:     "index",
-				DocumentID: indexable.ID,
-				Body:       bytes.NewReader(data),
-				OnFailure:  onBulkFailure,
-			},
-		)
+	if len(entities) == 0 {
+		return nil
 	}
-
+	var body bytes.Buffer
+	encoder := json.NewEncoder(&body)
+	for _, entity := range entities {
+		if err := encoder.Encode(map[string]interface{}{"index": map[string]interface{}{"_index": entity.Index, "_id": entity.ID}}); err != nil {
+			return err
+		}
+		if err := encoder.Encode(entity.Data); err != nil {
+			return err
+		}
+	}
+	res, err := s.client.Bulk(&body)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.IsError() {
+		return fmt.Errorf("bulk indexing: %s", res.String())
+	}
+	var result struct {
+		Errors bool `json:"errors"`
+		Items  []map[string]struct {
+			Status int             `json:"status"`
+			Error  json.RawMessage `json:"error"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&result); err != nil {
+		return err
+	}
+	if result.Errors {
+		return fmt.Errorf("bulk indexing failed: %+v", result.Items)
+	}
 	return nil
 }
 
-func (s *searchGateway) getOrCreateBulkIndexer(index string) (esutil.BulkIndexer, error) {
-	if indexer, ok := s.bulkIndexers[index]; ok {
-		return indexer, nil
-	}
-
-	indexer, err := esutil.NewBulkIndexer(esutil.BulkIndexerConfig{
-		Index:  index,
-		Client: s.client,
-	})
-
-	if err != nil {
-		return nil, errors.Wrap(err, "getOrCreateBulkIndexer")
-	}
-
-	s.bulkIndexers[index] = indexer
-
-	return indexer, nil
-}
-
-func (s *searchGateway) doSearch(query io.Reader) ([]byte, error) {
+func (s *searchGateway) doSearch(query io.Reader, index string) ([]byte, error) {
 	res, err := s.client.Search(
 		s.client.Search.WithBody(query),
+		s.client.Search.WithIndex(index),
 	)
 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to search entity")
 	} else if res.StatusCode >= 300 {
+		defer res.Body.Close()
 		return nil, fmt.Errorf("failed to search entity (code %d): %s", res.StatusCode, res.String())
 	}
 
+	defer res.Body.Close()
 	data, err := io.ReadAll(res.Body)
 
 	if err != nil {
@@ -223,8 +222,4 @@ func (s *searchGateway) doSearch(query io.Reader) ([]byte, error) {
 	}
 
 	return data, err
-}
-
-func onBulkFailure(ctx context.Context, bii esutil.BulkIndexerItem, biri esutil.BulkIndexerResponseItem, err error) {
-	log.Errorf("failed to index entity %s: %s", bii.DocumentID, err)
 }

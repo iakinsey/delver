@@ -59,9 +59,10 @@ func (s *ngramExtractor) Perform(f *os.File, composite message.CompositeAnalysis
 		return nil, errors.Wrap(err, "ngram extractor")
 	}
 
-	for i := 0; i <= len(textContent); i++ {
-		if i < len(textContent) {
-			r = rune(textContent[i])
+	runes := []rune(textContent)
+	for i := 0; i <= len(runes); i++ {
+		if i < len(runes) {
+			r = runes[i]
 		} else {
 			// Hack: set the last character to a terminator to allow
 			// proper procesisng of the remaining runes

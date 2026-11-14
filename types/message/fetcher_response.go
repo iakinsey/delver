@@ -5,6 +5,7 @@ import "github.com/iakinsey/delver/types"
 type FetcherResponse struct {
 	FetcherRequest
 
+	EffectiveURI  string              `json:"effective_uri,omitempty"`
 	StoreKey      types.UUID          `json:"store_key,omitempty"`
 	ContentMD5    string              `json:"content_md5,omitempty"`
 	ElapsedTimeMs int64               `json:"elapsed_time_ms,omitempty"`

@@ -83,14 +83,19 @@ type newsAccumulator struct {
 }
 
 type NewsAccumulatorParams struct {
+	MaxDepth  int               `json:"max_depth"`
 	NewsQueue queue.Queue       `json:"-" resource:"news_queue"`
 	SeenUrls  bloom.BloomFilter `json:"-" resource:"seen_urls"`
 }
 
 func NewNewsAccumulator(params NewsAccumulatorParams) worker.Worker {
+	depth := params.MaxDepth
+	if depth == 0 {
+		depth = maxDepth
+	}
 	return &newsAccumulator{
-		maxDepth:  maxDepth,
-		robots:    frontier.NewMemoryRobots(),
+		maxDepth:  depth,
+		robots:    frontier.NewNullFilter(),
 		newsQueue: params.NewsQueue,
 		seenUrls:  params.SeenUrls,
 	}
@@ -156,7 +161,7 @@ func (s *newsAccumulator) processUrls(composite message.CompositeAnalysis, URIs 
 			Host:      parsed.Host,
 			Origin:    composite.URI,
 			Protocol:  types.ProtocolHTTP,
-			Depth:     1,
+			Depth:     composite.Depth + 1,
 		})
 	}
 
@@ -237,12 +242,8 @@ func (s *newsAccumulator) urlAllowed(u *url.URL, origin string) bool {
 		return false
 	}
 
-	if s.seenUrls.ContainsString(uri) {
+	if s.seenUrls != nil && s.seenUrls.ContainsString(uri) {
 		return false
-	}
-
-	if err := s.seenUrls.SetBytes([]byte(uri)); err != nil {
-		log.Errorf("failed to mark news URI as seen: %s", uri)
 	}
 
 	return true
@@ -289,4 +290,19 @@ func (s *newsAccumulator) urlLooksLikeArticle(u *url.URL) bool {
 	return true
 }
 
-func (s *newsAccumulator) OnComplete() {}
+func (s *newsAccumulator) OnComplete() {
+	if closer, ok := s.robots.(interface{ Close() error }); ok {
+		closer.Close()
+	}
+}
+
+func (s *newsAccumulator) OnCommit(msg types.Message) error {
+	var c message.CompositeAnalysis
+	if err := json.Unmarshal(msg.Message, &c); err != nil {
+		return err
+	}
+	if s.seenUrls == nil {
+		return nil
+	}
+	return s.seenUrls.SetString(c.URI)
+}

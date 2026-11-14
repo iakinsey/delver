@@ -121,7 +121,7 @@ func (s *adversarialExtractor) detectSubdomainExplosion(origin *url.URL, urls []
 			return true
 		}
 
-		keys[sld2] = true
+		keys[target.Host] = true
 	}
 
 	return false

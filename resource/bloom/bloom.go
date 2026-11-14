@@ -1,15 +1,15 @@
 package bloom
 
 import (
-	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
-	"strconv"
-	"strings"
+	"os"
+	"path/filepath"
+	"sync"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
-	"github.com/iakinsey/delver/util"
 	"github.com/pkg/errors"
 	"github.com/twmb/murmur3"
 )
@@ -37,7 +37,8 @@ func (e *bloomError) Error() string {
 }
 
 func IsBloomError(err error) bool {
-	return strings.HasPrefix(err.Error(), "BloomError")
+	var target *bloomError
+	return errors.As(err, &target)
 }
 
 func NewBloomError(b *bloomFilter, msg string) error {
@@ -54,6 +55,7 @@ type ErrBloomOverflow error
 type ErrBloomExceedsErrorRate error
 
 type bloomFilter struct {
+	mutex   sync.RWMutex
 	maxN    uint64
 	p       float64
 	pDigits int
@@ -65,40 +67,79 @@ type bloomFilter struct {
 	bitmap  *roaring64.Bitmap
 }
 
+type savedBloom struct {
+	MaxN   uint64
+	P      float64
+	N      uint64
+	Bitmap []byte
+}
+type savedFilters struct {
+	Version    int
+	BloomCount int
+	Filters    []savedBloom
+}
+
 func LoadBloomFilter(src io.Reader) (BloomFilter, error) {
-	reader := bufio.NewReader(src)
-
-	text, err := reader.ReadString('\n')
-
+	var saved savedFilters
+	if err := json.NewDecoder(src).Decode(&saved); err != nil {
+		return nil, err
+	}
+	if saved.Version != 1 || len(saved.Filters) == 0 {
+		return nil, errors.New("invalid bloom format")
+	}
+	filters := make([]BloomFilter, 0, len(saved.Filters))
+	for _, record := range saved.Filters {
+		if record.MaxN == 0 || record.P <= 0 || record.P >= 1 {
+			return nil, errors.New("invalid bloom parameters")
+		}
+		bitmap := roaring64.New()
+		if err := bitmap.UnmarshalBinary(record.Bitmap); err != nil {
+			return nil, err
+		}
+		b := newBloomFilter(record.MaxN, record.P, bitmap)
+		b.n = record.N
+		filters = append(filters, b)
+	}
+	if saved.BloomCount == 0 {
+		return filters[0], nil
+	}
+	first := saved.Filters[0]
+	return &rollingBloomFilter{blooms: filters, bloomCount: saved.BloomCount, maxN: first.MaxN, p: first.P, terminate: make(chan bool)}, nil
+}
+func saveFilters(path string, filters []BloomFilter, count int) (int64, error) {
+	saved := savedFilters{Version: 1, BloomCount: count}
+	for _, filter := range filters {
+		b := filter.(*bloomFilter)
+		b.mutex.RLock()
+		data, err := b.bitmap.MarshalBinary()
+		record := savedBloom{b.maxN, b.p, b.n, data}
+		b.mutex.RUnlock()
+		if err != nil {
+			return 0, err
+		}
+		saved.Filters = append(saved.Filters, record)
+	}
+	data, err := json.Marshal(saved)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to scan for bloom maxN value")
+		return 0, err
 	}
-
-	maxN, err := strconv.ParseUint(strings.Replace(text, "\n", "", 1), 10, 64)
-
+	f, err := os.CreateTemp(filepath.Dir(path), ".bloom-*")
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to parse maxN value from bloom file")
+		return 0, err
 	}
-
-	text, err = reader.ReadString('\n')
-
+	defer os.Remove(f.Name())
+	defer f.Close()
+	n, err := f.Write(data)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to scan for bloom p value")
+		return int64(n), err
 	}
-
-	p, err := strconv.ParseFloat(strings.Replace(text, "\n", "", 1), 64)
-
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to parse p value from bloom file")
+	if err = f.Sync(); err != nil {
+		return int64(n), err
 	}
-
-	bitmap := roaring64.New()
-
-	if _, err := bitmap.ReadFrom(reader); err != nil {
-		return nil, errors.Wrap(err, "failed to parse bloom filter")
+	if err = f.Close(); err != nil {
+		return int64(n), err
 	}
-
-	return newBloomFilter(maxN, p, bitmap), nil
+	return int64(n), os.Rename(f.Name(), path)
 }
 
 type BloomFilterParams struct {
@@ -110,13 +151,16 @@ func NewBloomFilter(params BloomFilterParams) BloomFilter {
 	return newBloomFilter(params.MaxN, params.P, roaring64.New())
 }
 
-func newBloomFilter(maxN uint64, p float64, bitmap *roaring64.Bitmap) BloomFilter {
-	if p == 1 {
-		p = 0.999
+func newBloomFilter(maxN uint64, p float64, bitmap *roaring64.Bitmap) *bloomFilter {
+	if maxN == 0 || p <= 0 || p >= 1 || math.IsNaN(p) {
+		panic("bloom requires max_n > 0 and 0 < p < 1")
 	}
 
 	mFloat := getOptimalBloomM(maxN, p)
-	m := uint64(mFloat)
+	m := uint64(math.Ceil(mFloat))
+	if m < 2 {
+		m = 2
+	}
 	kFloat := getOptimalBloomK(m, maxN, p)
 	k := uint64(math.Ceil(kFloat))
 
@@ -128,7 +172,7 @@ func newBloomFilter(maxN uint64, p float64, bitmap *roaring64.Bitmap) BloomFilte
 		m:       m,
 		kFloat:  kFloat,
 		k:       k,
-		pDigits: util.CountDecimals(p),
+		pDigits: 0,
 		bitmap:  bitmap,
 	}
 
@@ -139,6 +183,8 @@ func (s *bloomFilter) SetString(val string) error {
 }
 
 func (s *bloomFilter) SetBytes(val []byte) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	if err := s.checkBounds(); err != nil {
 		return errors.Wrap(err, "failed bounds check when adding element")
 	}
@@ -150,6 +196,14 @@ func (s *bloomFilter) SetBytes(val []byte) error {
 }
 
 func (s *bloomFilter) SetMany(vals [][]byte) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if len(vals) == 0 {
+		return nil
+	}
+	if uint64(len(vals)) > s.maxN-s.n {
+		return NewBloomError(s, "batch exceeds capacity")
+	}
 	if err := s.checkBounds(); err != nil {
 		return errors.Wrap(err, "failed bounds check when adding element")
 	}
@@ -172,6 +226,8 @@ func (s *bloomFilter) ContainsString(val string) bool {
 }
 
 func (s *bloomFilter) ContainsBytes(val []byte) bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
 	for _, hash := range s.getHashes(val) {
 		if !s.bitmap.Contains(hash) {
 			return false
@@ -181,31 +237,7 @@ func (s *bloomFilter) ContainsBytes(val []byte) bool {
 	return true
 }
 
-func (s *bloomFilter) Save(path string) (int64, error) {
-	dst, err := util.CreateEmptyFile(path)
-
-	if err != nil {
-		return 0, errors.Wrap(err, "failed to open bloom file for writing")
-	}
-
-	n, err := fmt.Fprintln(dst, strconv.FormatUint(s.maxN, 10))
-
-	if err != nil {
-		return int64(n), errors.Wrap(err, "failed to write maxN when persisting bloom filter")
-	} else if n == 0 {
-		return 0, errors.New("did not write maxN to bloom filter")
-	}
-
-	n, err = fmt.Fprintln(dst, strconv.FormatFloat(s.p, 'f', s.pDigits, 64))
-
-	if err != nil {
-		return int64(n), errors.Wrap(err, "failed to write p when persisting bloom filter")
-	} else if n == 0 {
-		return 0, errors.New("did not write p to bloom filter")
-	}
-
-	return s.bitmap.WriteTo(dst)
-}
+func (s *bloomFilter) Save(path string) (int64, error) { return saveFilters(path, []BloomFilter{s}, 0) }
 
 func (s *bloomFilter) Close() {}
 

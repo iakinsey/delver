@@ -33,7 +33,7 @@ func (s *compositeStreamFilter) Perform(entities []*types.Indexable) (results []
 		composite := entity.Data.(message.CompositeAnalysis)
 
 		if s.filterComposite(composite) {
-			if b, err := json.Marshal(composite); err != nil {
+			if b, err := projectComposite(composite, s.Fields); err != nil {
 				return nil, errors.Wrap(err, "failed to serialize composite json during filter")
 			} else {
 				results = append(results, b)
@@ -87,9 +87,9 @@ func (s *compositeStreamFilter) filterCountry(composite message.CompositeAnalysi
 
 	var countries []string
 
-	if err := composite.Load(features.CountryField, &countries); err == nil {
+	if err := composite.Load(features.CountryField, &countries); err != nil {
 		log.Warnf("composite has invalid country field: %s", composite.RequestID)
-		return true
+		return false
 	}
 
 	matches := 0
@@ -115,12 +115,12 @@ func (s *compositeStreamFilter) filterKeyword(composite message.CompositeAnalysi
 		var str string
 
 		for _, field := range fields {
-			if err := composite.Load(field, &str); err == nil {
+			if err := composite.Load(field, &str); err != nil {
 				log.Warnf("composite has invalid %s field: %s", field, composite.RequestID)
 				continue
 			}
 
-			if strings.Contains(str, substr) {
+			if strings.Contains(strings.ToLower(str), strings.ToLower(substr)) {
 				matches += 1
 				break
 			}
@@ -137,9 +137,9 @@ func (s *compositeStreamFilter) filterCompany(composite message.CompositeAnalysi
 
 	var companies []string
 
-	if err := composite.Load(features.CompanyNameField, &companies); err == nil {
+	if err := composite.Load(features.CompanyNameField, &companies); err != nil {
 		log.Warnf("composite has invalid company field: %s", composite.RequestID)
-		return true
+		return false
 	}
 
 	matches := 0
@@ -154,32 +154,10 @@ func (s *compositeStreamFilter) filterCompany(composite message.CompositeAnalysi
 
 }
 
-func (s *compositeStreamFilter) filterFields(composite message.CompositeAnalysis) bool {
-	fields := s.Fields
-
-	if len(fields) == 0 {
-		fields = compositeDefaultFields
-	}
-
-	for _, field := range fields {
-		if strings.Contains(field, ".") {
-			field = strings.Split(field, ".")[1]
-		}
-
-		if !composite.Has(field) {
-			return false
-		}
-
-		if util.IsNullByCheckingStructTag(composite, field) {
-			return false
-		}
-	}
-
-	return true
-}
+func (s *compositeStreamFilter) filterFields(composite message.CompositeAnalysis) bool { return true }
 
 func (s *compositeStreamFilter) filterUrl(composite message.CompositeAnalysis) bool {
-	return filterStringField(composite, features.UrlField, s.Url)
+	return filterString(composite.URI, s.Url)
 }
 
 func (s *compositeStreamFilter) filterDomain(composite message.CompositeAnalysis) bool {
@@ -195,6 +173,9 @@ func (s *compositeStreamFilter) filterTitle(composite message.CompositeAnalysis)
 }
 
 func (s *compositeStreamFilter) filterLanguage(composite message.CompositeAnalysis) bool {
+	if len(s.Language) == 0 {
+		return true
+	}
 	lang := features.Language{}
 
 	if err := composite.Load(features.LanguageField, &lang); err != nil {
@@ -206,6 +187,9 @@ func (s *compositeStreamFilter) filterLanguage(composite message.CompositeAnalys
 }
 
 func filterStringField(composite message.CompositeAnalysis, field string, query []string) bool {
+	if len(query) == 0 {
+		return true
+	}
 	var str string
 
 	if err := composite.Load(field, &str); err != nil {
@@ -243,4 +227,50 @@ func filterInt(v int, vals []int) bool {
 	}
 
 	return false
+}
+
+func projectComposite(composite message.CompositeAnalysis, fields []string) ([]byte, error) {
+	if len(fields) == 0 {
+		fields = compositeDefaultFields
+	}
+	data, err := json.Marshal(composite)
+	if err != nil {
+		return nil, err
+	}
+	var source map[string]interface{}
+	if err = json.Unmarshal(data, &source); err != nil {
+		return nil, err
+	}
+	result := map[string]interface{}{}
+	for _, field := range fields {
+		parts := strings.Split(field, ".")
+		var value interface{} = source
+		found := true
+		for _, part := range parts {
+			object, ok := value.(map[string]interface{})
+			if !ok {
+				found = false
+				break
+			}
+			value, ok = object[part]
+			if !ok {
+				found = false
+				break
+			}
+		}
+		if !found {
+			continue
+		}
+		target := result
+		for _, part := range parts[:len(parts)-1] {
+			child, ok := target[part].(map[string]interface{})
+			if !ok {
+				child = map[string]interface{}{}
+				target[part] = child
+			}
+			target = child
+		}
+		target[parts[len(parts)-1]] = value
+	}
+	return json.Marshal(result)
 }

@@ -4,7 +4,6 @@ import (
 	"os"
 
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 
 	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/types"
@@ -22,7 +21,7 @@ func NewCompanyNameExtractor() Extractor {
 	companies, err := types.GetCompanies(conf.CompaniesPath)
 
 	if err != nil {
-		log.Fatalf(err.Error())
+		panic(err)
 	}
 
 	return &companyNameExtractor{

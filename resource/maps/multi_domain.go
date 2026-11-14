@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/url"
+	"os"
 	"path"
 
 	"github.com/iakinsey/delver/util"
@@ -20,6 +21,9 @@ type MultiHostMapParams struct {
 }
 
 func NewMultiHostMap(params MultiHostMapParams) Map {
+	if err := util.GetOrCreateDir(params.BasePath); err != nil {
+		panic(err)
+	}
 	m := &multiHostMap{
 		basePath: params.BasePath,
 		mapLock:  *util.NewKeyedMutex(),
@@ -53,7 +57,8 @@ func (s *multiHostMap) SetMany(pairs [][2][]byte) error {
 			return errors.Wrapf(err, "failed to parse url: %s", u)
 		}
 
-		pairMap[meta.Host] = append(pairMap[meta.Host], pair)
+		group := util.GetSLDAndTLD(meta.Host)
+		pairMap[group] = append(pairMap[group], pair)
 	}
 
 	for key, pairs := range pairMap {
@@ -72,11 +77,34 @@ func (s *multiHostMap) SetMany(pairs [][2][]byte) error {
 }
 
 func (s *multiHostMap) Iter(fn func([]byte, []byte) error) error {
-	return errors.New("multiDomain.Iter not implemented")
+	entries, err := os.ReadDir(s.basePath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		host, err := base64.URLEncoding.DecodeString(entry.Name())
+		if err != nil {
+			return err
+		}
+		s.mapLock.Lock(string(host))
+		m := NewPersistentMap(PersistentMapParams{Path: path.Join(s.basePath, entry.Name())})
+		err = m.Iter(fn)
+		m.Close()
+		s.mapLock.Unlock(string(host))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *multiHostMap) Close() {
-	// TODO find a way to close existing connections before exiting
 }
 
 func (s *multiHostMap) transaction(key []byte, fn func(m Map) ([]byte, error)) ([]byte, error) {

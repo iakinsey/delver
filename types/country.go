@@ -22,7 +22,7 @@ func GetCountryRegexes(path string) (CountryRegexes, error) {
 	countryRegexes := make(CountryRegexes)
 
 	for iso3166Alpha2, countryNames := range countries {
-		pattern := fmt.Sprintf("\\b(?:%s)\\b", strings.Join(countryNames, "|"))
+		pattern := fmt.Sprintf("\\b(?:%s)\\b", strings.Join(escapedCountryNames(countryNames), "|"))
 		countryRegexes[iso3166Alpha2] = regexp.MustCompile(pattern)
 	}
 
@@ -36,6 +36,7 @@ func GetCountries(path string) (Countries, error) {
 		return nil, err
 	}
 
+	defer f.Close()
 	data, err := io.ReadAll(f)
 
 	if err != nil {
@@ -49,4 +50,12 @@ func GetCountries(path string) (Countries, error) {
 	}
 
 	return countries, nil
+}
+
+func escapedCountryNames(names []string) []string {
+	result := make([]string, len(names))
+	for i, name := range names {
+		result[i] = regexp.QuoteMeta(name)
+	}
+	return result
 }

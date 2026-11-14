@@ -5,7 +5,8 @@ import (
 	"os"
 )
 
-/**
+/*
+*
 Read from the buffer until the specified string is matched.
 
 Returns `true` if string is found.
@@ -45,7 +46,7 @@ func ReadUntilMatch(f *os.File, toMatch []byte, termChars []byte, rewind bool) (
 				return true, nil
 			}
 			char = toMatch[index]
-		} else if stringInSlice(char, termChars) {
+		} else if stringInSlice(data[0], termChars) {
 			if rewind {
 				if _, err := f.Seek(startPos, io.SeekStart); err != nil {
 					return false, err

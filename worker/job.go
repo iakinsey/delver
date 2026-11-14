@@ -1,17 +1,19 @@
 package worker
 
 import (
+	"sync"
 	"time"
 
 	"github.com/iakinsey/delver/queue"
 )
 
 type jobManager struct {
-	worker  Worker
-	timer   queue.Queue
-	outbox  queue.Queue
-	delay   time.Duration
-	manager WorkerManager
+	startOnce sync.Once
+	worker    Worker
+	timer     queue.Queue
+	outbox    queue.Queue
+	delay     time.Duration
+	manager   WorkerManager
 }
 
 func NewJobManager(worker Worker, outbox queue.Queue, delay time.Duration) WorkerManager {
@@ -28,7 +30,7 @@ func NewJobManager(worker Worker, outbox queue.Queue, delay time.Duration) Worke
 }
 
 func (s *jobManager) Start() {
-	s.timer.Start()
+	s.startOnce.Do(func() { s.timer.Start() })
 	s.manager.Start()
 }
 

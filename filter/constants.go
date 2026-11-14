@@ -32,12 +32,13 @@ const metricQueryTemplate = `{
             "must": [
                 {
                     "match": {
-                        "key": "%s"
+                        "key": %s
                     }
                 },
                 {
                     "range": {
                         "when": {
+                            "format": "epoch_second",
                             "gte": %d,
                             "lte": %d
                         }
@@ -50,7 +51,8 @@ const metricQueryTemplate = `{
         "metric_timeseries": {
             "date_histogram": {
                 "field": "when",
-                "fixed_interval": "%s"
+                "fixed_interval": "%s",
+                "min_doc_count": 1
             },
             "aggs": {
                 "metric_rollup": {

@@ -37,6 +37,11 @@ func (s *metricStreamFilter) Perform(entities []*types.Indexable) (results []jso
 		if !s.filterKey(entity) {
 			continue
 		}
+		data, marshalErr := json.Marshal(entity)
+		if marshalErr != nil {
+			return nil, marshalErr
+		}
+		results = append(results, data)
 	}
 
 	return
@@ -44,11 +49,14 @@ func (s *metricStreamFilter) Perform(entities []*types.Indexable) (results []jso
 
 func (s *metricStreamFilter) filterDate(entity types.Metric) (bool, error) {
 	// XXX Hardcode 90 day window limit
-	if s.Start < time.Now().AddDate(0, 0, 90).Unix() {
+	if s.Start != 0 && s.Start < time.Now().AddDate(0, 0, -90).Unix() {
 		return false, fmt.Errorf("start time exceeds 90 days from current date")
 	}
 
 	start := s.Start
+	if start == 0 {
+		start = time.Now().AddDate(0, 0, -90).Unix()
+	}
 	end := s.End
 
 	if end == 0 {

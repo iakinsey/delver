@@ -44,13 +44,17 @@ func (s *dashController) Save(ctx context.Context, msg json.RawMessage) (interfa
 		return nil, errs.NewAuthError("Unauthorized")
 	}
 
-	return s.gateway.Put(types.Dashboard{
+	dashboard := types.Dashboard{
 		ID:          req.ID,
 		Name:        req.Name,
 		UserID:      user.ID,
 		Value:       req.Value,
 		Description: req.Description,
-	}), nil
+	}
+	if err := s.gateway.Put(dashboard); err != nil {
+		return nil, err
+	}
+	return dashboard, nil
 }
 
 func (s *dashController) Load(ctx context.Context, msg json.RawMessage) (interface{}, error) {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 
 	log "github.com/sirupsen/logrus"
 
@@ -27,6 +28,9 @@ type compositeResult struct {
 }
 
 type compositeExtractor struct {
+	initOnce         sync.Once
+	cached           []extractors.Extractor
+	initErr          error
 	Enabled          []string
 	ObjectStore      objectstore.ObjectStore
 	TransformerQueue queue.Queue
@@ -39,11 +43,16 @@ type CompositeArgs struct {
 }
 
 func NewCompositeExtractorWorker(opts CompositeArgs) worker.Worker {
-	return &compositeExtractor{
+	s := &compositeExtractor{
 		Enabled:          opts.Enabled,
 		ObjectStore:      opts.ObjectStore,
 		TransformerQueue: opts.TransformerQueue,
 	}
+	s.getExtractors()
+	if s.initErr != nil {
+		panic(s.initErr)
+	}
+	return s
 }
 
 func (s *compositeExtractor) executeExtractors(path string, meta message.FetcherResponse) (*message.CompositeAnalysis, error) {
@@ -52,6 +61,9 @@ func (s *compositeExtractor) executeExtractors(path string, meta message.Fetcher
 		Features:        make(map[string]interface{}),
 	}
 	pending := s.getExtractors()
+	if s.initErr != nil {
+		return nil, s.initErr
+	}
 	var completed []string
 	var errs []error
 
@@ -70,7 +82,7 @@ func (s *compositeExtractor) executeExtractors(path string, meta message.Fetcher
 			errs := append(errs, errors.New("failed to find extractors to execute"))
 			return nil, getCompositeError(composite, errs)
 		} else if len(toExecute) == 0 {
-			return composite, getCompositeError(composite, errs)
+			return composite, errors.New("extractor dependencies were not produced")
 		}
 
 		newCompleted, newErrs := s.executeExtractorSet(toExecute, path, composite)
@@ -116,7 +128,16 @@ func (s *compositeExtractor) executeExtractorSet(exts []extractors.Extractor, pa
 	results := make(chan compositeResult, len(exts))
 
 	for _, ext := range exts {
-		go s.executeExtractor(ext, path, *composite, results)
+		snapshot := *composite
+		snapshot.ExtractorErrors = make(map[string]string, len(composite.ExtractorErrors))
+		for key, value := range composite.ExtractorErrors {
+			snapshot.ExtractorErrors[key] = value
+		}
+		snapshot.Features = make(map[string]interface{}, len(composite.Features))
+		for key, value := range composite.Features {
+			snapshot.Features[key] = value
+		}
+		go s.executeExtractor(ext, path, snapshot, results)
 	}
 
 	// TODO add timeouts to execution
@@ -136,6 +157,10 @@ func (s *compositeExtractor) updateCompositeAnalysis(result compositeResult, com
 
 	switch d := result.Result.(type) {
 	case error:
+		if composite.ExtractorErrors == nil {
+			composite.ExtractorErrors = map[string]string{}
+		}
+		composite.ExtractorErrors[name] = d.Error()
 		return name, d
 	case nil:
 		return name, nil
@@ -149,13 +174,15 @@ func (s *compositeExtractor) executeExtractor(ext extractors.Extractor, path str
 	f, err := os.Open(path)
 
 	if err != nil {
-		log.Errorf("failed to open file for extractor %s %s: %s", ext.Name(), path, err)
+		results <- compositeResult{Extractor: ext, Result: err}
+		return
 	}
 
+	defer f.Close()
 	result, err := ext.Perform(f, composite)
 
 	if err != nil {
-		log.Errorf("failed to execute extractor %s: %s", ext.Name(), err)
+		result = err
 	}
 
 	results <- compositeResult{
@@ -172,6 +199,13 @@ func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 		return nil, err
 	}
 
+	if !meta.Success && meta.StoreKey == "" {
+		failed := message.CompositeAnalysis{FetcherResponse: meta, Features: map[string]interface{}{}}
+		if err := transformers.Send(s.TransformerQueue, string(meta.RequestID), types.CompositeAnalysisType, failed); err != nil {
+			return nil, err
+		}
+		return failed, nil
+	}
 	f, err := s.ObjectStore.Get(meta.StoreKey)
 
 	if err != nil {
@@ -186,21 +220,10 @@ func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 
 	composite, extractorErr := s.executeExtractors(path, meta)
 
-	if composite != nil {
-		result = *composite
+	if composite == nil {
+		return nil, extractorErr
 	}
-
-	if objectStoreErr := s.ObjectStore.Delete(meta.StoreKey); objectStoreErr != nil {
-		log.Errorf("failed to delete object in store after extraction: %s", objectStoreErr)
-	}
-
-	if exists, pathErr := util.PathExists(path); exists {
-		if delErr := os.Remove(path); delErr != nil {
-			log.Errorf("failed to delete file after extraction: %s", delErr)
-		}
-	} else if pathErr != nil {
-		log.Errorf("failed to stat file for deletion: %s", pathErr)
-	}
+	result = *composite
 
 	transformerErr := transformers.Send(
 		s.TransformerQueue,
@@ -210,7 +233,7 @@ func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 	)
 
 	if transformerErr != nil {
-		log.Errorf("composite failed to send transformer data: %s", transformerErr)
+		return nil, transformerErr
 	}
 
 	return result, extractorErr
@@ -241,16 +264,39 @@ func (s *compositeExtractor) getExtractor(name string) extractors.Extractor {
 	case features.TitleField:
 		return extractors.NewTitleExtractor()
 	default:
+		if registered, ok := extractors.Registered(name); ok {
+			return registered.Factory()
+		}
 		return nil
 	}
 }
 
-func (s *compositeExtractor) getExtractors() (result []extractors.Extractor) {
-	for _, name := range s.Enabled {
-		result = append(result, s.getExtractor(name))
-	}
-
-	return
+func (s *compositeExtractor) getExtractors() []extractors.Extractor {
+	s.initOnce.Do(func() {
+		names := map[string]bool{}
+		for _, name := range s.Enabled {
+			if names[name] {
+				s.initErr = fmt.Errorf("duplicate extractor %s", name)
+				return
+			}
+			names[name] = true
+			ext := s.getExtractor(name)
+			if ext == nil {
+				s.initErr = fmt.Errorf("unknown extractor %s", name)
+				return
+			}
+			s.cached = append(s.cached, ext)
+		}
+		for _, ext := range s.cached {
+			for _, dependency := range ext.Requires() {
+				if !names[dependency] {
+					s.initErr = fmt.Errorf("extractor %s requires %s", ext.Name(), dependency)
+					return
+				}
+			}
+		}
+	})
+	return append([]extractors.Extractor(nil), s.cached...)
 }
 
 func (s *compositeExtractor) sendToTransformerQueue(composite *message.CompositeAnalysis) error {
@@ -292,6 +338,9 @@ func getCompositeError(composite *message.CompositeAnalysis, errors []error) err
 		errStr = strings.Join(errStrs, "\n")
 	}
 
+	if !noAnalysis && composite.ExtractorErrors[features.UrlField] != "" {
+		return fmt.Errorf("URL extraction: %s", composite.ExtractorErrors[features.UrlField])
+	}
 	if noAnalysis && hasErrors {
 		return fmt.Errorf("fatal error during extraction\n%s", errStr)
 	} else if hasErrors {
@@ -309,4 +358,15 @@ func ExtractorInSlice(a extractors.Extractor, l []extractors.Extractor) bool {
 	}
 
 	return false
+}
+
+func (s *compositeExtractor) OnCommit(msg types.Message) error {
+	var meta message.FetcherResponse
+	if err := json.Unmarshal(msg.Message, &meta); err != nil {
+		return err
+	}
+	if meta.StoreKey == "" {
+		return nil
+	}
+	return s.ObjectStore.Delete(meta.StoreKey)
 }
