@@ -15,7 +15,7 @@ const queryTemplate = `{
     "from": 0,
     "size": 10000,
     "sort": [
-        {"timestamp": {"order": "asc"}}
+        {"timestamp": {"order": "desc"}}
     ],
 	"_source": {"includes": %s},
     "query": {

@@ -20,6 +20,7 @@ const tokenSize = 128
 const tokenExpiration = (24 * time.Hour) * 365 // 1 year
 
 type UserGateway interface {
+	ListIDs() ([]string, error)
 	Get(string) (*types.User, error)
 	GetByEmail(string) (*types.User, error)
 	Create(string, string) (*types.User, error)
@@ -294,3 +295,20 @@ func CreateToken() string {
 }
 
 func (s *userGateway) Close() error { return s.db.Close() }
+
+func (s *userGateway) ListIDs() ([]string, error) {
+	rows, err := s.db.Query("SELECT id FROM user")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}

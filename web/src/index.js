@@ -1,5 +1,6 @@
 import React from 'react';
-import ReactDOM from 'react-dom';
+import { createRoot } from 'react-dom/client';
+import './theme.css'
 import Grid from './views/grid/grid'
 import Login from './views/page/login'
 import DashboardList from './views/page/dashboardList'
@@ -17,9 +18,10 @@ import { BrowserRouter as Router, Switch, Route } from "react-router-dom";
 
 
 startJobs()
+window.addEventListener('session-expired',()=>{localStorage.removeItem('auth');localStorage.removeItem('email');window.location.assign('/login')})
 
 
-ReactDOM.render(
+createRoot(document.getElementById('root')).render(
     <Provider store={store}>
         <Router>
             <Header />
@@ -50,6 +52,5 @@ ReactDOM.render(
                 </Route>
             </Switch>
         </Router>
-    </Provider>,
-    document.getElementById('root')
+    </Provider>
 );

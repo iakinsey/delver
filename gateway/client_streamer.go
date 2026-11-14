@@ -22,7 +22,13 @@ import (
 	"golang.org/x/net/websocket"
 )
 
+type subscriptionDelivery struct {
+	mutex  sync.Mutex
+	closed bool
+}
+
 type client struct {
+	delivery     *subscriptionDelivery
 	sender       *clientSender
 	conn         *websocket.Conn
 	filter       rpc.FilterParams
@@ -68,7 +74,7 @@ func newClientStreamer() ClientStreamer {
 	conf := config.Get().Streamer
 	var searchGateway SearchGateway
 	if conf.Enabled {
-		searchGateway = NewSearchGateway(conf.SearchAddresses)
+		searchGateway = NewSearchGatewayWithIndices(conf.SearchAddresses, conf.CompositeIndex, conf.MetricIndex)
 	}
 
 	return &clientStreamer{
@@ -98,21 +104,15 @@ func (s *clientStreamer) Start() error {
 		return err
 	}
 
-	handler.Handle("/", websocket.Handler(func(conn *websocket.Conn) {
-		uuids, err := s.Register(conn)
-
-		log.Infof("Connect %s", conn.RemoteAddr().String())
-
-		if err != nil {
-			log.Errorf("failed to register client: %s", err)
-		} else {
-			// wait until client erroneously sends data or disconnects
-			conn.Read(make([]byte, 1))
+	authGateway := NewUserGateway(config.Get().API.UserDBPath)
+	defer func() {
+		if closer, ok := authGateway.(interface{ Close() error }); ok {
+			closer.Close()
 		}
-
-		s.Unregister(uuids)
-		log.Infof("Disconnect %s", conn.RemoteAddr().String())
-	}))
+	}()
+	handler.Handle("/", websocket.Server{Handshake: func(c *websocket.Config, r *http.Request) error {
+		return validateStreamOrigin(r, conf.AllowedOrigins)
+	}, Handler: func(conn *websocket.Conn) { s.serveSession(conn, authGateway) }})
 
 	log.Infof("streamer server listening on %s", conf.Address)
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
@@ -145,28 +145,37 @@ func (s *clientStreamer) Publish(indexables []*types.Indexable) error {
 	}
 	s.mutex.RUnlock()
 	for _, c := range clients {
-		entities, ok := entityMap[c.filter.DataType]
-
-		if !ok {
-			continue
+		if c.delivery != nil {
+			c.delivery.mutex.Lock()
+			if c.delivery.closed {
+				c.delivery.mutex.Unlock()
+				continue
+			}
 		}
-
-		results, err := c.streamFilter.Perform(entities)
-
+		err := s.publishClient(c, entityMap)
+		if c.delivery != nil {
+			c.delivery.mutex.Unlock()
+		}
 		if err != nil {
 			multiErr = multierror.Append(multiErr, err)
 		}
-
-		if results == nil {
-			continue
-		}
-
-		if err = s.send(c, results, false); err != nil {
-			multiErr = multierror.Append(multiErr, err)
-		}
 	}
-
 	return multiErr
+}
+
+func (s *clientStreamer) publishClient(c client, entityMap map[string][]*types.Indexable) error {
+	entities, ok := entityMap[c.filter.DataType]
+	if !ok {
+		return nil
+	}
+	results, err := c.streamFilter.Perform(entities)
+	if err != nil {
+		return err
+	}
+	if len(results) == 0 {
+		return nil
+	}
+	return s.send(c, results, false)
 }
 
 func (s *clientStreamer) Register(conn *websocket.Conn) (uuids []string, err error) {
@@ -236,6 +245,10 @@ func (s *clientStreamer) Preload(c client) error {
 		return errors.Wrap(err, "failed to perform preload search")
 	}
 
+	if len(entities) >= 10000 && c.sender != nil {
+		data, _ := json.Marshal([]map[string]string{{"callback": c.filter.Callback, "message": "History is limited to the latest 10,000 documents"}})
+		c.sender.enqueue(types.ClientStreamerMessage{Type: "history_limit", Data: data})
+	}
 	if len(entities) == 0 {
 		return nil
 	}
@@ -318,7 +331,7 @@ func (s *clientStreamer) applyTransforms(entities []json.RawMessage, filter rpc.
 	}
 
 	keyBytes, _ := json.Marshal(filter)
-	key := string(keyBytes)
+	key := filter.AggregationID + string(keyBytes)
 	if s.aggregators == nil {
 		s.aggregators = make(map[string]util.Aggregator)
 	}
@@ -497,7 +510,7 @@ func (s *clientStreamer) flushClient(c client) {
 	s.sendMutex.Lock()
 	defer s.sendMutex.Unlock()
 	keyBytes, _ := json.Marshal(c.filter)
-	key := string(keyBytes)
+	key := c.filter.AggregationID + string(keyBytes)
 	agg := s.aggregators[key]
 	delete(s.aggregators, key)
 	if flush, ok := agg.(interface{ Flush() map[string]float64 }); ok {
@@ -517,7 +530,7 @@ func (s *clientStreamer) flushClient(c client) {
 
 func (s *clientStreamer) finishPreload(entities []json.RawMessage, filter rpc.FilterParams, preaggregated bool, data []byte) ([]byte, error) {
 	keyBytes, _ := json.Marshal(filter)
-	key := string(keyBytes)
+	key := filter.AggregationID + string(keyBytes)
 	if preaggregated {
 		if len(entities) == 0 {
 			return data, nil

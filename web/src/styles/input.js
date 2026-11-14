@@ -3,6 +3,7 @@ export const input = {
     border: "2px solid",
     borderColor: "#3a3a3a",
     backgroundColor: "#ebebeb",
+    color:"#111",
     margin: ".3em",
     fontSize: "2em",
     padding: ".15em"
@@ -13,6 +14,7 @@ export const btn = {
     border: "2px solid",
     borderColor: "#0b0b0b",
     backgroundColor: "#949494",
+    color:"#111",
     margin: ".3em",
     fontSize: "2em",
     padding: ".15em",

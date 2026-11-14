@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -43,11 +42,26 @@ func run(address, filters string, count int, timeout time.Duration) error {
 	if parsed.Scheme == "wss" {
 		origin = "https://" + parsed.Host
 	}
-	conn, err := websocket.Dial(strings.TrimSuffix(address, "/")+"/"+base64.RawURLEncoding.EncodeToString([]byte(filters)), "", origin)
+	conn, err := websocket.Dial(strings.TrimSuffix(address, "/")+"/", "", origin)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
+	if err := websocket.JSON.Send(conn, map[string]interface{}{"version": 1, "type": "authenticate", "token": os.Getenv("DELVER_AUTH_TOKEN")}); err != nil {
+		return err
+	}
+	var ack map[string]interface{}
+	if err := websocket.JSON.Receive(conn, &ack); err != nil {
+		return err
+	}
+	if ack["type"] != "authenticated" {
+		return fmt.Errorf("authentication failed")
+	}
+	for i, fp := range validated {
+		if err := websocket.JSON.Send(conn, map[string]interface{}{"version": 1, "type": "subscribe", "id": fmt.Sprint(i), "filter": fp}); err != nil {
+			return err
+		}
+	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	go func() { <-ctx.Done(); conn.Close() }()

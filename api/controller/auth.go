@@ -18,13 +18,16 @@ type AuthController interface {
 }
 
 type authController struct {
-	auth gateway.UserGateway
+	auth       gateway.UserGateway
+	dashboards gateway.DashboardGateway
 }
 
-func NewAuthController(g gateway.UserGateway) AuthController {
-	return &authController{
-		auth: g,
+func NewAuthController(g gateway.UserGateway, dashboards ...gateway.DashboardGateway) AuthController {
+	c := &authController{auth: g}
+	if len(dashboards) > 0 {
+		c.dashboards = dashboards[0]
 	}
+	return c
 }
 
 func (s *authController) CreateUser(ctx context.Context, msg json.RawMessage) (interface{}, error) {
@@ -106,5 +109,11 @@ func (s *authController) authenticate(email, pass string) (interface{}, error) {
 		return nil, err
 	}
 
+	if s.dashboards != nil {
+		if err := s.dashboards.EnsureDefault(token.UserID); err != nil {
+			s.auth.Deauthenticate(token.Value)
+			return nil, errs.NewRequestError("Account dashboard setup failed; please log in again to retry")
+		}
+	}
 	return token.Value, nil
 }

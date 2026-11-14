@@ -16,7 +16,7 @@ export const dashBox = {
     border: "2px dashed",
     borderColor: BOX_BORDER,
     backgroundColor: BOX_BG,
-    width: "30em",
+    width: "min(90vw, 30em)",
     textAlign: "center"
 }
 

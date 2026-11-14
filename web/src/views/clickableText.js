@@ -1,52 +1,37 @@
-import React from 'react';
-import { ICON } from '../styles/color'
-
-export default class ClickableText extends React.Component {
-    constructor(props) {
-        super(props)
-
-        this.onChange = props.onChange
-
-        this.state = {
-            value: props.value ? props.value: '',
-            toggled: props.value ? false : true
-        }
-    }
-
-    onKeyDown(e) {
-        if (e.key === 'Enter' && this.onChange) {
-            this.onChange(this.state.value)
-            this.setState({toggled: false})
-        }
-    }
-    render() {
-        if (this.state.toggled) {
-            return (
-                <input
-                 type="text" name="name" value={this.state.value}
-                 onChange={(e) => this.setState({value: e.target.value})} 
-                 onKeyDown={(e) => this.onKeyDown(e)}
-                 placeholder="title" style={styles.input} />
-            )
-        } else {
-            return (
-                <div 
-                 style={styles.text}
-                 onClick={() => this.setState({toggled: true})}>
-                    {this.state.value}
-                </div>
-            )
-        }
-    }
-}
-
-const styles = {
-    text: {
-        cursor: "pointer",
-        fontSize: "1.6em",
-        color: ICON
-    },
-    input: {
-        fontSize: ".7em"
-    }
+import React from "react";
+export default function ClickableText({ value, onChange }) {
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState(value);
+  return editing ? (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        onChange(draft.trim() || "Untitled widget");
+        setEditing(false);
+      }}
+    >
+      <label>
+        Widget title{" "}
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+      </label>
+      <button>Apply title</button>
+      <button type="button" onClick={() => setEditing(false)}>
+        Cancel
+      </button>
+    </form>
+  ) : (
+    <button
+      onClick={() => {
+        setDraft(value);
+        setEditing(true);
+      }}
+      className="widget-title" aria-label={`Rename ${value}`}
+    >
+      {value}
+    </button>
+  );
 }

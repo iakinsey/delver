@@ -1,110 +1,112 @@
-import Connection from './conn'
-import { sleep } from '../util'
-
-
-const MAX_RETRIES = 10
-const RETRY_DELAY = 5000
-
-
-const ERR_NO_CALLBACK_UUID = 'No callback UUID specified.'
-const ERR_INVALID_CALLBACK = 'Callback UUID does not exist.'
-
-
+import Connection from "./conn";
 export default class RPC {
-    constructor() {
-        // Quick hack to assure filter is a list
-        this.filters = {}
-        this.callbacks = {}
-        this.connected = false
-        this.conn = null
+  constructor() {
+    this.filters = {};
+    this.callbacks = {};
+    this.statuses = {};
+    this.conn = null;
+    this.retryTimer = null;
+    this.attempt = 0;
+  }
+  addFilter(id, filter, callback, status = () => {}) {
+    this.filters[id] = JSON.parse(filter);
+    this.callbacks[id] = callback;
+    this.statuses[id] = status;
+    if (this.conn?.connected)
+      this.conn.send({ type: "subscribe", id, filter: this.filters[id] });
+    else this.ensureConnection();
+  }
+  removeFilter(id) {
+    if (!this.filters[id]) return;
+    delete this.filters[id];
+    delete this.callbacks[id];
+    delete this.statuses[id];
+    this.conn?.send({ type: "remove", id });
+    if (!Object.keys(this.filters).length) {
+      clearTimeout(this.retryTimer);
+      this.conn?.disconnect();
+      this.conn = null;
     }
-
-    getFilters() {
-        return JSON.stringify(Object.values(this.filters))
+  }
+  getFilters() {
+    return JSON.stringify(Object.values(this.filters));
+  }
+  async ensureConnection() {
+    if (
+      this.connecting ||
+      this.conn?.connected ||
+      !Object.keys(this.filters).length
+    )
+      return;
+    clearTimeout(this.retryTimer);
+    this.connecting = true;
+    Object.values(this.statuses).forEach((fn) =>
+      fn({ connection: "Connecting…" }),
+    );
+    const connection = new Connection(
+      "",
+      (msg) => {
+        if (this.conn === connection) this.onMessage(msg);
+      },
+      () => {
+        if (this.conn === connection) this.onDisconnect();
+      },
+    );
+    this.conn = connection;
+    try {
+      await connection.connect();
+      if (this.conn !== connection) return;
+      this.attempt = 0;
+      Object.entries(this.filters).forEach(([id, filter]) =>
+        connection.send({ type: "subscribe", id, filter }),
+      );
+      Object.values(this.statuses).forEach((fn) =>
+        fn({ connection: "Connected", loading: true }),
+      );
+    } catch {
+      this.scheduleRetry();
+    } finally {
+      this.connecting = false;
+      if (!this.conn && Object.keys(this.filters).length)
+        this.ensureConnection();
     }
-
-    addFilter(uuid, filter, callback) {
-
-        // Copy filter before mutation
-        filter = JSON.parse(filter)
-        filter.callback = uuid
-
-        this.filters[uuid] = filter
-        this.callbacks[uuid] = callback
-
-        this.reconnect().catch(() => this.onDisconnect())
+  }
+  async reconnect() {
+    this.conn?.disconnect();
+    this.conn = null;
+    return this.ensureConnection();
+  }
+  scheduleRetry() {
+    clearTimeout(this.retryTimer);
+    if (!Object.keys(this.filters).length) return;
+    Object.values(this.statuses).forEach((fn) =>
+      fn({ connection: "Disconnected — retrying", loading: false }),
+    );
+    this.retryTimer = setTimeout(
+      () => {
+        this.conn = null;
+        this.ensureConnection();
+      },
+      Math.min(30000, 1000 * 2 ** this.attempt++),
+    );
+  }
+  onDisconnect() {
+    this.scheduleRetry();
+  }
+  onMessage(msg) {
+    const id = msg.data?.[0]?.callback;
+    if (!id || !this.callbacks[id]) return;
+    const status = this.statuses[id];
+    if (msg.type === "error")
+      status?.({ error: msg.data[0].message, loading: false });
+    else if (msg.type === "history_limit")
+      status?.({ warning: msg.data[0].message });
+    else if (msg.type === "preload_complete") status?.({ loading: false });
+    else if (msg.type === "subscribed")
+      status?.({ loading: true, error: "", warning: "" });
+    else if (msg.type !== "removed") {
+      this.callbacks[id](msg);
+      status?.({ lastUpdate: Date.now(), loading: false, hasData: true });
     }
-
-    removeFilter(uuid) {
-        if (!this.filters[uuid]) {
-            return
-        }
-
-        delete this.filters[uuid]
-        delete this.callbacks[uuid]
-
-        this.reconnect().catch(() => this.onDisconnect())
-    }
-
-    onMessage(msg) {
-        // XXX Typically the entire message chunk will contain the same UUID.
-        // This could change in the future.
-
-        if (!msg || !msg.data || msg.data.length === 0) {
-            return
-        }
-
-        this.handleEntity(msg, msg.data[0].callback)
-    }
-
-    handleEntity(entity, callbackId) {
-        if (!callbackId) {
-            throw ERR_NO_CALLBACK_UUID
-        } else if (!this.callbacks[callbackId]) {
-            throw ERR_INVALID_CALLBACK
-        }
- 
-        const callback = this.callbacks[callbackId]
-
-        callback(entity)
-    }
-
-    disablePreload() {
-        for (let filter of Object.values(this.filters)) {
-            var options = filter.options ? filter.options : {}
-
-            options.preload = false
-            filter.options = options
-        }
-    }
-
-    async reconnect() {
-        if (this.conn) {
-            this.conn.disconnect()
-            this.conn = null
-        }
-
-        if (Object.keys(this.filters).length === 0) {
-            return
-        }
-
-        const connection = new Connection(
-            this.getFilters(),
-            message => { if (this.conn === connection) this.onMessage(message) },
-            error => { if (this.conn === connection) this.onDisconnect(error) }
-        )
-        this.conn = connection
-        return await connection.connect()
-    }
-
-    async onDisconnect() {
-        if (this.retrying) return
-        this.retrying = true
-        try {
-            for (let i = 0; i < MAX_RETRIES; i++) {
-                if (Object.keys(this.filters).length === 0) return
-                try { await this.reconnect(); return } catch (e) { await sleep(RETRY_DELAY) }
-            }
-        } finally { this.retrying = false }
-    }
+  }
 }

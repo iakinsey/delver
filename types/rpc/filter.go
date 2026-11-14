@@ -30,13 +30,14 @@ type MetricFilterQuery struct {
 }
 
 type FilterParams struct {
-	Fields    []string        `json:"fields"`
-	Range     int             `json:"range"`
-	RawQuery  json.RawMessage `json:"query"`
-	DataType  string          `json:"data_type"`
-	Options   map[string]bool `json:"options"`
-	Callback  string          `json:"callback"`
-	Agg       *Aggregator     `json:"agg"`
-	DoNothing bool
-	Query     interface{}
+	AggregationID string          `json:"-"` // Internal connection namespace; never accepted from clients.
+	Fields        []string        `json:"fields"`
+	Range         int             `json:"range"`
+	RawQuery      json.RawMessage `json:"query"`
+	DataType      string          `json:"data_type"`
+	Options       map[string]bool `json:"options"`
+	Callback      string          `json:"callback"`
+	Agg           *Aggregator     `json:"agg"`
+	DoNothing     bool
+	Query         interface{}
 }

@@ -21,7 +21,7 @@ export default function Dropdown() {
     ]
  
     return (
-        <select onChange={handleChange} value="" name="Settings" style={dropdown}>
+        <select aria-label="Settings" onChange={handleChange} value="" name="Settings" style={dropdown}>
             <option style={{display: "none"}}></option>
             <option value="/help">Help</option>
             {loggedIn 

@@ -1,152 +1,258 @@
-import React from 'react';
-import { request, hasUserInfo, routeTo } from '../../util'
-import { input, btn } from '../../styles/input'
-import { errorText } from '../../styles/err'
-import { LINK_TEXT_ALT, BOX_BORDER, BOX_BG, LINK_TEXT } from '../../styles/color'
-
+import React from "react";
+import { templateCells } from "../../templates";
+import { request, hasUserInfo, routeTo } from "../../util";
+import { input, btn } from "../../styles/input";
+import { errorText } from "../../styles/err";
+import {
+  LINK_TEXT_ALT,
+  BOX_BORDER,
+  BOX_BG,
+  LINK_TEXT,
+} from "../../styles/color";
 
 export default class DashboardList extends React.Component {
-    constructor(props) {
-        super(props)
+  constructor(props) {
+    super(props);
 
-        this.state = {
-            addMenu: false,
-            newDashName: "",
-            newDashDesc: "",
-            newDashConfig: "",
-            dashboards: []
-        }
+    this.state = {
+      template: "blank",
+      loading: true,
+      addMenu: false,
+      newDashName: "",
+      newDashDesc: "",
+      newDashConfig: "",
+      dashboards: [],
+    };
+  }
+  componentDidMount() {
+    this.abort = new AbortController();
+    if (hasUserInfo()) this.getDashboards();
+    else routeTo("/login");
+  }
+  componentWillUnmount() {
+    this.abort.abort();
+  }
 
-        if (hasUserInfo()) {
-            this.getDashboards()
-        } else {
-            routeTo('/login')
-        }
+  async getDashboards() {
+    this.setState({ loading: true, createError: "" });
+    const { data, error } = await request(
+      "dashboard/list",
+      {},
+      { signal: this.abort.signal },
+    );
+    if (this.abort.signal.aborted) return;
+
+    if (error) {
+      this.setState({ createError: error, loading: false });
+      return;
     }
 
-    async getDashboards() {
-        const {data, error} = await request('dashboard/list')
+    this.setState({ dashboards: data, loading: false });
+  }
 
-        if (error) {
-            return
-        }
+  renderDashboards() {
+    const dashBox = Object.assign({}, styles.dashBox, styles.dashBoxBody);
 
-        this.setState({dashboards: data})
+    if (!this.state.dashboards || !this.state.dashboards.length) {
+      return (
+        <p>
+          Create your first dashboard using the + button, then add a Feed,
+          Chart, Map, or Metric widget.
+        </p>
+      );
     }
 
-    renderDashboards() {
-        const dashBox = Object.assign({}, styles.dashBox, styles.dashBoxBody)
-
-        if (!this.state.dashboards || !this.state.dashboards.length) {
-            return
-        }
-
-        return (
-            <div style={dashBox}>
-                <div style={styles.dashes}>
-                    {this.state.dashboards.filter((i) => i.name).map((dashboard) => (
-                        <div key={dashboard.id}>
-                            <div style={styles.dashName}>
-                                <a style={styles.dashLink} href={`dashboard/${dashboard.id}`}>{dashboard.name}</a>
-                            </div>
-                            <div style={styles.dashDesc}>{dashboard.description}</div>
-                        </div>
-                    ))}
+    return (
+      <div style={dashBox}>
+        <div style={styles.dashes}>
+          {this.state.dashboards
+            .filter((i) => i.name)
+            .map((dashboard) => (
+              <div key={dashboard.id}>
+                <div style={styles.dashName}>
+                  <a style={styles.dashLink} href={`dashboard/${dashboard.id}`}>
+                    {dashboard.name}
+                  </a>
                 </div>
-            </div>
-        )
+                <div style={styles.dashDesc}>{dashboard.description}</div>
+              </div>
+            ))}
+        </div>
+      </div>
+    );
+  }
+
+  renderAddError() {
+    return (
+      <div role="alert" style={errorText}>
+        {this.state.createError}
+      </div>
+    );
+  }
+
+  renderAddDashboard() {
+    if (!this.state.addMenu) {
+      return;
     }
 
-    renderAddError() {
-        return <div style={errorText}>{this.state.createError}</div>
+    const dashBox = Object.assign({}, styles.dashBox, styles.dashBoxBody);
+    const dashInput = Object.assign({}, input, styles.newDashDesc);
+
+    return (
+      <div style={dashBox}>
+        <label>
+          <span className="sr-only">Dashboard name</span>
+          <input
+            aria-label="Dashboard name"
+            style={input}
+            placeholder="Name"
+            type="text"
+            value={this.state.newDashName}
+            onChange={(e) => this.setState({ newDashName: e.target.value })}
+          />
+        </label>
+        <label>
+          <span className="sr-only">Description</span>
+          <textarea
+            aria-label="Description"
+            style={dashInput}
+            placeholder="Description"
+            type="text"
+            value={this.state.newDashDesc}
+            onChange={(e) => this.setState({ newDashDesc: e.target.value })}
+          />
+        </label>
+        <label>
+          <span className="sr-only">Advanced configuration (optional)</span>
+          <textarea
+            aria-label="Advanced configuration"
+            style={dashInput}
+            placeholder="Config (Optional)"
+            type="text"
+            value={this.state.newDashConfig}
+            onChange={(e) => this.setState({ newDashConfig: e.target.value })}
+          />
+        </label>
+        <label>
+          Starter template
+          <select
+            value={this.state.template}
+            onChange={(e) => this.setState({ template: e.target.value })}
+          >
+            <option value="blank">Blank dashboard</option>
+            <option value="feed">News feed</option>
+            <option value="sentiment">Title sentiment</option>
+            <option value="metric">Fetch metrics</option>
+          </select>
+        </label>
+        <p>
+          Templates need indexed crawler data. Sentiment requires English
+          titles; metrics require metrics indexing.
+        </p>
+        <button
+          disabled={this.state.creating}
+          style={btn}
+          type="button"
+          onClick={() => this.addDash()}
+        >
+          Create
+        </button>
+      </div>
+    );
+  }
+
+  async addDash() {
+    if (!this.state.newDashName.trim()) {
+      this.setState({ createError: "Dashboard name is required" });
+      return;
+    }
+    let value;
+    try {
+      value = JSON.parse(this.state.newDashConfig || "{}");
+    } catch (error) {
+      this.setState({ createError: "Invalid dashboard JSON" });
+      return;
+    }
+    if (
+      value === null ||
+      typeof value !== "object" ||
+      Array.isArray(value) ||
+      (value.cells !== undefined && !Array.isArray(value.cells))
+    ) {
+      this.setState({
+        createError: "Configuration must be an object with a cells array",
+      });
+      return;
+    }
+    this.setState({ creating: true, createError: "" });
+    const args = {
+      name: this.state.newDashName,
+      description: this.state.newDashDesc,
+      value: this.state.newDashConfig
+        ? value
+        : { cells: templateCells(this.state.template) },
+    };
+    const { error } = await request("dashboard/save", args, {
+      signal: this.abort.signal,
+    });
+    if (this.abort.signal.aborted) return;
+    this.setState({ creating: false });
+
+    if (error) {
+      this.setState({ createError: error });
+      return;
     }
 
-    renderAddDashboard() {
-        if (!this.state.addMenu) {
-            return
-        }
+    this.setState({
+      createError: "",
+      newDashName: "",
+      newDashDesc: "",
+      addMenu: false,
+    });
 
-        const dashBox = Object.assign({}, styles.dashBox, styles.dashBoxBody)
-        const dashInput = Object.assign({}, input, styles.newDashDesc)
+    await this.getDashboards();
+  }
 
-        return (
-            <div style={dashBox}>
-                <input 
-                 style={input}
-                 placeholder="Name"
-                 type="text"
-                 value={this.state.newDashName}
-                 onChange={(e) => this.setState({newDashName: e.target.value})} />
-                <textarea
-                 style={dashInput}
-                 placeholder="Description"
-                 type="text"
-                 value={this.state.newDashDesc}
-                 onChange={(e) => this.setState({newDashDesc: e.target.value})} />
-                <textarea
-                 style={dashInput}
-                 placeholder="Config (Optional)"
-                 type="text"
-                 value={this.state.newDashConfig}
-                 onChange={(e) => this.setState({newDashConfig: e.target.value})} />
-                <button style={btn} type="button" onClick={() => this.addDash()}>Create</button>
-            </div>
-        )
+  toggleAdd() {
+    this.setState({
+      addMenu: !this.state.addMenu,
+    });
+  }
+
+  render() {
+    if (!hasUserInfo()) {
+      return <div></div>;
     }
 
-    async addDash() {
-        let value
-        try { value = JSON.parse(this.state.newDashConfig || "{}") }
-        catch (error) { this.setState({ createError: "Invalid dashboard JSON" }); return }
-        const args = {
-            name: this.state.newDashName,
-            description: this.state.newDashDesc,
-            value: value
-        }
-        const {error} = await request('dashboard/save', args)
+    const dashLogo = Object.assign({}, styles.dashBox, styles.dashItemLogo);
+    const dashAdd = Object.assign({}, styles.dashBox, styles.dashItemAdd);
 
-        if (error) {
-            this.setState({createError: error})
-            return
-        }
-
-        this.setState({
-            newDashName: '',
-            newDashDesc: '',
-            addMenu: false
-        })
-
-        await this.getDashboards()
-    }
-
-    toggleAdd() {
-        this.setState({
-            addMenu: !this.state.addMenu
-        })
-    }
-
-    render() {
-        if (!hasUserInfo()) {
-            return <div></div>
-        }
-
-        const dashLogo = Object.assign({}, styles.dashBox, styles.dashItemLogo)
-        const dashAdd = Object.assign({}, styles.dashBox, styles.dashItemAdd)
- 
-        return (
-            <div style={styles.dashContainer}>
-                <div style={styles.topSpacing}></div>
-                <div>
-                    <div style={dashLogo}>Dashboards</div>
-                    <div style={dashAdd} onClick={() => this.toggleAdd()}>+</div>
-                </div>
-                {this.renderAddDashboard()}
-                {this.renderDashboards()}
-            </div>
-        )
-    }
+    return (
+      <div style={styles.dashContainer}>
+        <div style={styles.topSpacing}></div>
+        <div>
+          <h1 style={dashLogo}>Dashboards</h1>
+          <button
+            style={dashAdd}
+            aria-label="Create dashboard"
+            onClick={() => this.toggleAdd()}
+          >
+            +
+          </button>
+        </div>
+        {this.state.loading && <p role="status">Loading dashboards…</p>}
+        {this.renderAddError()}
+        {this.state.createError && (
+          <button onClick={() => this.getDashboards()}>
+            Retry loading dashboards
+          </button>
+        )}
+        {this.renderAddDashboard()}
+        {this.renderDashboards()}
+      </div>
+    );
+  }
 }
-
 
 const styles = {
     topSpacing: {
@@ -154,11 +260,11 @@ const styles = {
     },
     dashContainer: {
         margin: "0 auto",
-        width: "1000px"
+        width: "min(100%, 1000px)"
     },
     dashItemLogo: {
         display: "inline-block",
-        width: "895px"
+        width: "calc(100% - 85px)"
     },
     dashItemAdd: {
         display: "inline-block",
@@ -170,7 +276,7 @@ const styles = {
         fontWeight: 'bold'
     },
     dashBoxBody: {
-        width: "960px"
+        width: "96%"
     },
     newDashDesc: {
         height: "200px",

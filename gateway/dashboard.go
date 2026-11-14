@@ -40,6 +40,7 @@ var getUserDashboards = `
 `
 
 type DashboardGateway interface {
+	EnsureDefault(string) error
 	Put(dash types.Dashboard) error
 	Get(dashID string) (*types.Dashboard, error)
 	Delete(dashID string) error
@@ -51,7 +52,7 @@ type dashboardGateway struct {
 }
 
 func NewDashboardGateway(path string) DashboardGateway {
-	db, err := sql.Open("sqlite3", fmt.Sprintf("file:%s", path))
+	db, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?_busy_timeout=5000", path))
 
 	if err != nil {
 		log.Fatalf("failed to open dashboard sqlite database %s", err)
@@ -62,6 +63,9 @@ func NewDashboardGateway(path string) DashboardGateway {
 	}
 
 	g.setupDashDb()
+	if _, err := db.Exec("CREATE TABLE IF NOT EXISTS dashboard_defaults (user_id TEXT PRIMARY KEY, dashboard_id TEXT NOT NULL)"); err != nil {
+		log.Fatalf("default dashboard schema: %v", err)
+	}
 
 	return g
 }

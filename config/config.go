@@ -42,6 +42,9 @@ type APIConfig struct {
 }
 
 type StreamerConfig struct {
+	CompositeIndex  string   `json:"composite_index"`
+	MetricIndex     string   `json:"metric_index"`
+	AllowedOrigins  []string `json:"allowed_origins"`
 	Enabled         bool     `json:"enabled"`
 	Address         string   `json:"address"`
 	SearchAddresses []string `json:"search_addresses"`

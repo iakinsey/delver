@@ -9,15 +9,11 @@ const initialState = {}
 export default function(state = initialState, action) {
     switch (action.type) {
         case SET_CELL:
-            state[action.data.uuid] = action.data
-        
-            return Object.assign({}, state)
+            return {...state, [action.data.uuid]: action.data}
         case UPDATE_CELL:
             const cell = state[action.data.uuid]
             const newCell = Object.assign({}, cell, action.data)
-            state[action.data.uuid] = newCell
-
-            return Object.assign({}, state)
+            return {...state, [action.data.uuid]: newCell}
         case SET_CELLS:
             const result = {}
 
@@ -27,9 +23,9 @@ export default function(state = initialState, action) {
 
             return result
         case DELETE_CELL:
-            delete state[action.data]
-
-            return state
+            const remaining = {...state}
+            delete remaining[action.data]
+            return remaining
         case CLEAR_CELLS:
             return {}
         default:

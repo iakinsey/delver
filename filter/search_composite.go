@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 
@@ -71,6 +72,14 @@ func (s *compositeSearchFilter) Perform() (io.Reader, error) {
 }
 
 func (s *compositeSearchFilter) Postprocess(entities []json.RawMessage) ([]json.RawMessage, error) {
+	sort.SliceStable(entities, func(i, j int) bool {
+		var a, b struct {
+			Timestamp float64 `json:"timestamp"`
+		}
+		json.Unmarshal(entities[i], &a)
+		json.Unmarshal(entities[j], &b)
+		return a.Timestamp < b.Timestamp
+	})
 	return entities, nil
 }
 

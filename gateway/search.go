@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/elastic/go-elasticsearch/v7/esapi"
@@ -48,6 +49,17 @@ type aggSearchResult struct {
 }
 
 func NewSearchGateway(addresses []string) SearchGateway {
+	return NewSearchGatewayWithIndices(addresses, "", "")
+}
+
+// NewSearchGatewayWithIndices selects an isolated dataset; empty names use the application defaults.
+func NewSearchGatewayWithIndices(addresses []string, compositeIndex, metricIndex string) SearchGateway {
+	if compositeIndex == "" {
+		compositeIndex = types.CompositeIndexable
+	}
+	if metricIndex == "" {
+		metricIndex = types.MetricIndexable
+	}
 	client, err := elasticsearch.NewClient(elasticsearch.Config{
 		Addresses: addresses,
 	})
@@ -58,7 +70,7 @@ func NewSearchGateway(addresses []string) SearchGateway {
 
 	return &searchGateway{
 		client:         client,
-		compositeIndex: types.CompositeIndexable, metricIndex: types.MetricIndexable,
+		compositeIndex: compositeIndex, metricIndex: metricIndex,
 	}
 }
 
@@ -202,7 +214,10 @@ func (s *searchGateway) IndexMany(entities []*types.Indexable) error {
 }
 
 func (s *searchGateway) doSearch(query io.Reader, index string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
 	res, err := s.client.Search(
+		s.client.Search.WithContext(ctx),
 		s.client.Search.WithBody(query),
 		s.client.Search.WithIndex(index),
 	)

@@ -78,6 +78,17 @@ func NewServer(conf config.APIConfig) (*http.Server, func(), error) {
 			c.Close()
 		}
 	}
+	ids, err := user.ListIDs()
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	for _, id := range ids {
+		if err := dash.EnsureDefault(id); err != nil {
+			cleanup()
+			return nil, nil, err
+		}
+	}
 	return &http.Server{Addr: conf.Address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second}, cleanup, nil
 }
 
@@ -87,7 +98,7 @@ func getRoutes(conf config.APIConfig, user gateway.UserGateway) map[string]Contr
 func routesWithGateways(user gateway.UserGateway, dashboard gateway.DashboardGateway) map[string]Controller {
 	routes := make(map[string]Controller)
 	dash := controller.NewDashboardController(dashboard)
-	auth := controller.NewAuthController(user)
+	auth := controller.NewAuthController(user, dashboard)
 
 	routes["/dashboard/save"] = dash.Save
 	routes["/dashboard/load"] = dash.Load

@@ -1,172 +1,144 @@
-import React from 'react';
-import { setCell } from '../../event/actions'
-import { getCells, getDashboard } from '../../event/selectors'
-import { uuid4, request } from '../../util'
-import store from "../../event/store"
-import {
-    HEADER_BG, HEADER_BORDER, BOX_BORDER, BOX_BG, BUTTON_TEXT_ALT, ERROR_TEXT,
-    LOGO
-} from '../../styles/color'
-
-const CELL_TYPES = {
-    entityFeed: "Feed",
-    chart: "Chart",
-    map: "Map",
-    metric: "Metric"
-}
-
-const CELL_ATTR_DEFAULT = {x: 0, y: 0, w: 32, h: 8}
-
+import React from "react";
+import { Prompt } from "react-router-dom";
+import store from "../../event/store";
+import { setCell } from "../../event/actions";
+import { getCells, getDashboard } from "../../event/selectors";
+import { request, uuid4 } from "../../util";
+import { isDirty, markSaved, takeRemoved } from "../../event/dirty";
 export default class GridHeader extends React.Component {
-    constructor(props) {
-        super(props)
-
-        this.state = {
-            configOn: false,
-            error: ""
-        }
-    }
-
-    renderConfig() {
-        if (!this.state.configOn) {
-            return
-        }
-
-        return (
-            <div style={styles.config}>
-                {
-                    Object.keys(CELL_TYPES).map(k => (
-                        <div 
-                         key={k}
-                         onClick={() => this.addCell(k)}
-                         style={styles.configAddOption}>
-                            {CELL_TYPES[k]}
-                        </div>
-                    ))
-                }
-            </div>
-        )
-    }
-
-    async save() {
-        const state = store.getState()
-        const dash = getDashboard(state)
-
-        const params = {
-            id: dash.id,
-            name: dash.name,
-            description: dash.description,
-            value: {cells: Object.values(getCells(state))}
-        }
-
-        const {error} = await request('dashboard/save', params)
-
-        if (error) {
-            this.setState({error: error})
-        }
-    }
-
-    renderHeader() {
-        return (
-            <div style={styles.addCellContainer}>
-                <span style={styles.addCell}
-                onClick={() => this.setState({configOn: !this.state.configOn})}>
-                    <img src="/add.png" style={styles.saveIcon} alt="add" />
-                </span>
-                <span style={styles.addCell}
-                onClick={() => this.save()}>
-                    <img src="/save.png" style={styles.saveIcon} alt="save" />
-                </span>
-            </div>
-        )
-    }
-
-    addCell(type) {
-        store.dispatch(
-            setCell({
-                uuid: uuid4(),
-                type: type,
-                attributes: CELL_ATTR_DEFAULT
-            })
-        )
-    }
-
-    renderError() {
-        if (!this.state.error) {
-            return
-        }
-
-        return (
-            <div style={styles.error}>{this.state.error}</div>
-        )
-    }
-
-    render() {
-        return (
-            <span>
-                {this.renderHeader()}
-                {this.renderConfig()}
-                {this.renderError()}
-            </span>
-        )
-    }
-}
-
-
-const styles = {
-    config: {
-        backgroundColor: HEADER_BG,
-        margin: "4px",
-        padding: "4px",
-        border: "2px dashed",
-        borderColor: HEADER_BORDER
-    },
-    configAddOption: {
-        border: "2px dashed",
-        borderColor: BOX_BORDER,
-        backgroundColor: BOX_BG,
-        fontWeight: "bolder",
-        width: "100px",
-        height: "60px",
-        paddingTop: "40px",
-        textAlign: "center",
-        verticalAlign: "middle",
-        userSelect: 'none',
-        display: "inline-block",
-        margin: "4px",
-        cursor: "pointer"
-    },
-    logo: {
-        position: 'absolute',
-        fontSize: '1.8em',
-        top: 12,
-        left: 12,
-        color: LOGO
-    },
-    addContainer: {
-        position: 'absolute',
-        top: 12,
-        right: 50
-    },
-    addCellContainer: {
-        position: 'absolute',
-        top: 20,
-        right: 68
-    },
-    addCell: {
-        cursor: 'pointer',
-        padding: "4px",
-        color: BUTTON_TEXT_ALT,
-        fontSize: '2.3em',
-        textAlign: 'right',
-        userSelect: 'none'
-    },
-    saveIcon: {
-        width: '40px'
-    },
-    error: {
-        textAlign: 'center',
-        color: ERROR_TEXT,
-        fontSize: "1.5em"
-    }
+  state = {
+    configOn: false,
+    status: "",
+    saving: false,
+    undo: false,
+    revision: 0,
+  };
+  componentDidMount() {
+    this.unsub = store.subscribe(() =>
+      this.setState((s) => ({
+        revision: s.revision + 1,
+        status: this.state.saving ? s.status : "",
+      })),
+    );
+    this.removed = () => this.setState({ undo: true });
+    window.addEventListener("widget-removed", this.removed);
+    this.guard = (e) => {
+      if (isDirty(getCells(store.getState()))) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", this.guard);
+  }
+  componentWillUnmount() {
+    this.unsub();
+    window.removeEventListener("widget-removed", this.removed);
+    window.removeEventListener("beforeunload", this.guard);
+  }
+  async save() {
+    this.setState({ saving: true, status: "Saving…", saveError: "" });
+    const state = store.getState(),
+      dash = getDashboard(state),
+      cells = getCells(state);
+    const result = await request("dashboard/save", {
+      id: dash.id,
+      name: dash.name,
+      description: dash.description,
+      value: { cells: Object.values(cells) },
+    });
+    if (!result.error) markSaved(cells);
+    this.setState({
+      saving: false,
+      saveError: result.error || "",
+      status: result.error ? "" : "Dashboard saved",
+    });
+  }
+  render() {
+    const state = store.getState(),
+      cells = getCells(state),
+      dash = getDashboard(state);
+    return (
+      <section className="dashboard-toolbar">
+        <Prompt
+          when={isDirty(cells)}
+          message="You have unsaved dashboard changes. Leave this page?"
+        />
+        <h1 className="sr-only">{dash.name || "Dashboard"}</h1>
+        <div className="classic-grid-actions">
+          <button
+            className="icon-button"
+            aria-label="Add widget"
+            title="Add widget"
+            onClick={() => this.setState({ configOn: !this.state.configOn })}
+          >
+            <img src="/add.png" alt="" />
+          </button>
+          <button
+            className="icon-button"
+            aria-label="Save dashboard"
+            title="Save dashboard"
+            disabled={this.state.saving || !dash.id}
+            onClick={() => this.save()}
+          >
+            <img src="/save.png" alt="" />
+          </button>
+        </div>
+        {this.state.configOn && (
+          <div className="classic-add-options">
+            {Object.entries({
+              entityFeed: "Feed",
+              chart: "Chart",
+              map: "Map",
+              metric: "Metric",
+            }).map(([type, label]) => (
+              <button
+                key={type}
+                onClick={() => {
+                  store.dispatch(
+                    setCell({
+                      uuid: uuid4(),
+                      type,
+                      title: label,
+                      attributes: { x: 0, y: 0, w: 32, h: 8 },
+                    }),
+                  );
+                  this.setState({ configOn: false });
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        {this.state.undo && (
+          <button
+            onClick={() => {
+              const cell = takeRemoved();
+              if (cell) store.dispatch(setCell(cell));
+              this.setState({ undo: false });
+            }}
+          >
+            Undo removal
+          </button>
+        )}
+        <span
+          role="status"
+          className={!this.state.status && !isDirty(cells) ? "sr-only" : ""}
+        >
+          {this.state.saveError ||
+            (this.state.saving
+              ? "Saving…"
+              : isDirty(cells)
+                ? "Unsaved changes"
+                : this.state.status || "All changes saved")}
+        </span>
+        {!Object.keys(cells).length && (
+          <p>
+            Add a widget to begin. Configure its data, apply settings, then save
+            this dashboard.
+          </p>
+        )}
+      </section>
+    );
+  }
 }
