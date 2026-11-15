@@ -32,11 +32,13 @@ var workerFactories = map[string]WorkerFactory{}
 func RegisterResource(name string, factory ResourceFactory) {
 	registryMutex.Lock()
 	defer registryMutex.Unlock()
+	delete(runtimeResourceFactories, name)
 	resourceFactories[name] = factory
 }
 func RegisterWorker(name string, factory WorkerFactory) {
 	registryMutex.Lock()
 	defer registryMutex.Unlock()
+	delete(runtimeWorkerFactories, name)
 	workerFactories[name] = factory
 }
 func Load(path string) (config.Application, error) {
@@ -94,7 +96,7 @@ func normalizeDurations(value interface{}) error {
 				}
 			}
 			switch key {
-			case "timeout", "interval", "delay", "request_delay", "expiration", "clear_expired_delay", "gc_interval", "save_interval", "default_save_interval", "rotate_after", "recrawl_after", "shutdown_timeout":
+			case "timeout", "interval", "delay", "request_delay", "retry_delay", "retry_max_delay", "expiration", "clear_expired_delay", "gc_interval", "save_interval", "default_save_interval", "rotate_after", "recrawl_after", "shutdown_timeout":
 				if text, ok := child.(string); ok {
 					duration, err := time.ParseDuration(text)
 					if err != nil {
@@ -196,29 +198,39 @@ func Run(ctx context.Context, app config.Application) (err error) {
 	if err = Validate(app); err != nil {
 		return err
 	}
-	select {
-	case runToken <- struct{}{}:
-	default:
-		return fmt.Errorf("an application is already running")
+	if app.Config.HTTPClient.IsolateProxySessions {
+		key := app.Config.API.OperationsPath
+		if key == "" {
+			key = string(types.NewV4())
+		}
+		app.Config.HTTPClient.ProxySessionKey = key
 	}
 	releaseRun := true
 	var shutdownDone chan struct{}
-	defer func() {
-		if releaseRun {
-			<-runToken
-		} else {
-			go func() { <-shutdownDone; <-runToken }()
+	if ctx.Value(runtimeKey{}) == nil {
+		select {
+		case runToken <- struct{}{}:
+		default:
+			return fmt.Errorf("an application is already running")
 		}
-	}()
-	instrument.Stop()
-	defer instrument.Stop()
-	config.Apply(app.Config)
+		defer func() {
+			if releaseRun {
+				<-runToken
+			} else {
+				go func() { <-shutdownDone; <-runToken }()
+			}
+		}()
+		instrument.Stop()
+		defer instrument.Stop()
+		config.Apply(app.Config)
+	}
 	if ctx.Value(runtimeKey{}) == nil {
 		gateway.ResetClientStreamer()
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
 	shutdownStarted := false
 	prepared := &preparedApplication{ctx: ctx, app: app, resources: map[string]interface{}{}, workers: map[string]worker.WorkerManager{}}
 	defer func() {
@@ -243,6 +255,12 @@ func Run(ctx context.Context, app config.Application) (err error) {
 	}()
 	for _, r := range app.Resources {
 		CreateResource(r, prepared)
+	}
+	if ctx.Value(runtimeKey{}) != nil {
+		q, _ := prepared.resources[config.TransformerQueueName].(queue.Queue)
+		sink, cancel := instrument.NewRuntimeMetrics(ctx, app.Config.Metrics.Enabled, q)
+		defer cancel()
+		prepared.metrics = sink
 	}
 	for _, w := range app.Workers {
 		CreateWorker(w, prepared)

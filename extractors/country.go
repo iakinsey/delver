@@ -21,7 +21,9 @@ type countryExtractor struct {
 }
 
 func NewCountryExtractor() Extractor {
-	conf := config.Get()
+	return NewCountryExtractorWithConfig(config.Get())
+}
+func NewCountryExtractorWithConfig(conf config.Config) Extractor {
 	countries, err := types.GetCountryRegexes(conf.CountriesPath)
 
 	if err != nil {

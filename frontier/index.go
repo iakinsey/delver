@@ -1,0 +1,110 @@
+package frontier
+
+import (
+	"context"
+	"fmt"
+	"github.com/dgraph-io/badger/v3"
+	"strings"
+)
+
+func schedulingKeys(c Candidate) []string {
+	return []string{
+		fmt.Sprintf("b/%010d/%020d/%s", c.Request.Depth, c.Sequence, c.Request.URI),
+		fmt.Sprintf("d/%010d/%020d/%s", int64(2147483647)-int64(c.Request.Depth), int64(9223372036854775807)-c.Sequence, c.Request.URI),
+		fmt.Sprintf("h/%s/%010d/%020d/%s", c.Request.Host, c.Request.Depth, c.Sequence, c.Request.URI),
+	}
+}
+func schedule(tx *badger.Txn, c Candidate, remove bool) error {
+	for _, k := range schedulingKeys(c) {
+		var err error
+		if remove {
+			err = tx.Delete([]byte(k))
+		} else {
+			err = write(tx, k, c.Request.URI)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Candidates uses strategy-specific indexes; completed history is never visited.
+func (s *Store) Candidates(ctx context.Context, strategy, lastHost string, limit int) ([]Candidate, error) {
+	out := []Candidate{}
+	err := s.db.View(func(tx *badger.Txn) error {
+		seen := map[string]bool{}
+		ropts := badger.DefaultIteratorOptions
+		ropts.PrefetchValues = false
+		reserved := tx.NewIterator(ropts)
+		for reserved.Seek([]byte("reserved/")); reserved.ValidForPrefix([]byte("reserved/")) && len(out) < limit; reserved.Next() {
+			var uri string
+			if err := read(tx, string(reserved.Item().Key()), &uri); err != nil {
+				reserved.Close()
+				return err
+			}
+			var c Candidate
+			if err := read(tx, "u/"+uri, &c); err != nil {
+				reserved.Close()
+				return err
+			}
+			out = append(out, c)
+			seen[uri] = true
+		}
+		reserved.Close()
+		prefix := "b/"
+		if strategy == "depth_first" {
+			prefix = "d/"
+		}
+		diverse := strategy == "host_diverse" || strategy == "adaptive"
+		if diverse {
+			prefix = "h/"
+		}
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		it := tx.NewIterator(opts)
+		defer it.Close()
+		scan := func(start, stop string) error {
+			for it.Seek([]byte(start)); it.ValidForPrefix([]byte(prefix)) && len(out) < limit; {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				key := string(it.Item().Key())
+				if stop != "" && key >= stop {
+					break
+				}
+				var uri string
+				if err := read(tx, key, &uri); err != nil {
+					return err
+				}
+				var c Candidate
+				if err := read(tx, "u/"+uri, &c); err != nil {
+					return err
+				}
+				if !seen[uri] {
+					out = append(out, c)
+					seen[uri] = true
+				}
+				if diverse {
+					parts := strings.SplitN(key, "/", 3)
+					it.Seek([]byte("h/" + parts[1] + "/\xff"))
+				} else {
+					it.Next()
+				}
+			}
+			return nil
+		}
+		start := prefix
+		if diverse && lastHost != "" {
+			start = "h/" + lastHost + "/\xff"
+		}
+		if err := scan(start, ""); err != nil {
+			return err
+		}
+		if diverse && start != prefix && len(out) < limit {
+			return scan(prefix, start)
+		}
+		return nil
+	})
+	return out, err
+}

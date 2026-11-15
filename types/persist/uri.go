@@ -18,7 +18,8 @@ type URI struct {
 }
 
 func CompositeToParquetURI(composite message.CompositeAnalysis) (io.Reader, error) {
-	uri := URI(composite.FetcherRequest)
+	r := composite.FetcherRequest
+	uri := URI{RequestID: r.RequestID, URI: r.URI, Host: r.Host, Origin: r.Origin, Protocol: r.Protocol, Depth: r.Depth}
 
 	return util.ToParquet(string(composite.RequestID), URIParquetSchema, uri)
 }

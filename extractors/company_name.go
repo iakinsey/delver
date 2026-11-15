@@ -19,7 +19,9 @@ type companyNameExtractor struct {
 }
 
 func NewCompanyNameExtractor() Extractor {
-	conf := config.Get()
+	return NewCompanyNameExtractorWithConfig(config.Get())
+}
+func NewCompanyNameExtractorWithConfig(conf config.Config) Extractor {
 	companies, err := types.GetCompanies(conf.CompaniesPath)
 
 	if err != nil {

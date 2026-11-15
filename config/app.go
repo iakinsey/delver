@@ -6,6 +6,7 @@ import (
 )
 
 type Worker struct {
+	Once       bool            `json:"once,omitempty"`
 	Name       string          `json:"name"`
 	Type       string          `json:"type"`
 	Manager    string          `json:"manager"`

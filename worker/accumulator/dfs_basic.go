@@ -94,6 +94,7 @@ func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysi
 					URI:       u,
 					Host:      meta.Host,
 					Origin:    composite.URI,
+					ScopeRoot: composite.ScopeRoot,
 					Protocol:  types.ProtocolHTTP,
 					Depth:     composite.Depth + 1,
 				})
@@ -104,8 +105,9 @@ func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysi
 			// propagate to the urlStore.
 
 			req := message.FetcherRequest{
-				URI:    u,
-				Origin: composite.URI,
+				URI:       u,
+				Origin:    composite.URI,
+				ScopeRoot: composite.ScopeRoot,
 			}
 
 			if val, err := json.Marshal(req); err != nil {

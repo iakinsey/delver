@@ -1,0 +1,170 @@
+package application
+
+import (
+	"encoding/json"
+	"github.com/iakinsey/delver/config"
+	"github.com/iakinsey/delver/frontier"
+	"github.com/iakinsey/delver/types/errs"
+	"github.com/iakinsey/delver/util"
+	"net/url"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+type Termination struct {
+	WhenDrained bool   `json:"when_drained"`
+	MaxRequests int64  `json:"max_requests"`
+	Duration    string `json:"duration"`
+}
+type ProxySettings struct {
+	Mode string `json:"mode"`
+	URL  string `json:"url"`
+}
+type CrawlDefinition struct {
+	Network      NetworkSettings    `json:"network"`
+	Proxy        ProxySettings      `json:"proxy"`
+	Name         string             `json:"name"`
+	Seeds        []string           `json:"seeds"`
+	Feeds        []string           `json:"feeds"`
+	Scope        string             `json:"scope"`
+	Strategy     string             `json:"strategy"`
+	MaxDepth     int                `json:"max_depth"`
+	MaxHops      int                `json:"max_hops"`
+	AllowPattern string             `json:"allow_pattern"`
+	DenyPattern  string             `json:"deny_pattern"`
+	RequestDelay string             `json:"request_delay"`
+	Concurrency  int                `json:"concurrency"`
+	Revisit      string             `json:"revisit"`
+	Retention    frontier.Retention `json:"retention"`
+	Termination  Termination        `json:"termination"`
+}
+
+func DefaultCrawlDefinition() CrawlDefinition {
+	return CrawlDefinition{Network: DefaultNetworkSettings(), Name: "Untitled crawl", Seeds: []string{}, Feeds: []string{}, Scope: "same_domain", Strategy: "host_diverse", MaxDepth: 10, MaxHops: 3, RequestDelay: "100ms", Concurrency: 2, Revisit: "24h", Retention: frontier.DefaultRetention()}
+}
+func decodeDefinition(raw json.RawMessage) (CrawlDefinition, error) {
+	d := DefaultCrawlDefinition()
+	if err := decodeParameters(raw, &d); err != nil {
+		return d, errs.NewRequestError(err.Error())
+	}
+	return d, nil
+}
+func CompileCrawl(root, runID string, d CrawlDefinition) (config.Application, error) {
+	if strings.TrimSpace(d.Name) == "" || len(d.Seeds)+len(d.Feeds) == 0 {
+		return config.Application{}, errs.NewRequestError("give this crawl a name and at least one starting URL or feed")
+	}
+	for _, raw := range append(append([]string{}, d.Seeds...), d.Feeds...) {
+		u, err := url.Parse(raw)
+		if err != nil || u.Hostname() == "" || u.User != nil || (u.Scheme != "http" && u.Scheme != "https") {
+			return config.Application{}, errs.NewRequestError("starting URLs must use HTTP or HTTPS without embedded user credentials")
+		}
+	}
+	if d.MaxDepth < 1 || d.MaxHops < 1 || d.Concurrency < 1 || d.Concurrency > 2 {
+		return config.Application{}, errs.NewRequestError("set positive depth and hop limits and one or two parallel requests per site")
+	}
+	delay, err := time.ParseDuration(d.RequestDelay)
+	if err != nil || delay < 0 {
+		return config.Application{}, errs.NewRequestError("request delay must be a nonnegative duration")
+	}
+	revisit := 24 * time.Hour
+	if !d.Termination.WhenDrained {
+		revisit, err = time.ParseDuration(d.Revisit)
+		if err != nil || revisit <= 0 {
+			return config.Application{}, errs.NewRequestError("revisit cadence must be a positive duration")
+		}
+	}
+	if d.Termination.MaxRequests < 0 {
+		return config.Application{}, errs.NewRequestError("request budget cannot be negative")
+	}
+	if d.Termination.Duration != "" {
+		duration, err := time.ParseDuration(d.Termination.Duration)
+		if err != nil || duration <= 0 {
+			return config.Application{}, errs.NewRequestError("run duration must be positive")
+		}
+	}
+	a, err := DefaultApplication(Options{DataDirectory: root})
+	if err != nil {
+		return a, err
+	}
+	c := &a.Config
+	c.API.Enabled = false
+	c.Streamer.Enabled = false
+	c.Metrics.Enabled = false
+	switch d.Proxy.Mode {
+	case "", "direct":
+	case "http":
+		if d.Proxy.URL == "" {
+			return a, errs.NewRequestError("enter an HTTP proxy address")
+		}
+		c.HTTPClient.HTTPProxyUrl = d.Proxy.URL
+	case "socks5":
+		if d.Proxy.URL == "" {
+			return a, errs.NewRequestError("enter a SOCKS5 proxy address")
+		}
+		c.HTTPClient.Socks5Url = d.Proxy.URL
+	default:
+		return a, errs.NewRequestError("choose direct, HTTP, or SOCKS5 connection")
+	}
+	if err := applyNetworkSettings(&c.HTTPClient, d.Network); err != nil {
+		return a, errs.NewRequestError(err.Error())
+	}
+	for _, uri := range append(append([]string{}, d.Seeds...), d.Feeds...) {
+		if !util.URLHostnameAllowed(uri, c.HTTPClient.AllowedHostSuffixes) {
+			return a, errs.NewRequestError("starting URLs and feeds must match the allowed hostname suffixes")
+		}
+	}
+	c.HTTPClient.Scope = d.Scope
+	c.HTTPClient.AllowPattern = d.AllowPattern
+	c.HTTPClient.DenyPattern = d.DenyPattern
+	c.HTTPClient.RequestDelay = delay
+	c.HTTPClient.PerOriginConcurrency = d.Concurrency
+	resource := func(name, kind string, p interface{}) {
+		b, _ := json.Marshal(p)
+		a.Resources = append(a.Resources, config.Resource{Name: name, Type: kind, Parameters: b})
+	}
+	worker := func(name, kind, in, out string, p interface{}, job bool, interval time.Duration, once bool) {
+		b, _ := json.Marshal(p)
+		count := 4
+		if job || kind == "jsonl_sink" {
+			count = 1
+		}
+		manager := "worker"
+		if job {
+			manager = "job"
+		}
+		a.Workers = append(a.Workers, config.Worker{Name: name, Type: kind, Inbox: in, Outbox: out, Parameters: b, Manager: manager, Interval: interval, Once: once, Count: count})
+	}
+	resource("requests", "crawl_queue", map[string]interface{}{"path": filepath.Join(root, "requests"), "crawl_id": runID, "max_attempts": 3, "notify_dispatch": true, "accept_frontier_generations": true})
+	for _, name := range []string{"seeds", "fetched", "analyzed", "results"} {
+		resource(name, "file_queue", map[string]interface{}{"name": name, "path": filepath.Join(root, name), "dlq_path": filepath.Join(root, name+"-failed"), "max_attempts": 3, "max_poll_delay_ms": 20, "reset": true})
+	}
+	resource("objects", "filesystem_object_store", map[string]string{"path": filepath.Join(root, "objects")})
+	resource("source_progress", "persistent_map", map[string]string{"path": filepath.Join(root, "source_progress")})
+	fp := frontier.StoreParams{Path: filepath.Join(root, "frontier"), Retention: d.Retention, MaxDispatches: d.Termination.MaxRequests, CacheBudgetMB: 64}
+	if !d.Termination.WhenDrained {
+		fp.RevisitAfter = frontier.Lifetime(revisit)
+	}
+	resource("frontier", "frontier_store", fp)
+	if len(d.Seeds) > 0 {
+		worker("starting_urls", "fixed_seed_publisher", "", "seeds", map[string]interface{}{"uris": d.Seeds}, true, time.Second, true)
+	}
+	if len(d.Feeds) > 0 {
+		feedInterval := revisit
+		if d.Termination.WhenDrained {
+			feedInterval = time.Second
+		}
+		worker("starting_feeds", "rss_feed_publisher", "", "seeds", map[string]interface{}{"uris": d.Feeds}, true, feedInterval, d.Termination.WhenDrained)
+	}
+	worker("admit_seeds", "frontier_admission", "seeds", "", map[string]interface{}{"frontier_store": "frontier", "allowed_host_suffixes": c.HTTPClient.AllowedHostSuffixes}, false, 0, false)
+	worker("fetch", "http_fetcher", "requests", "fetched", map[string]string{"object_store": "objects"}, false, 0, false)
+	worker("extract", "composite_extractor", "fetched", "analyzed", map[string]interface{}{"object_store": "objects", "transformer_queue": "results", "enabled": []string{"url", "text", "title"}}, false, 0, false)
+	worker("discover", "frontier_accumulator", "analyzed", "", map[string]interface{}{"frontier_store": "frontier", "scope": d.Scope, "allowed_host_suffixes": c.HTTPClient.AllowedHostSuffixes, "max_depth": d.MaxDepth, "max_hops": d.MaxHops, "allow_pattern": d.AllowPattern, "deny_pattern": d.DenyPattern}, false, 0, false)
+	worker("save", "jsonl_sink", "results", "", map[string]string{"path": filepath.Join(root, "results.jsonl")}, false, 0, false)
+	worker("publish", "frontier_publisher", "", "", map[string]interface{}{"frontier_store": "frontier", "output_queue": "requests", "strategy": d.Strategy}, true, 100*time.Millisecond, false)
+	worker("cleanup", "frontier_cleanup", "", "", map[string]string{"frontier_store": "frontier"}, true, time.Minute, false)
+	if err := Validate(a); err != nil {
+		return a, errs.NewRequestError(err.Error())
+	}
+	return a, nil
+}

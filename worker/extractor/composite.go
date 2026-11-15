@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/iakinsey/delver/config"
 	"os"
 	"reflect"
 	"strings"
@@ -30,6 +31,7 @@ type compositeResult struct {
 }
 
 type compositeExtractor struct {
+	configuration    *config.Config
 	active           sync.WaitGroup
 	Timeout          time.Duration
 	initOnce         sync.Once
@@ -48,7 +50,11 @@ type CompositeArgs struct {
 }
 
 func NewCompositeExtractorWorker(opts CompositeArgs) worker.Worker {
+	return NewCompositeExtractorWorkerWithConfig(opts, config.Get())
+}
+func NewCompositeExtractorWorkerWithConfig(opts CompositeArgs, c config.Config) worker.Worker {
 	s := &compositeExtractor{
+		configuration:    &c,
 		Enabled:          opts.Enabled,
 		Timeout:          opts.Timeout,
 		ObjectStore:      opts.ObjectStore,
@@ -298,10 +304,19 @@ func (s *compositeExtractor) getExtractor(name string) extractors.Extractor {
 	case features.UrlField:
 		return extractors.NewUrlExtractor()
 	case features.AdversarialField:
+		if s.configuration != nil {
+			return extractors.NewAdversarialExtractorWithConfig(*s.configuration)
+		}
 		return extractors.NewAdversarialExtractor()
 	case features.CompanyNameField:
+		if s.configuration != nil {
+			return extractors.NewCompanyNameExtractorWithConfig(*s.configuration)
+		}
 		return extractors.NewCompanyNameExtractor()
 	case features.CountryField:
+		if s.configuration != nil {
+			return extractors.NewCountryExtractorWithConfig(*s.configuration)
+		}
 		return extractors.NewCountryExtractor()
 	case features.LanguageField:
 		return extractors.NewLanguageExtractor()

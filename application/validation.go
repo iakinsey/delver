@@ -6,21 +6,23 @@ import (
 	"fmt"
 	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/extractors"
+	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/resource/bloom"
 	"github.com/iakinsey/delver/resource/maps"
 	"github.com/iakinsey/delver/resource/objectstore"
+	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/worker"
 	"github.com/iakinsey/delver/worker/accumulator"
 	"github.com/iakinsey/delver/worker/extractor"
 	"github.com/iakinsey/delver/worker/fetcher"
 	"github.com/iakinsey/delver/worker/publisher"
 	"github.com/iakinsey/delver/worker/transformer"
-	"net"
 	"net/url"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"strings"
 )
 
 func decodeParameters(raw json.RawMessage, target interface{}) error {
@@ -33,6 +35,41 @@ func decodeParameters(raw json.RawMessage, target interface{}) error {
 }
 func validateParameters(app config.Application, resources map[string]config.Resource) error {
 	http := app.Config.HTTPClient
+	if http.RequireProxy && http.Socks5Url == "" && http.HTTPProxyUrl == "" {
+		return fmt.Errorf("this crawl requires a proxy; choose and configure a proxy connection")
+	}
+	if http.Socks5Url != "" && http.HTTPProxyUrl != "" {
+		return fmt.Errorf("choose a single proxy connection")
+	}
+	if http.IsolateProxySessions {
+		if http.Socks5Url == "" {
+			return fmt.Errorf("separate proxy sessions require a SOCKS5 connection")
+		}
+		_, auth, err := util.ParseSOCKSProxy(http.Socks5Url)
+		if err != nil {
+			return err
+		}
+		if auth != nil {
+			return fmt.Errorf("automatic proxy session labels require a SOCKS5 address without authentication credentials")
+		}
+	}
+	if _, err := util.NormalizeHostSuffixes(http.AllowedHostSuffixes); err != nil {
+		return err
+	}
+	if http.RetryDelay < 0 || http.RetryMaxDelay < 0 || (http.RetryDelay > 0 && http.RetryMaxDelay > 0 && http.RetryMaxDelay < http.RetryDelay) {
+		return fmt.Errorf("invalid retry backoff bounds")
+	}
+	if strings.ContainsAny(http.UserAgent, "\r\n") {
+		return fmt.Errorf("invalid user agent")
+	}
+
+	for _, pattern := range []string{http.AllowPattern, http.DenyPattern} {
+		if pattern != "" {
+			if _, err := regexp.Compile(pattern); err != nil {
+				return fmt.Errorf("invalid HTTP URL rule: %w", err)
+			}
+		}
+	}
 	if app.Config.Robots.Expiration <= 0 || app.Config.PersistentMap.GCInterval <= 0 || app.Config.PersistentMap.GCDiscardRatio <= 0 || app.Config.PersistentMap.GCDiscardRatio >= 1 {
 		return fmt.Errorf("invalid robots or persistent-map timing/bounds")
 	}
@@ -46,7 +83,7 @@ func validateParameters(app config.Application, resources map[string]config.Reso
 		}
 	}
 	if http.Socks5Url != "" {
-		if _, _, err := net.SplitHostPort(http.Socks5Url); err != nil {
+		if _, _, err := util.ParseSOCKSProxy(http.Socks5Url); err != nil {
 			return fmt.Errorf("invalid SOCKS5 proxy address")
 		}
 	}
@@ -54,6 +91,8 @@ func validateParameters(app config.Application, resources map[string]config.Reso
 	for _, r := range app.Resources {
 		var target interface{}
 		switch r.Type {
+		case "frontier_store":
+			target = &frontier.StoreParams{Retention: frontier.DefaultRetention()}
 		case "crawl_queue":
 			target = &queue.CrawlQueueParams{MaxAttempts: 3}
 		case "file_queue":
@@ -93,6 +132,10 @@ func validateParameters(app config.Application, resources map[string]config.Reso
 			}
 		}
 		switch p := target.(type) {
+		case *frontier.StoreParams:
+			if paramsErr := paramsFrontier(*p); paramsErr != nil {
+				return fmt.Errorf("resource %s: %w", r.Name, paramsErr)
+			}
 		case *maps.PersistentMapParams:
 			if p.Path == "" {
 				return fmt.Errorf("resource %s requires path", r.Name)
@@ -128,6 +171,12 @@ func validateParameters(app config.Application, resources map[string]config.Reso
 		}
 	}
 	for _, w := range app.Workers {
+		if w.Once && (w.Manager != "job" || resources["source_progress"].Type != "persistent_map") {
+			return fmt.Errorf("once sources require a job manager and source_progress map")
+		}
+		if err := validateFrontierWorker(w, resources); err != nil {
+			return err
+		}
 		var target interface{}
 		switch w.Type {
 		case "jsonl_sink":

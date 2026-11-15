@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/iakinsey/delver/config"
 	"net/url"
 	"os"
 	"path"
@@ -24,6 +25,7 @@ import (
 )
 
 type dfsBasicPublisher struct {
+	mapConfig      config.PersistentMapConfig
 	outputQueue    queue.Queue
 	urlStorePath   string
 	visitedHosts   maps.Map
@@ -42,7 +44,11 @@ type DfsBasicPublisherParams struct {
 }
 
 func NewDfsBasicPublisher(params DfsBasicPublisherParams) worker.Worker {
+	return NewDfsBasicPublisherWithConfig(params, config.Get())
+}
+func NewDfsBasicPublisherWithConfig(params DfsBasicPublisherParams, c config.Config) worker.Worker {
 	return &dfsBasicPublisher{
+		mapConfig:    c.PersistentMap,
 		outputQueue:  params.OutputQueue,
 		urlStorePath: params.UrlStorePath,
 		visitedHosts: params.VisitedHosts,
@@ -130,7 +136,7 @@ func (s *dfsBasicPublisher) publishUrls(host string, hostDbPath string) (int, er
 }
 func (s *dfsBasicPublisher) publishUrlsContext(ctx context.Context, host, hostDbPath string) (int, error) {
 	count := 0
-	err := maps.ConsumeHost(hostDbPath, func(m maps.Map) error {
+	err := maps.ConsumeHostWithConfig(hostDbPath, s.mapConfig, func(m maps.Map) error {
 		return m.Iter(func(k, v []byte) error {
 			req := message.FetcherRequest{}
 

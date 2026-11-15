@@ -18,9 +18,11 @@ import (
 	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/gateway"
 	"github.com/iakinsey/delver/types/errs"
+	"github.com/iakinsey/delver/util"
 )
 
 type Operation struct {
+	Version uint64 `json:"configuration_version,omitempty"`
 	Queue   string `json:"queue,omitempty"`
 	Record  string `json:"record,omitempty"`
 	ID      string `json:"id"`
@@ -40,6 +42,8 @@ type operationsState struct {
 type runtimeResult struct{ err error }
 
 type Supervisor struct {
+	onStatus   func(string, time.Time)
+	originGate config.HTTPGate
 	log        crawlLog
 	transition sync.Mutex
 	result     *runtimeResult
@@ -61,6 +65,18 @@ func newSupervisor(ctx context.Context, app config.Application) (*Supervisor, er
 	if err := Validate(app); err != nil {
 		return nil, err
 	}
+	encoded, err := json.Marshal(app)
+	if err != nil {
+		return nil, err
+	}
+	var owned config.Application
+	if err := json.Unmarshal(encoded, &owned); err != nil {
+		return nil, err
+	}
+	owned.Config.API.StaticFiles = app.Config.API.StaticFiles
+	owned.Config.HTTPClient.LocalGate = app.Config.HTTPClient.LocalGate
+	owned.Config.HTTPClient.GlobalGate = app.Config.HTTPClient.GlobalGate
+	app = owned
 	path := app.Config.API.OperationsPath
 	if path == "" {
 		path = app.Config.API.DashDBPath + ".operations.json"
@@ -171,13 +187,17 @@ func (s *Supervisor) start() error {
 	if s.done != nil {
 		return fmt.Errorf("runtime already exists")
 	}
-	s.status = "starting"
+	s.setStatus("starting")
 	ctx, cancel := context.WithCancel(s.ctx)
 	s.cancel = cancel
 	s.control = &runtimeControl{log: &s.log, initialPaused: s.state.Desired == "paused", resourcesDone: make(chan struct{})}
 	s.done = make(chan struct{})
 	s.result = &runtimeResult{}
 	control, done, app, result := s.control, s.done, s.state.Active, s.result
+	if s.originGate != nil {
+		app.Config.HTTPClient.GlobalGate = s.originGate
+		app.Config.HTTPClient.LocalGate = util.NewOriginGate()
+	}
 	go func() { result.err = Run(context.WithValue(ctx, runtimeKey{}, control), app); close(done) }()
 	deadline := time.NewTimer(app.Config.ShutdownTimeout)
 	defer deadline.Stop()
@@ -186,9 +206,10 @@ func (s *Supervisor) start() error {
 		ready := control.prepared != nil
 		control.mu.Unlock()
 		if ready {
-			s.status = "running"
 			if control.initialPaused {
-				s.status = "paused"
+				s.setStatus("paused")
+			} else {
+				s.setStatus("running")
 			}
 			return nil
 		}
@@ -203,7 +224,7 @@ func (s *Supervisor) start() error {
 				s.control = nil
 			default:
 			}
-			s.status = "failed"
+			s.setStatus("failed")
 			if err == nil {
 				err = fmt.Errorf("runtime stopped during startup")
 			}
@@ -211,7 +232,7 @@ func (s *Supervisor) start() error {
 		case <-deadline.C:
 			s.mu.Lock()
 			cancel()
-			s.status = "failed"
+			s.setStatus("failed")
 			return fmt.Errorf("startup timeout")
 		case <-time.After(10 * time.Millisecond):
 			s.mu.Lock()
@@ -220,10 +241,10 @@ func (s *Supervisor) start() error {
 }
 func (s *Supervisor) stop() error {
 	if s.done == nil {
-		s.status = "stopped"
+		s.setStatus("stopped")
 		return nil
 	}
-	s.status = "stopping"
+	s.setStatus("stopping")
 	s.cancel()
 	done, control, result := s.done, s.control, s.result
 	timeout := s.state.Active.Config.ShutdownTimeout
@@ -236,18 +257,18 @@ func (s *Supervisor) stop() error {
 			s.mu.Lock()
 			s.done = nil
 			s.control = nil
-			s.status = "stopped"
+			s.setStatus("stopped")
 			s.mu.Unlock()
 			return result.err
 		case <-time.After(timeout):
 			s.mu.Lock()
-			s.status = "failed"
+			s.setStatus("failed")
 			s.mu.Unlock()
 			return fmt.Errorf("runtime has not released its resources: %v", result.err)
 		}
 	case <-time.After(timeout):
 		s.mu.Lock()
-		s.status = "failed"
+		s.setStatus("failed")
 		s.mu.Unlock()
 		return fmt.Errorf("runtime has not released its resources")
 	}
@@ -261,7 +282,7 @@ func (s *Supervisor) Handle(ctx context.Context, action string, raw json.RawMess
 		if s.done != nil && s.status != "stopping" {
 			select {
 			case <-s.done:
-				s.status = "failed"
+				s.setStatus("failed")
 				if s.result.err != nil {
 					s.lastError = s.result.err.Error()
 				}
@@ -436,7 +457,7 @@ func (s *Supervisor) execute(id, queueName, record string) {
 			} else {
 				err = s.control.pause(s.ctx, false)
 				if err == nil {
-					s.status = "running"
+					s.setStatus("running")
 				}
 			}
 		}
@@ -446,7 +467,7 @@ func (s *Supervisor) execute(id, queueName, record string) {
 			err = s.stop()
 		}
 	case "pause":
-		s.status = "pausing"
+		s.setStatus("pausing")
 		err = s.setDesired("paused")
 		if err == nil {
 			ctx, cancel := context.WithTimeout(s.ctx, s.state.Active.Config.ShutdownTimeout)
@@ -460,7 +481,7 @@ func (s *Supervisor) execute(id, queueName, record string) {
 			s.mu.Lock()
 			cancel()
 			if err == nil {
-				s.status = "paused"
+				s.setStatus("paused")
 			}
 		}
 	case "activate", "rollback":
@@ -630,4 +651,11 @@ func (s *Supervisor) setDesired(desired string) error {
 		return err
 	}
 	return nil
+}
+
+func (s *Supervisor) setStatus(status string) {
+	s.status = status
+	if s.onStatus != nil {
+		s.onStatus(status, time.Now())
+	}
 }

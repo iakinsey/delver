@@ -2,16 +2,19 @@ package util
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/iakinsey/delver/config"
-	log "github.com/sirupsen/logrus"
 
 	"golang.org/x/net/proxy"
 )
@@ -23,12 +26,18 @@ type DelverHTTPClient interface {
 }
 
 type delverHTTPClient struct {
-	HTTP        *http.Client
-	UserAgent   string
-	MaxRetries  int
-	Policy      func(*url.URL) error
-	Delay       time.Duration
-	Concurrency int
+	configError               error
+	HostSuffixes              []string
+	RetryDelay, RetryMaxDelay time.Duration
+	NetworkTimeout            time.Duration
+	LocalGate, GlobalGate     config.HTTPGate
+	HTTP                      *http.Client
+	UserAgent                 string
+	MaxRetries                int
+	Policy                    func(*url.URL) error
+	PolicyContext             func(context.Context, *url.URL) error
+	Delay                     time.Duration
+	Concurrency               int
 }
 
 // TODO use a mocking library if this becomes a common pattern
@@ -38,35 +47,89 @@ type MockDelverHTTPClient struct {
 }
 
 func NewHTTPClient() DelverHTTPClient {
-	params := config.Get().HTTPClient
+	return NewHTTPClientWithConfig(config.Get().HTTPClient)
+}
+func NewHTTPClientWithConfig(params config.HTTPClientConfig) DelverHTTPClient {
+	if params.GlobalGate != nil && params.LocalGate == nil {
+		params.LocalGate = NewOriginGate()
+	}
 	client := &http.Client{Timeout: params.Timeout}
-
+	if params.GlobalGate != nil {
+		client.Timeout = 0
+	}
+	var configError error
+	suffixes, err := NormalizeHostSuffixes(params.AllowedHostSuffixes)
+	if err != nil {
+		configError = err
+	}
+	if params.RequireProxy && params.Socks5Url == "" && params.HTTPProxyUrl == "" {
+		configError = fmt.Errorf("a configured proxy connection is required")
+	}
+	if params.Socks5Url != "" && params.HTTPProxyUrl != "" {
+		configError = fmt.Errorf("choose a single proxy connection")
+	}
+	if params.IsolateProxySessions && params.Socks5Url == "" {
+		configError = fmt.Errorf("separate proxy sessions require SOCKS5")
+	}
+	transport := &http.Transport{IdleConnTimeout: 90 * time.Second}
+	if base, ok := http.DefaultTransport.(*http.Transport); ok {
+		transport = base.Clone()
+	}
+	// The request deadline also bounds TLS negotiation. Do not retain the
+	// default transport's shorter handshake cutoff on slower connections.
+	transport.TLSHandshakeTimeout = params.Timeout
 	if params.Socks5Url != "" {
-		dialer, err := proxy.SOCKS5("tcp", params.Socks5Url, nil, proxy.Direct)
-
+		address, auth, err := ParseSOCKSProxy(params.Socks5Url)
 		if err != nil {
-			log.Panicf("failed to create http client dialer %s", err)
-		}
-
-		if contextDialer, ok := dialer.(proxy.ContextDialer); ok {
-			client.Transport = &http.Transport{
-				DialContext: contextDialer.DialContext,
-			}
+			configError = err
 		} else {
-			log.Panicf("unable to generate context dialer")
+			if params.IsolateProxySessions {
+				if auth != nil {
+					configError = fmt.Errorf("automatic proxy session labels cannot replace authentication credentials")
+				} else {
+					key := params.ProxySessionKey
+					if key == "" {
+						var entropy [32]byte
+						if _, err := rand.Read(entropy[:]); err != nil {
+							configError = fmt.Errorf("proxy session initialization failed")
+						} else {
+							key = hex.EncodeToString(entropy[:])
+						}
+					}
+					user := sha256.Sum256([]byte("proxy-user:" + key))
+					password := sha256.Sum256([]byte("proxy-password:" + key))
+					auth = &proxy.Auth{User: "session-" + hex.EncodeToString(user[:16]), Password: hex.EncodeToString(password[:])}
+				}
+			}
+			dialer, err := proxy.SOCKS5("tcp", address, auth, proxy.Direct)
+			if err != nil {
+				configError = fmt.Errorf("cannot configure SOCKS5 dialer")
+			} else if contextual, ok := dialer.(proxy.ContextDialer); ok {
+				transport.Proxy = nil
+				transport.DialContext = contextual.DialContext
+			} else {
+				configError = fmt.Errorf("SOCKS5 dialer requires context support")
+			}
 		}
 	} else if params.HTTPProxyUrl != "" {
-		if url, err := url.Parse(params.HTTPProxyUrl); err == nil {
-			client.Transport = &http.Transport{
-				Proxy: http.ProxyURL(url),
-			}
+		address, err := url.Parse(params.HTTPProxyUrl)
+		if err != nil || address.Hostname() == "" || (address.Scheme != "http" && address.Scheme != "https") {
+			configError = fmt.Errorf("invalid HTTP proxy address")
 		} else {
-			log.Panicf("failed to parse http proxy string %s %s", params.HTTPProxyUrl, err)
+			transport.Proxy = http.ProxyURL(address)
 		}
 	}
+	if strings.ContainsAny(params.UserAgent, "\r\n") {
+		configError = fmt.Errorf("invalid user agent")
+	}
+	client.Transport = transport
 
 	return &delverHTTPClient{
-		HTTP:        client,
+		configError: configError, HostSuffixes: suffixes,
+		RetryDelay: params.RetryDelay, RetryMaxDelay: params.RetryMaxDelay,
+		HTTP:           client,
+		NetworkTimeout: params.Timeout,
+		LocalGate:      params.LocalGate, GlobalGate: params.GlobalGate,
 		UserAgent:   params.UserAgent,
 		MaxRetries:  params.MaxRetries,
 		Delay:       params.RequestDelay,
@@ -86,6 +149,9 @@ func (s *delverHTTPClient) Perform(uri string) (*http.Response, error) {
 	return s.PerformContext(context.Background(), uri)
 }
 func (s *delverHTTPClient) PerformContext(ctx context.Context, uri string) (*http.Response, error) {
+	if s.configError != nil {
+		return nil, s.configError
+	}
 	parsed, err := url.Parse(uri)
 	if err != nil {
 		return nil, err
@@ -120,10 +186,25 @@ func (s *delverHTTPClient) PerformContext(ctx context.Context, uri string) (*htt
 		if !retry || attempt == s.MaxRetries {
 			return resp, err
 		}
-		delay := time.Duration(1<<uint(attempt)) * 100 * time.Millisecond
-		if delay > 5*time.Second {
-			delay = 5 * time.Second
+		delay := s.RetryDelay
+		if delay <= 0 {
+			delay = 100 * time.Millisecond
 		}
+		maximum := s.RetryMaxDelay
+		if maximum <= 0 {
+			maximum = 5 * time.Second
+		}
+		if delay > maximum {
+			delay = maximum
+		}
+		for i := 0; i < attempt && delay < maximum; i++ {
+			if delay > maximum/2 {
+				delay = maximum
+			} else {
+				delay *= 2
+			}
+		}
+
 		if resp != nil {
 			if value := resp.Header.Get("Retry-After"); value != "" {
 				if seconds, e := strconv.Atoi(value); e == nil && seconds >= 0 {
@@ -154,6 +235,12 @@ func waitHTTP(ctx context.Context, delay time.Duration) error {
 		return ctx.Err()
 	}
 }
+func SetHTTPPolicyContext(client DelverHTTPClient, policy func(context.Context, *url.URL) error) {
+	if c, ok := client.(*delverHTTPClient); ok {
+		c.PolicyContext = policy
+	}
+}
+
 func SetHTTPPolicy(client DelverHTTPClient, policy func(*url.URL) error) {
 	if c, ok := client.(*delverHTTPClient); ok {
 		c.Policy = policy
@@ -170,33 +257,68 @@ type limitedTransport struct {
 }
 
 func (s *limitedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if !HostnameAllowed(req.URL, s.owner.HostSuffixes) {
+		return nil, fmt.Errorf("destination hostname is outside the allowed suffixes")
+	}
+
+	if policy, ok := req.Context().Value(requestPolicyKey{}).(func(*url.URL) error); ok {
+		if err := policy(req.URL); err != nil {
+			return nil, err
+		}
+	}
+	if s.owner.PolicyContext != nil {
+		if err := s.owner.PolicyContext(req.Context(), req.URL); err != nil {
+			return nil, err
+		}
+	}
 	if s.owner.Policy != nil {
 		if err := s.owner.Policy(req.URL); err != nil {
 			return nil, err
 		}
 	}
-	count := s.owner.Concurrency
-	if count < 1 {
-		count = 1
+	var release func()
+	if s.owner.GlobalGate != nil {
+		local, err := s.owner.LocalGate.Acquire(req.Context(), req.URL.Scheme+"://"+req.URL.Host, s.owner.Concurrency, s.owner.Delay)
+		if err != nil {
+			return nil, err
+		}
+		global, err := s.owner.GlobalGate.Acquire(req.Context(), req.URL.Scheme+"://"+req.URL.Host, 2, 100*time.Millisecond)
+		if err != nil {
+			local()
+			return nil, err
+		}
+		release = func() { global(); local() }
+	} else {
+		count := s.owner.Concurrency
+		if count < 1 {
+			count = 1
+		}
+		value, _ := originLimits.LoadOrStore(req.URL.Scheme+"://"+req.URL.Host, &originLimit{slots: make(chan struct{}, count)})
+		limit := value.(*originLimit)
+		select {
+		case limit.slots <- struct{}{}:
+		case <-req.Context().Done():
+			return nil, req.Context().Err()
+		}
+		release = func() { <-limit.slots }
+		limit.mu.Lock()
+		wait := time.Until(limit.next)
+		if wait < 0 {
+			wait = 0
+		}
+		limit.next = time.Now().Add(wait + s.owner.Delay)
+		limit.mu.Unlock()
+		if err := waitHTTP(req.Context(), wait); err != nil {
+			release()
+			return nil, err
+		}
 	}
-	value, _ := originLimits.LoadOrStore(req.URL.Scheme+"://"+req.URL.Host, &originLimit{slots: make(chan struct{}, count)})
-	limit := value.(*originLimit)
-	select {
-	case limit.slots <- struct{}{}:
-	case <-req.Context().Done():
-		return nil, req.Context().Err()
-	}
-	release := func() { <-limit.slots }
-	limit.mu.Lock()
-	wait := time.Until(limit.next)
-	if wait < 0 {
-		wait = 0
-	}
-	limit.next = time.Now().Add(wait + s.owner.Delay)
-	limit.mu.Unlock()
-	if err := waitHTTP(req.Context(), wait); err != nil {
-		release()
-		return nil, err
+
+	if s.owner.NetworkTimeout > 0 {
+		ctx, cancel := context.WithTimeout(req.Context(), s.owner.NetworkTimeout)
+		req = req.Clone(ctx)
+		prior := release
+		release = func() { cancel(); prior() }
 	}
 	response, err := s.base.RoundTrip(req)
 	if err != nil {
@@ -225,3 +347,6 @@ func (b *limitedBody) Read(data []byte) (int, error) {
 	return n, err
 }
 func (b *limitedBody) Close() error { err := b.ReadCloser.Close(); b.once.Do(b.release); return err }
+
+// Close releases this client's idle connections without touching other crawls.
+func (s *delverHTTPClient) Close() error { s.HTTP.CloseIdleConnections(); return nil }

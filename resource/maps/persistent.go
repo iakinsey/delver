@@ -24,6 +24,9 @@ type PersistentMapParams struct {
 }
 
 func NewPersistentMap(params PersistentMapParams) Map {
+	return NewPersistentMapWithConfig(params, config.Get().PersistentMap)
+}
+func NewPersistentMapWithConfig(params PersistentMapParams, c config.PersistentMapConfig) Map {
 	opts := badger.DefaultOptions(params.Path)
 	opts.Logger = nil
 	opts.SyncWrites = true
@@ -37,7 +40,7 @@ func NewPersistentMap(params PersistentMapParams) Map {
 		db:        db,
 		done:      make(chan struct{}),
 		terminate: make(chan bool),
-		conf:      config.Get().PersistentMap,
+		conf:      c,
 	}
 
 	go m.handleGc()

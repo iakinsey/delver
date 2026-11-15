@@ -1,7 +1,9 @@
 package config
 
 import (
+	"context"
 	"encoding/json"
+	"io/fs"
 	"log"
 	"runtime"
 	"sync"
@@ -15,7 +17,21 @@ type AdversarialConfig struct {
 	EnumerationThreshold int `json:"enumeration_threshold"`
 }
 
+type HTTPGate interface {
+	Acquire(context.Context, string, int, time.Duration) (func(), error)
+}
 type HTTPClientConfig struct {
+	RequireProxy         bool          `json:"require_proxy,omitempty"`
+	IsolateProxySessions bool          `json:"isolate_proxy_sessions,omitempty"`
+	ProxySessionKey      string        `json:"-"`
+	AllowedHostSuffixes  []string      `json:"allowed_host_suffixes,omitempty"`
+	RetryDelay           time.Duration `json:"retry_delay"`
+	RetryMaxDelay        time.Duration `json:"retry_max_delay"`
+	AllowPattern         string        `json:"allow_pattern,omitempty"`
+	DenyPattern          string        `json:"deny_pattern,omitempty"`
+	Scope                string        `json:"scope,omitempty"`
+	LocalGate            HTTPGate      `json:"-"`
+	GlobalGate           HTTPGate      `json:"-"`
 	MaxResponseBytes     int64         `json:"max_response_bytes"`
 	PerOriginConcurrency int           `json:"per_origin_concurrency"`
 	RequestDelay         time.Duration `json:"request_delay"`
@@ -34,6 +50,7 @@ type RobotsConfig struct {
 }
 
 type APIConfig struct {
+	StaticFiles    fs.FS  `json:"-"`
 	OperationsPath string `json:"operations_path"`
 	Enabled        bool   `json:"enabled"`
 	Address        string `json:"address"`
@@ -112,6 +129,8 @@ func LoadConfig() Config {
 			RespectRobots:        true,
 			Timeout:              10 * time.Second,
 			MaxRetries:           1,
+			RetryDelay:           100 * time.Millisecond,
+			RetryMaxDelay:        5 * time.Second,
 			UserAgent:            "delver pre-alpha",
 		},
 		API: APIConfig{

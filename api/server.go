@@ -68,6 +68,16 @@ func NewServerWithOperations(conf config.APIConfig, operations Operations) (*htt
 	routes := routesWithDashboard(dash)
 
 	if operations != nil {
+		if multi, ok := operations.(interface {
+			HandleCrawls(context.Context, string, json.RawMessage) (interface{}, error)
+		}); ok {
+			for _, name := range []string{"defaults", "preview", "results", "list", "create", "detail", "validate", "draft", "activate", "start_run", "continue_run", "duplicate", "archive", "restore", "command", "status", "operations", "failed", "log", "pipeline"} {
+				action := name
+				routes["/crawls/"+action] = func(ctx context.Context, raw json.RawMessage) (interface{}, error) {
+					return multi.HandleCrawls(ctx, action, raw)
+				}
+			}
+		}
 		for _, name := range []string{"status", "draft", "validate", "command", "operations", "failed", "log"} {
 			action := name
 			routes["/crawler/"+action] = func(ctx context.Context, raw json.RawMessage) (interface{}, error) {
@@ -78,6 +88,12 @@ func NewServerWithOperations(conf config.APIConfig, operations Operations) (*htt
 	}
 	handler := http.NewServeMux()
 	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if conf.StaticFiles != nil && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+			if _, known := routes[r.URL.Path]; !known {
+				ServeUI(conf.StaticFiles, w, r)
+				return
+			}
+		}
 		h := requestHandler{conf: conf, routes: routes, req: r, resp: w}
 		h.Perform()
 	})

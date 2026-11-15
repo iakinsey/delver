@@ -1,5 +1,9 @@
-default:
+default: ui
 	go build .
+
+ui:
+	npm --prefix web run build
+	node scripts/package-ui.mjs
 legacy:
 	git archive -v -o delver-repo.tar.gz --format=tar.gz HEAD
 	docker build . -t delver-build

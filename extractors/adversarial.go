@@ -17,7 +17,9 @@ type adversarialExtractor struct {
 }
 
 func NewAdversarialExtractor() Extractor {
-	conf := config.Get()
+	return NewAdversarialExtractorWithConfig(config.Get())
+}
+func NewAdversarialExtractorWithConfig(conf config.Config) Extractor {
 
 	return &adversarialExtractor{
 		conf.Adversarial,

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/worker"
 )
@@ -19,6 +20,7 @@ type runtimeControl struct {
 	prepared      *preparedApplication
 }
 type RuntimeSnapshot struct {
+	Frontier    map[string]int64            `json:"frontier"`
 	QueueStates map[string]map[string]int64 `json:"queue_states"`
 	Health      map[string]string           `json:"health"`
 	Workers     map[string]worker.Activity  `json:"workers"`
@@ -28,11 +30,16 @@ type RuntimeSnapshot struct {
 func (c *runtimeControl) snapshot() RuntimeSnapshot {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	result := RuntimeSnapshot{QueueStates: map[string]map[string]int64{}, Health: map[string]string{}, Workers: map[string]worker.Activity{}, Queues: map[string]int64{}}
+	result := RuntimeSnapshot{Frontier: map[string]int64{}, QueueStates: map[string]map[string]int64{}, Health: map[string]string{}, Workers: map[string]worker.Activity{}, Queues: map[string]int64{}}
 	if c.prepared == nil {
 		return result
 	}
 	for name, manager := range c.prepared.workers {
+		if source, ok := manager.(interface{ Health() string }); ok {
+			if health := source.Health(); health != "" {
+				result.Health[name] = health
+			}
+		}
 		if m, ok := manager.(interface{ Activity() worker.Activity }); ok {
 			result.Workers[name] = m.Activity()
 		}
@@ -46,6 +53,11 @@ func (c *runtimeControl) snapshot() RuntimeSnapshot {
 				result.Health[name] = err.Error()
 			} else {
 				result.QueueStates[name] = counts
+				if _, ok := resource.(frontier.FrontierStore); ok {
+					for key, n := range counts {
+						result.Frontier[key] += n
+					}
+				}
 			}
 		}
 		if health, ok := resource.(interface{ Health() string }); ok {

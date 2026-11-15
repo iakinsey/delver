@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"github.com/armon/go-metrics"
 	"sync"
 	"time"
 
@@ -42,4 +43,15 @@ func (s *jobManager) Stop() {
 func (s *jobManager) Pause(value bool) { s.manager.(interface{ Pause(bool) }).Pause(value) }
 func (s *jobManager) Activity() Activity {
 	return s.manager.(interface{ Activity() Activity }).Activity()
+}
+
+func (s *jobManager) SetMetricSink(sink metrics.MetricSink) {
+	s.manager.(interface{ SetMetricSink(metrics.MetricSink) }).SetMetricSink(sink)
+}
+
+func (s *jobManager) Health() string {
+	if source, ok := s.worker.(interface{ Health() string }); ok {
+		return source.Health()
+	}
+	return ""
 }

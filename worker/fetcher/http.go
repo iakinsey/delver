@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -27,16 +28,22 @@ type HttpFetcherParams struct {
 }
 
 type httpFetcher struct {
+	scope       string
+	allow, deny *regexp.Regexp
+	maxBytes    int64
 	robots      frontier.ClosableFilter
 	ObjectStore objectstore.ObjectStore
 	Client      util.DelverHTTPClient
 }
 
 func NewHttpFetcher(args HttpFetcherParams) worker.Worker {
-	client := util.NewHTTPClient()
-	conf := config.Get().HTTPClient
-	robots := frontier.NewMemoryRobots()
-	util.SetHTTPPolicy(client, func(u *url.URL) error {
+	return NewHttpFetcherWithConfig(args, config.Get())
+}
+func NewHttpFetcherWithConfig(args HttpFetcherParams, c config.Config) worker.Worker {
+	client := util.NewHTTPClientWithConfig(c.HTTPClient)
+	conf := c.HTTPClient
+	robots := frontier.NewMemoryRobotsWithConfig(c)
+	util.SetHTTPPolicyContext(client, func(ctx context.Context, u *url.URL) error {
 		if len(conf.AllowedDomains) > 0 {
 			allowed := false
 			for _, domain := range conf.AllowedDomains {
@@ -49,7 +56,7 @@ func NewHttpFetcher(args HttpFetcherParams) worker.Worker {
 			}
 		}
 		if conf.RespectRobots {
-			allowed, err := robots.IsAllowed(u.String())
+			allowed, err := robots.IsAllowedContext(ctx, u.String())
 			if err != nil {
 				return err
 			}
@@ -59,8 +66,18 @@ func NewHttpFetcher(args HttpFetcherParams) worker.Worker {
 		}
 		return nil
 	})
+	var allow, deny *regexp.Regexp
+	if conf.AllowPattern != "" {
+		allow = regexp.MustCompile(conf.AllowPattern)
+	}
+	if conf.DenyPattern != "" {
+		deny = regexp.MustCompile(conf.DenyPattern)
+	}
 	return &httpFetcher{
+		allow: allow, deny: deny,
 		ObjectStore: args.ObjectStore,
+		maxBytes:    c.HTTPClient.MaxResponseBytes,
+		scope:       c.HTTPClient.Scope,
 		robots:      robots,
 		Client:      client,
 	}
@@ -76,6 +93,20 @@ func (s *httpFetcher) OnMessageContext(ctx context.Context, msg types.Message) (
 		return nil, errors.Wrap(err, "error parsing fetcher request")
 	}
 
+	if request.ScopeRoot == "" && (s.scope != "" || s.allow != nil || s.deny != nil) {
+		request.ScopeRoot = request.URI
+	}
+	if request.ScopeRoot != "" {
+		ctx = util.WithHTTPPolicy(ctx, func(u *url.URL) error {
+			if s.allow != nil && !s.allow.MatchString(u.String()) || s.deny != nil && s.deny.MatchString(u.String()) {
+				return fmt.Errorf("URL excluded by crawl rules")
+			}
+			if !util.ScopeAllows(s.scope, request.ScopeRoot, u.String()) {
+				return fmt.Errorf("redirect outside crawl boundaries")
+			}
+			return nil
+		})
+	}
 	response := message.FetcherResponse{
 		FetcherRequest: request,
 	}
@@ -91,6 +122,9 @@ func (s *httpFetcher) OnMessageContext(ctx context.Context, msg types.Message) (
 func (s *httpFetcher) OnComplete() {
 	if s.robots != nil {
 		s.robots.Close()
+	}
+	if client, ok := s.Client.(interface{ Close() error }); ok {
+		client.Close()
 	}
 }
 
@@ -145,7 +179,7 @@ func (s *httpFetcher) doHttpRequest(ctx context.Context, request message.Fetcher
 
 	log.Printf("GET %d %s", response.HTTPCode, request.URI)
 
-	limit := config.Get().HTTPClient.MaxResponseBytes
+	limit := s.maxBytes
 	if limit <= 0 {
 		limit = 16 << 20
 	}

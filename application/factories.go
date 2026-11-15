@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/armon/go-metrics"
 	"reflect"
 
 	"github.com/pkg/errors"
@@ -25,6 +26,7 @@ import (
 var resourceKeyLookupError = errors.New("failed to find resource key")
 
 type preparedApplication struct {
+	metrics   metrics.MetricSink
 	ctx       context.Context
 	app       config.Application
 	resources map[string]interface{}
@@ -54,19 +56,19 @@ func CreateWorker(wc config.Worker, preparedApp *preparedApplication) {
 	case "composite_extractor":
 		cap := extractor.CompositeArgs{}
 		parseParamWithResources(wc.Parameters, &cap, preparedApp.resources)
-		w = extractor.NewCompositeExtractorWorker(cap)
+		w = extractor.NewCompositeExtractorWorkerWithConfig(cap, preparedApp.app.Config)
 	case "http_fetcher":
 		hfp := fetcher.HttpFetcherParams{}
 		parseParamWithResources(wc.Parameters, &hfp, preparedApp.resources)
-		w = fetcher.NewHttpFetcher(hfp)
+		w = fetcher.NewHttpFetcherWithConfig(hfp, preparedApp.app.Config)
 	case "dfs_basic_publisher":
 		dbp := publisher.DfsBasicPublisherParams{}
 		parseParamWithResources(wc.Parameters, &dbp, preparedApp.resources)
-		w = publisher.NewDfsBasicPublisher(dbp)
+		w = publisher.NewDfsBasicPublisherWithConfig(dbp, preparedApp.app.Config)
 	case "rss_feed_publisher":
 		rfp := publisher.RssFeedPublisherParams{}
 		parseParamWithResources(wc.Parameters, &rfp, preparedApp.resources)
-		w = publisher.NewRssFeedPublisher(rfp)
+		w = publisher.NewRssFeedPublisherWithConfig(rfp, preparedApp.app.Config)
 	case "fixed_seed_publisher":
 		fsp := publisher.FixedSeedPublisherParams{}
 		parseParamWithResources(wc.Parameters, &fsp, preparedApp.resources)
@@ -78,18 +80,39 @@ func CreateWorker(wc config.Worker, preparedApp *preparedApplication) {
 	default:
 		registryMutex.RLock()
 		factory := workerFactories[wc.Type]
+		contextual := runtimeWorkerFactories[wc.Type]
 		registryMutex.RUnlock()
 		if factory == nil {
 			panic("unknown worker type " + wc.Type)
 		}
 		var err error
-		w, err = factory(wc.Parameters, preparedApp.resources)
+		if contextual != nil {
+			w, err = contextual(preparedApp.ctx, wc.Parameters, preparedApp.resources, preparedApp.dependencies())
+		} else {
+			w, err = factory(wc.Parameters, preparedApp.resources)
+		}
 		if err != nil {
 			panic(err)
 		}
 	}
 
-	preparedApp.workers[wc.Name] = GetWorkerManager(wc, preparedApp.resources, w)
+	if wc.Once {
+		store, ok := preparedApp.resources["source_progress"].(maps.Map)
+		if !ok {
+			panic("once source requires source_progress map")
+		}
+		w = &worker.OnceWorker{Worker: w, Store: store, Key: wc.Name}
+	}
+	if preparedApp.metrics != nil {
+		if target, ok := w.(interface{ SetMetricSink(metrics.MetricSink) }); ok {
+			target.SetMetricSink(preparedApp.metrics)
+		}
+	}
+	m := GetWorkerManager(wc, preparedApp.resources, w)
+	if preparedApp.metrics != nil {
+		m.(interface{ SetMetricSink(metrics.MetricSink) }).SetMetricSink(preparedApp.metrics)
+	}
+	preparedApp.workers[wc.Name] = m
 }
 
 func GetWorkerManager(wc config.Worker, resources map[string]interface{}, w worker.Worker) (m worker.WorkerManager) {
@@ -153,17 +176,17 @@ func CreateResource(c config.Resource, preparedApp *preparedApplication) {
 		parseParam(c.Parameters, &bfp)
 		r = bloom.NewBloomFilter(bfp)
 	case "rolling_bloom_filter":
-		rbfp := bloom.RollingBloomFilterParams{SaveInterval: config.Get().DefaultSaveInterval}
+		rbfp := bloom.RollingBloomFilterParams{SaveInterval: preparedApp.app.Config.DefaultSaveInterval}
 		parseParam(c.Parameters, &rbfp)
 		r = bloom.NewRollingBloomFilter(rbfp)
 	case "persistent_map":
 		pmp := maps.PersistentMapParams{}
 		parseParam(c.Parameters, &pmp)
-		r = maps.NewPersistentMap(pmp)
+		r = maps.NewPersistentMapWithConfig(pmp, preparedApp.app.Config.PersistentMap)
 	case "multi_host_map":
 		mhmp := maps.MultiHostMapParams{}
 		parseParam(c.Parameters, &mhmp)
-		r = maps.NewMultiHostMap(mhmp)
+		r = maps.NewMultiHostMapWithConfig(mhmp, preparedApp.app.Config.PersistentMap)
 	case "filesystem_object_store":
 		fosp := objectstore.FilesystemObjectStoreParams{}
 		parseParam(c.Parameters, &fosp)
@@ -171,19 +194,24 @@ func CreateResource(c config.Resource, preparedApp *preparedApplication) {
 	default:
 		registryMutex.RLock()
 		factory := resourceFactories[c.Type]
+		contextual := runtimeResourceFactories[c.Type]
 		registryMutex.RUnlock()
 		if factory == nil {
 			panic("unknown resource " + c.Type)
 		}
 		var err error
-		r, err = factory(c.Parameters)
+		if contextual != nil {
+			r, err = contextual(preparedApp.ctx, c.Parameters, preparedApp.dependencies())
+		} else {
+			r, err = factory(c.Parameters)
+		}
 		if err != nil {
 			panic(err)
 		}
 	}
 
 	// Set metrics value if resoruce is specified
-	if c.Name == config.TransformerQueueName {
+	if c.Name == config.TransformerQueueName && preparedApp.ctx.Value(runtimeKey{}) == nil {
 		instrument.SetMetrics(r.(queue.Queue))
 	}
 

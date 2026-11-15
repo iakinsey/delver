@@ -15,6 +15,23 @@ func (s *crawlQueue) Counts() (map[string]int64, error) {
 	}
 	counts := map[string]int64{"pending": 0, "leased": 0, "completed": 0, "failed": 0}
 	err := s.db.View(func(txn *badger.Txn) error {
+		if _, err := txn.Get([]byte("active_ready\x00" + s.params.CrawlID)); err == nil {
+			for state := range counts {
+				item, err := txn.Get([]byte("count\x00" + s.params.CrawlID + "\x00" + state))
+				if err != nil {
+					return err
+				}
+				var n int64
+				if err := item.Value(func(b []byte) error { return json.Unmarshal(b, &n) }); err != nil {
+					return err
+				}
+				counts[state] = n
+			}
+			return nil
+		} else if err != badger.ErrKeyNotFound {
+			return err
+		}
+
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
 		defer it.Close()
 		prefix := []byte(s.params.CrawlID + "\x00")

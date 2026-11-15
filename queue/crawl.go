@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,10 +16,12 @@ import (
 )
 
 type CrawlQueueParams struct {
-	Path         string        `json:"path"`
-	CrawlID      string        `json:"crawl_id"`
-	MaxAttempts  int           `json:"max_attempts"`
-	RecrawlAfter time.Duration `json:"recrawl_after"`
+	AcceptFrontierGenerations bool          `json:"accept_frontier_generations"`
+	NotifyDispatch            bool          `json:"notify_dispatch"`
+	Path                      string        `json:"path"`
+	CrawlID                   string        `json:"crawl_id"`
+	MaxAttempts               int           `json:"max_attempts"`
+	RecrawlAfter              time.Duration `json:"recrawl_after"`
 }
 type crawlRecord struct {
 	Message  types.Message
@@ -30,6 +33,7 @@ type crawlQueue struct {
 	db                             *badger.DB
 	params                         CrawlQueueParams
 	channel                        chan types.Message
+	wake                           chan struct{}
 	done                           chan struct{}
 	stopped                        chan struct{}
 	startOnce, stopOnce, closeOnce sync.Once
@@ -47,7 +51,7 @@ func NewCrawlQueue(p CrawlQueueParams) (Queue, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &crawlQueue{db: db, params: p, channel: make(chan types.Message), done: make(chan struct{}), stopped: make(chan struct{})}, nil
+	return &crawlQueue{wake: make(chan struct{}, 1), db: db, params: p, channel: make(chan types.Message), done: make(chan struct{}), stopped: make(chan struct{})}, nil
 }
 func crawlURI(raw string) (string, error) {
 	u, err := url.Parse(raw)
@@ -125,7 +129,7 @@ func (s *crawlQueue) PutContext(ctx context.Context, msg types.Message, priority
 			if err := json.Unmarshal(old.Message.Message, &existing); err != nil {
 				return err
 			}
-			if incoming.Depth < existing.Depth && old.State != "failed" {
+			if incoming.BetterTraversalThan(existing) && old.State != "failed" {
 				incoming.RequestID = existing.RequestID
 				data, err := json.Marshal(incoming)
 				if err != nil {
@@ -146,7 +150,8 @@ func (s *crawlQueue) PutContext(ctx context.Context, msg types.Message, priority
 				}
 				return s.setRecord(txn, key, data)
 			}
-			if old.State != "completed" || s.params.RecrawlAfter <= 0 || time.Since(time.Unix(0, old.Updated)) < s.params.RecrawlAfter {
+			newGeneration := s.params.AcceptFrontierGenerations && incoming.FrontierGeneration != "" && incoming.FrontierGeneration != existing.FrontierGeneration
+			if old.State != "completed" || (!newGeneration && (s.params.RecrawlAfter <= 0 || time.Since(time.Unix(0, old.Updated)) < s.params.RecrawlAfter)) {
 				return nil
 			}
 		} else if err != badger.ErrKeyNotFound {
@@ -169,6 +174,10 @@ func (s *crawlQueue) Prepare() error {
 	if err := s.db.DropPrefix(append([]byte("pending\x00"), prefix...)); err != nil {
 		return err
 	}
+	if err := s.db.DropPrefix([]byte("active\x00" + s.params.CrawlID + "\x00")); err != nil {
+		return err
+	}
+	counts := map[string]int64{"pending": 0, "leased": 0, "completed": 0, "failed": 0}
 	batch := s.db.NewWriteBatch()
 	defer batch.Cancel()
 	err := s.db.View(func(txn *badger.Txn) error {
@@ -190,7 +199,11 @@ func (s *crawlQueue) Prepare() error {
 					return err
 				}
 			}
+			counts[record.State]++
 			if record.State == "pending" {
+				if err := batch.Set(append([]byte("active\x00"), item.KeyCopy(nil)...), nil); err != nil {
+					return err
+				}
 				if err := batch.Set(s.pendingKey(item.KeyCopy(nil)), nil); err != nil {
 					return err
 				}
@@ -199,6 +212,18 @@ func (s *crawlQueue) Prepare() error {
 		return nil
 	})
 	if err != nil {
+		return err
+	}
+	for state, count := range counts {
+		data, err := json.Marshal(count)
+		if err != nil {
+			return err
+		}
+		if err := batch.Set([]byte("count\x00"+s.params.CrawlID+"\x00"+state), data); err != nil {
+			return err
+		}
+	}
+	if err := batch.Set([]byte("active_ready\x00"+s.params.CrawlID), []byte{1}); err != nil {
 		return err
 	}
 	return batch.Flush()
@@ -224,9 +249,10 @@ func (s *crawlQueue) perform() {
 		case <-s.done:
 			return
 		case <-ticker.C:
+		case <-s.wake:
 		}
 		var next *types.Message
-		err := s.update(context.Background(), func(txn *badger.Txn) error {
+		err := s.dispatchUpdate(func(txn *badger.Txn) error {
 			it := txn.NewIterator(badger.DefaultIteratorOptions)
 			defer it.Close()
 			prefix := []byte("pending\x00" + s.params.CrawlID + "\x00")
@@ -264,6 +290,12 @@ func (s *crawlQueue) perform() {
 		s.lastError = ""
 		s.healthMu.Unlock()
 		if next != nil {
+			if s.params.NotifyDispatch {
+				select {
+				case s.wake <- struct{}{}:
+				default:
+				}
+			}
 			select {
 			case s.channel <- *next:
 			case <-s.done:
@@ -308,7 +340,7 @@ func (s *crawlQueue) EndTransaction(msg types.Message, success bool) error {
 		var incoming, existing message.FetcherRequest
 		json.Unmarshal(msg.Message, &incoming)
 		json.Unmarshal(record.Message.Message, &existing)
-		if success && incoming.Depth > existing.Depth {
+		if success && existing.BetterTraversalThan(incoming) {
 			record.State = "pending"
 		}
 		if success {
@@ -335,6 +367,19 @@ func (s *crawlQueue) Len() int64 {
 	}
 	var count int64
 	err := s.db.View(func(txn *badger.Txn) error {
+		if _, err := txn.Get([]byte("active_ready\x00" + s.params.CrawlID)); err == nil {
+			opts := badger.DefaultIteratorOptions
+			opts.PrefetchValues = false
+			it := txn.NewIterator(opts)
+			defer it.Close()
+			prefix := []byte("active\x00" + s.params.CrawlID + "\x00")
+			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+				count++
+			}
+			return nil
+		} else if err != badger.ErrKeyNotFound {
+			return err
+		}
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
 		defer it.Close()
 		prefix := []byte(s.params.CrawlID + "\x00")
@@ -401,6 +446,11 @@ func (s *crawlQueue) ReferencedObjects() ([]types.UUID, error) {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
 		defer it.Close()
 		for it.Rewind(); it.Valid(); it.Next() {
+			key := it.Item().Key()
+			if bytes.HasPrefix(key, []byte("pending\x00")) || bytes.HasPrefix(key, []byte("active\x00")) || bytes.HasPrefix(key, []byte("active_ready\x00")) || bytes.HasPrefix(key, []byte("count\x00")) {
+				continue
+			}
+
 			if err := it.Item().Value(func(data []byte) error {
 				refs, err := objectReferences(data)
 				if err != nil {
@@ -423,6 +473,40 @@ func (s *crawlQueue) setRecord(txn *badger.Txn, key, data []byte) error {
 	if err := json.Unmarshal(data, &record); err != nil {
 		return err
 	}
+	if _, err := txn.Get([]byte("active_ready\x00" + s.params.CrawlID)); err == nil {
+		oldState := ""
+		if item, e := txn.Get(key); e == nil {
+			var old crawlRecord
+			if err := item.Value(func(data []byte) error { return json.Unmarshal(data, &old) }); err != nil {
+				return err
+			}
+			oldState = old.State
+		} else if e != badger.ErrKeyNotFound {
+			return e
+		}
+		if oldState != record.State {
+			if oldState != "" {
+				if err := s.adjustCount(txn, oldState, -1); err != nil {
+					return err
+				}
+			}
+			if err := s.adjustCount(txn, record.State, 1); err != nil {
+				return err
+			}
+		}
+	} else if err != badger.ErrKeyNotFound {
+		return err
+	}
+	activeKey := append([]byte("active\x00"), key...)
+	if record.State == "pending" || record.State == "leased" {
+		if err := txn.Set(activeKey, nil); err != nil {
+			return err
+		}
+	} else {
+		if err := txn.Delete(activeKey); err != nil {
+			return err
+		}
+	}
 	var err error
 	if record.State == "pending" {
 		err = txn.Set(s.pendingKey(key), nil)
@@ -441,6 +525,14 @@ func (s *crawlQueue) Health() string {
 }
 
 func (s *crawlQueue) update(ctx context.Context, fn func(*badger.Txn) error) error {
+	defer func() {
+		if s.params.NotifyDispatch {
+			select {
+			case s.wake <- struct{}{}:
+			default:
+			}
+		}
+	}()
 	s.dbMu.RLock()
 	defer s.dbMu.RUnlock()
 	if s.closed {
@@ -461,4 +553,32 @@ func (s *crawlQueue) update(ctx context.Context, fn func(*badger.Txn) error) err
 		}
 	}
 	return badger.ErrConflict
+}
+
+func (s *crawlQueue) dispatchUpdate(fn func(*badger.Txn) error) error {
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+	if s.closed {
+		return badger.ErrDBClosed
+	}
+	return s.db.Update(fn)
+}
+
+func (s *crawlQueue) adjustCount(tx *badger.Txn, state string, delta int64) error {
+	key := []byte("count\x00" + s.params.CrawlID + "\x00" + state)
+	var n int64
+	item, err := tx.Get(key)
+	if err == nil {
+		if err := item.Value(func(b []byte) error { return json.Unmarshal(b, &n) }); err != nil {
+			return err
+		}
+	} else if err != badger.ErrKeyNotFound {
+		return err
+	}
+	n += delta
+	data, err := json.Marshal(n)
+	if err != nil {
+		return err
+	}
+	return tx.Set(key, data)
 }

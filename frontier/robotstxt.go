@@ -1,7 +1,9 @@
 package frontier
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"net/url"
 	"sync"
 	"time"
@@ -19,7 +21,7 @@ type memoryRobots struct {
 	userAgent         string
 	expiration        time.Duration
 	clearExpiredDelay time.Duration
-	fetchMutex        sync.Mutex
+	fetchGate         chan struct{}
 	robotsMap         map[string]robotsInfo
 	mapMutex          sync.RWMutex
 }
@@ -32,16 +34,21 @@ type robotsInfo struct {
 
 type ClosableFilter interface {
 	Filter
+	IsAllowedContext(context.Context, string) (bool, error)
 	Close() error
 }
 
 func NewMemoryRobots() ClosableFilter {
-	conf := config.Get().Robots
-	clientConf := config.Get().HTTPClient
+	return NewMemoryRobotsWithConfig(config.Get())
+}
+func NewMemoryRobotsWithConfig(c config.Config) ClosableFilter {
+	conf := c.Robots
+	clientConf := c.HTTPClient
 
 	job := &memoryRobots{
 		done:              make(chan struct{}),
-		client:            util.NewHTTPClient(),
+		fetchGate:         make(chan struct{}, 1),
+		client:            util.NewHTTPClientWithConfig(c.HTTPClient),
 		userAgent:         clientConf.UserAgent,
 		expiration:        conf.Expiration,
 		clearExpiredDelay: conf.ClearExpiredDelay,
@@ -54,6 +61,10 @@ func NewMemoryRobots() ClosableFilter {
 }
 
 func (s *memoryRobots) IsAllowed(u string) (bool, error) {
+	return s.IsAllowedContext(context.Background(), u)
+}
+
+func (s *memoryRobots) IsAllowedContext(ctx context.Context, u string) (bool, error) {
 	meta, err := url.Parse(u)
 
 	if err != nil {
@@ -63,13 +74,16 @@ func (s *memoryRobots) IsAllowed(u string) (bool, error) {
 	info := s.getRobots(meta)
 
 	if info == nil {
-		info, err = s.setRobots(meta)
+		info, err = s.setRobots(ctx, meta)
 
 		if err != nil {
 			return false, errors.Wrap(err, "unable to parse robots file")
 		}
 	}
 
+	if info.err != nil {
+		return false, info.err
+	}
 	if info.robots == nil {
 		return true, nil
 	}
@@ -91,13 +105,22 @@ func (s *memoryRobots) getRobots(meta *url.URL) *robotsInfo {
 	return nil
 }
 
-func (s *memoryRobots) setRobots(meta *url.URL) (*robotsInfo, error) {
-	s.fetchMutex.Lock()
-	defer s.fetchMutex.Unlock()
+func (s *memoryRobots) setRobots(ctx context.Context, meta *url.URL) (*robotsInfo, error) {
+	select {
+	case s.fetchGate <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-s.done:
+		return nil, context.Canceled
+	}
+	defer func() { <-s.fetchGate }()
 	if info := s.getRobots(meta); info != nil {
 		return info, info.err
 	}
-	info := s.getRobotsInfo(meta)
+	info := s.getRobotsInfo(ctx, meta)
+	if ctx.Err() != nil {
+		return info, ctx.Err()
+	}
 	s.mapMutex.Lock()
 	s.robotsMap[meta.Scheme+"://"+meta.Host] = *info
 	s.mapMutex.Unlock()
@@ -105,13 +128,21 @@ func (s *memoryRobots) setRobots(meta *url.URL) (*robotsInfo, error) {
 	return info, info.err
 }
 
-func (s *memoryRobots) getRobotsInfo(meta *url.URL) *robotsInfo {
+func (s *memoryRobots) getRobotsInfo(ctx context.Context, meta *url.URL) *robotsInfo {
 	robotsUrl := fmt.Sprintf("%s://%s/robots.txt", meta.Scheme, meta.Host)
 	info := &robotsInfo{
 		created: time.Now(),
 	}
 
-	res, err := s.client.Perform(robotsUrl)
+	var res *http.Response
+	var err error
+	if client, ok := s.client.(interface {
+		PerformContext(context.Context, string) (*http.Response, error)
+	}); ok {
+		res, err = client.PerformContext(util.WithoutHTTPPolicy(ctx), robotsUrl)
+	} else {
+		res, err = s.client.Perform(robotsUrl)
+	}
 
 	if err != nil {
 		info.err = err
@@ -156,4 +187,12 @@ func (s *memoryRobots) clearExpired() {
 		}
 	}
 }
-func (s *memoryRobots) Close() error { s.closeOnce.Do(func() { close(s.done) }); return nil }
+func (s *memoryRobots) Close() error {
+	s.closeOnce.Do(func() {
+		close(s.done)
+		if client, ok := s.client.(interface{ Close() error }); ok {
+			client.Close()
+		}
+	})
+	return nil
+}

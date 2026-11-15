@@ -328,3 +328,12 @@ func (s *workerManager) SetObserver(observer func(types.Message, []types.Message
 	defer s.control.mu.Unlock()
 	s.observer = observer
 }
+
+func (s *workerManager) SetMetricSink(sink metrics.MetricSink) { s.metrics = sink }
+
+func (s *workerManager) Health() string {
+	if source, ok := s.worker.(interface{ Health() string }); ok {
+		return source.Health()
+	}
+	return ""
+}

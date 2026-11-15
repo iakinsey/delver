@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/iakinsey/delver/config"
+	"github.com/iakinsey/delver/frontier"
 	"io"
 	"net/http"
 	"net/url"
@@ -19,11 +20,14 @@ import (
 )
 
 type rssFeedPublisher struct {
-	concurrency int
-	uris        []string
-	client      util.DelverHTTPClient
-	healthMu    sync.Mutex
-	failures    map[string]string
+	allowedHostSuffixes []string
+	robots              frontier.ClosableFilter
+	maxBytes            int64
+	concurrency         int
+	uris                []string
+	client              util.DelverHTTPClient
+	healthMu            sync.Mutex
+	failures            map[string]string
 }
 
 type RssFeedPublisherParams struct {
@@ -32,10 +36,31 @@ type RssFeedPublisherParams struct {
 }
 
 func NewRssFeedPublisher(params RssFeedPublisherParams) worker.Worker {
+	return NewRssFeedPublisherWithConfig(params, config.Get())
+}
+func NewRssFeedPublisherWithConfig(params RssFeedPublisherParams, c config.Config) worker.Worker {
+	suffixes, _ := util.NormalizeHostSuffixes(c.HTTPClient.AllowedHostSuffixes)
+	client := util.NewHTTPClientWithConfig(c.HTTPClient)
+	robots := frontier.NewMemoryRobotsWithConfig(c)
+	if c.HTTPClient.RespectRobots {
+		util.SetHTTPPolicyContext(client, func(ctx context.Context, u *url.URL) error {
+			ok, err := robots.IsAllowedContext(ctx, u.String())
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fmt.Errorf("robots disallows feed URL")
+			}
+			return nil
+		})
+	}
 	return &rssFeedPublisher{
-		uris:        params.Uris,
-		concurrency: params.MaxConcurrency,
-		client:      util.NewHTTPClient(),
+		allowedHostSuffixes: suffixes,
+		robots:              robots,
+		uris:                params.Uris,
+		concurrency:         params.MaxConcurrency,
+		client:              client,
+		maxBytes:            c.HTTPClient.MaxResponseBytes,
 	}
 }
 
@@ -124,7 +149,7 @@ func (s *rssFeedPublisher) getRssUrlsContext(ctx context.Context, feedUri string
 		return
 	}
 	parser := gofeed.NewParser()
-	limit := config.Get().HTTPClient.MaxResponseBytes
+	limit := s.maxBytes
 	if limit <= 0 {
 		limit = 16 << 20
 	}
@@ -143,6 +168,9 @@ func (s *rssFeedPublisher) getRssUrlsContext(ctx context.Context, feedUri string
 			links = append(links, item.Link)
 		}
 		for _, uri := range util.DedupeStrSlice(links) {
+			if !util.URLHostnameAllowed(uri, s.allowedHostSuffixes) {
+				continue
+			}
 			meta, err := url.Parse(uri)
 
 			if err != nil || meta.Host == "" || (meta.Scheme != "http" && meta.Scheme != "https") {
@@ -163,7 +191,14 @@ func (s *rssFeedPublisher) getRssUrlsContext(ctx context.Context, feedUri string
 	done <- result
 }
 
-func (s *rssFeedPublisher) OnComplete() {}
+func (s *rssFeedPublisher) OnComplete() {
+	if s.robots != nil {
+		s.robots.Close()
+	}
+	if client, ok := s.client.(interface{ Close() error }); ok {
+		client.Close()
+	}
+}
 
 func (s *rssFeedPublisher) Health() string {
 	s.healthMu.Lock()

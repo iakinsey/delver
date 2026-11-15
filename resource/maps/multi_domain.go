@@ -3,6 +3,7 @@ package maps
 import (
 	"encoding/base64"
 	"fmt"
+	"github.com/iakinsey/delver/config"
 	"net/url"
 	"os"
 	"path"
@@ -13,6 +14,7 @@ import (
 )
 
 type multiHostMap struct {
+	conf     config.PersistentMapConfig
 	basePath string
 }
 
@@ -21,11 +23,15 @@ type MultiHostMapParams struct {
 }
 
 func NewMultiHostMap(params MultiHostMapParams) Map {
+	return NewMultiHostMapWithConfig(params, config.Get().PersistentMap)
+}
+func NewMultiHostMapWithConfig(params MultiHostMapParams, c config.PersistentMapConfig) Map {
 	if err := util.GetOrCreateDir(params.BasePath); err != nil {
 		panic(err)
 	}
 	m := &multiHostMap{
 		basePath: params.BasePath,
+		conf:     c,
 	}
 
 	return m
@@ -95,7 +101,7 @@ func (s *multiHostMap) Iter(fn func([]byte, []byte) error) error {
 		err = func() error {
 			lockHostPath(hostPath)
 			defer unlockHostPath(hostPath)
-			m := NewPersistentMap(PersistentMapParams{Path: hostPath})
+			m := NewPersistentMapWithConfig(PersistentMapParams{Path: hostPath}, s.conf)
 			defer m.Close()
 			return m.Iter(fn)
 		}()
@@ -126,7 +132,7 @@ func (s *multiHostMap) transaction(key []byte, fn func(m Map) ([]byte, error)) (
 	params := PersistentMapParams{
 		Path: path.Join(s.basePath, fName),
 	}
-	mapper := NewPersistentMap(params)
+	mapper := NewPersistentMapWithConfig(params, s.conf)
 	defer mapper.Close()
 	res, err := fn(mapper)
 
@@ -150,6 +156,9 @@ func unlockHostPath(p string) {
 	domainLocks.Unlock(absolute)
 }
 func ConsumeHost(p string, consume func(Map) error) error {
+	return ConsumeHostWithConfig(p, config.Get().PersistentMap, consume)
+}
+func ConsumeHostWithConfig(p string, c config.PersistentMapConfig, consume func(Map) error) error {
 	lockHostPath(p)
 	defer unlockHostPath(p)
 	if _, err := os.Stat(p); os.IsNotExist(err) {
@@ -157,7 +166,7 @@ func ConsumeHost(p string, consume func(Map) error) error {
 	} else if err != nil {
 		return err
 	}
-	mapper := NewPersistentMap(PersistentMapParams{Path: p})
+	mapper := NewPersistentMapWithConfig(PersistentMapParams{Path: p}, c)
 	err := func() error { defer mapper.Close(); return consume(mapper) }()
 	if err != nil {
 		return err
