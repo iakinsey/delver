@@ -10,63 +10,26 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
-	"time"
 )
 
 type sessionCommand struct {
 	Version int             `json:"version"`
 	Type    string          `json:"type"`
-	Token   string          `json:"token"`
 	ID      string          `json:"id"`
 	Filter  json.RawMessage `json:"filter"`
 }
 
-func (s *clientStreamer) serveSession(conn *websocket.Conn, auth UserGateway) {
+func (s *clientStreamer) serveSession(conn *websocket.Conn) {
 	defer conn.Close()
 	conn.MaxPayloadBytes = 64 << 10
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	var first sessionCommand
-	if websocket.JSON.Receive(conn, &first) != nil || first.Version != 1 || first.Type != "authenticate" {
-		return
-	}
-	validate := func() bool {
-		t, err := auth.ValidateToken(first.Token)
-		if err != nil {
-			return false
-		}
-		_, err = auth.Get(t.UserID)
-		return err == nil
-	}
-	if !validate() {
-		websocket.JSON.Send(conn, map[string]string{"type": "auth_error"})
-		return
-	}
-	conn.SetReadDeadline(time.Time{})
+
 	sender := newClientSender(conn)
 	defer sender.stop()
 	control := func(kind, id, message string) {
 		data, _ := json.Marshal([]map[string]string{{"callback": id, "message": message}})
 		sender.enqueue(types.ClientStreamerMessage{Type: kind, Data: data})
 	}
-	control("authenticated", "", "")
-	done := make(chan struct{})
-	defer close(done)
-	go func() {
-		ticker := time.NewTicker(15 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-done:
-				return
-			case <-ticker.C:
-				if !validate() {
-					control("auth_error", "", "Session expired")
-					sender.stop()
-					return
-				}
-			}
-		}
-	}()
+	control("ready", "", "")
 	owned := map[string]string{}
 	defer func() {
 		for _, key := range owned {
@@ -76,10 +39,6 @@ func (s *clientStreamer) serveSession(conn *websocket.Conn, auth UserGateway) {
 	for {
 		var cmd sessionCommand
 		if websocket.JSON.Receive(conn, &cmd) != nil {
-			return
-		}
-		if !validate() {
-			control("auth_error", "", "Session expired")
 			return
 		}
 		if cmd.Version != 1 || cmd.ID == "" {

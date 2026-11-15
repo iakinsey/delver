@@ -1,7 +1,9 @@
 package extractors
 
 import (
+	"context"
 	"os"
+	"strings"
 
 	"github.com/pkg/errors"
 
@@ -30,6 +32,13 @@ func NewCompanyNameExtractor() Extractor {
 }
 
 func (s *companyNameExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
+	return s.PerformContext(context.Background(), f, composite)
+}
+func (s *companyNameExtractor) PerformContext(ctx context.Context, f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	var results []string
 	var textContent string
 
@@ -38,11 +47,17 @@ func (s *companyNameExtractor) Perform(f *os.File, composite message.CompositeAn
 	}
 
 	for _, company := range s.companies {
-		if c := company.Regex.Find([]byte(textContent)); c != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if c := company.Regex.FindReaderIndex(contextRuneReader{ctx, strings.NewReader(textContent)}); c != nil {
 			results = append(results, company.Identifier)
 		}
 	}
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return features.Corporations(util.DedupeStrSlice(results)), nil
 }
 

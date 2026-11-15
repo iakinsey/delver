@@ -1,6 +1,7 @@
 package extractors
 
 import (
+	"context"
 	"os"
 
 	"github.com/pkg/errors"
@@ -27,6 +28,13 @@ func NewSentimentExtractor() Extractor {
 }
 
 func (s *sentimentExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
+	return s.PerformContext(context.Background(), f, composite)
+}
+func (s *sentimentExtractor) PerformContext(ctx context.Context, f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	var title string
 	var language features.Language
 
@@ -42,7 +50,13 @@ func (s *sentimentExtractor) Perform(f *os.File, composite message.CompositeAnal
 		return nil, nil
 	}
 
+	if len(title) > 65536 {
+		return nil, errors.New("title exceeds sentiment analysis limit")
+	}
 	analysis := s.model.SentimentAnalysis(title, sentiment.English)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	score := int32(analysis.Score)
 
 	return features.Sentiment{

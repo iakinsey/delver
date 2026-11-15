@@ -18,7 +18,7 @@ func main() {
 	if err == nil {
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
-		err = application.Run(ctx, app)
+		err = application.Serve(ctx, app)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

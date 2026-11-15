@@ -1,6 +1,7 @@
 package extractors
 
 import (
+	"context"
 	"os"
 
 	"github.com/abadojack/whatlanggo"
@@ -16,13 +17,26 @@ func NewLanguageExtractor() Extractor {
 }
 
 func (s *languageExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
+	return s.PerformContext(context.Background(), f, composite)
+}
+func (s *languageExtractor) PerformContext(ctx context.Context, f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	var textContent string
 
 	if err := composite.Load(features.TextField, &textContent); err != nil {
 		return nil, errors.Wrap(err, "language extractor")
 	}
 
+	if len(textContent) > 65536 {
+		textContent = textContent[:65536]
+	}
 	info := whatlanggo.Detect(textContent)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	return features.Language{
 		Name:       info.Lang.Iso6391(),

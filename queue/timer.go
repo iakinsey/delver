@@ -79,7 +79,7 @@ func (s *timerQueue) GetChannel() chan types.Message {
 }
 
 func (s *timerQueue) Put(types.Message, int) error {
-	return errors.New("timerQueue.Put not implemented")
+	return errors.New("timer queues only produce messages")
 }
 
 func (s *timerQueue) Prepare() error {

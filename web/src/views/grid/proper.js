@@ -1,5 +1,6 @@
 import GridLayout from "react-grid-layout";
 import React from "react";
+import CrawlLog from "../cell/crawlLog";
 import ChartView from "../cell/chart";
 import EntityFeedView from "../cell/entity";
 import MapView from "../cell/map";
@@ -13,6 +14,7 @@ const renderCellContents = (cell, dimensions) => {
   const key = cell.uuid;
 
   switch (cell.type) {
+ case "crawlLog":return <CrawlLog key={key} cell={cell}/>;
     case "chart":
       return <ChartView key={key} cell={cell} />;
     case "map":

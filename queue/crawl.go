@@ -7,6 +7,7 @@ import (
 	"github.com/dgraph-io/badger/v3"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
+	"log"
 	"net/url"
 	"strings"
 	"sync"
@@ -33,6 +34,9 @@ type crawlQueue struct {
 	stopped                        chan struct{}
 	startOnce, stopOnce, closeOnce sync.Once
 	dbMu                           sync.RWMutex
+	closed                         bool
+	healthMu                       sync.Mutex
+	lastError                      string
 }
 
 func NewCrawlQueue(p CrawlQueueParams) (Queue, error) {
@@ -107,7 +111,7 @@ func (s *crawlQueue) PutContext(ctx context.Context, msg types.Message, priority
 	if msg.ID == "" {
 		msg.ID = string(types.NewV4())
 	}
-	return s.db.Update(func(txn *badger.Txn) error {
+	return s.update(ctx, func(txn *badger.Txn) error {
 		item, err := txn.Get(key)
 		if err == nil {
 			var old crawlRecord
@@ -140,7 +144,7 @@ func (s *crawlQueue) PutContext(ctx context.Context, msg types.Message, priority
 				if err != nil {
 					return err
 				}
-				return txn.Set(key, data)
+				return s.setRecord(txn, key, data)
 			}
 			if old.State != "completed" || s.params.RecrawlAfter <= 0 || time.Since(time.Unix(0, old.Updated)) < s.params.RecrawlAfter {
 				return nil
@@ -152,14 +156,24 @@ func (s *crawlQueue) PutContext(ctx context.Context, msg types.Message, priority
 		if err != nil {
 			return err
 		}
-		return txn.Set(key, data)
+		return s.setRecord(txn, key, data)
 	})
 }
 func (s *crawlQueue) Prepare() error {
-	return s.db.Update(func(txn *badger.Txn) error {
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+	if s.closed {
+		return badger.ErrDBClosed
+	}
+	prefix := []byte(s.params.CrawlID + "\x00")
+	if err := s.db.DropPrefix(append([]byte("pending\x00"), prefix...)); err != nil {
+		return err
+	}
+	batch := s.db.NewWriteBatch()
+	defer batch.Cancel()
+	err := s.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
 		defer it.Close()
-		prefix := []byte(s.params.CrawlID + "\x00")
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			item := it.Item()
 			var record crawlRecord
@@ -168,15 +182,28 @@ func (s *crawlQueue) Prepare() error {
 			}
 			if record.State == "leased" {
 				record.State = "pending"
-				data, _ := json.Marshal(record)
-				if err := txn.Set(item.KeyCopy(nil), data); err != nil {
+				data, err := json.Marshal(record)
+				if err != nil {
+					return err
+				}
+				if err = batch.Set(item.KeyCopy(nil), data); err != nil {
+					return err
+				}
+			}
+			if record.State == "pending" {
+				if err := batch.Set(s.pendingKey(item.KeyCopy(nil)), nil); err != nil {
 					return err
 				}
 			}
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	return batch.Flush()
 }
+
 func (s *crawlQueue) Start() error {
 	var err error
 	s.startOnce.Do(func() {
@@ -199,22 +226,26 @@ func (s *crawlQueue) perform() {
 		case <-ticker.C:
 		}
 		var next *types.Message
-		err := s.db.Update(func(txn *badger.Txn) error {
+		err := s.update(context.Background(), func(txn *badger.Txn) error {
 			it := txn.NewIterator(badger.DefaultIteratorOptions)
 			defer it.Close()
-			prefix := []byte(s.params.CrawlID + "\x00")
+			prefix := []byte("pending\x00" + s.params.CrawlID + "\x00")
 			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-				item := it.Item()
+				key := append([]byte(s.params.CrawlID+"\x00"), it.Item().Key()[len(prefix):]...)
+				item, err := txn.Get(key)
+				if err != nil {
+					return err
+				}
 				var record crawlRecord
 				if err := item.Value(func(data []byte) error { return json.Unmarshal(data, &record) }); err != nil {
 					return err
 				}
 				if record.State != "pending" {
-					continue
+					return fmt.Errorf("invalid pending index")
 				}
 				record.State = "leased"
 				data, _ := json.Marshal(record)
-				if err := txn.Set(item.KeyCopy(nil), data); err != nil {
+				if err := s.setRecord(txn, key, data); err != nil {
 					return err
 				}
 				next = &record.Message
@@ -223,8 +254,15 @@ func (s *crawlQueue) perform() {
 			return nil
 		})
 		if err != nil {
+			log.Printf("crawl queue %s dispatch failed: %v", s.params.CrawlID, err)
+			s.healthMu.Lock()
+			s.lastError = err.Error()
+			s.healthMu.Unlock()
 			continue
 		}
+		s.healthMu.Lock()
+		s.lastError = ""
+		s.healthMu.Unlock()
 		if next != nil {
 			select {
 			case s.channel <- *next:
@@ -243,7 +281,7 @@ func (s *crawlQueue) Stop() error {
 func (s *crawlQueue) Close() error {
 	s.Stop()
 	var err error
-	s.closeOnce.Do(func() { err = s.db.Close() })
+	s.closeOnce.Do(func() { s.dbMu.Lock(); defer s.dbMu.Unlock(); s.closed = true; err = s.db.Close() })
 	return err
 }
 func (s *crawlQueue) GetChannel() chan types.Message { return s.channel }
@@ -252,7 +290,7 @@ func (s *crawlQueue) EndTransaction(msg types.Message, success bool) error {
 	if err != nil {
 		return err
 	}
-	return s.db.Update(func(txn *badger.Txn) error {
+	return s.update(context.Background(), func(txn *badger.Txn) error {
 		item, err := txn.Get(key)
 		if err != nil {
 			return err
@@ -261,6 +299,10 @@ func (s *crawlQueue) EndTransaction(msg types.Message, success bool) error {
 		if err = item.Value(func(data []byte) error { return json.Unmarshal(data, &record) }); err != nil {
 			return err
 		}
+		if record.Message.ID != msg.ID {
+			return fmt.Errorf("stale crawl acknowledgment")
+		}
+		record.Message.LastError = msg.LastError
 		record.Updated = time.Now().UnixNano()
 		record.State = "completed"
 		var incoming, existing message.FetcherRequest
@@ -282,10 +324,15 @@ func (s *crawlQueue) EndTransaction(msg types.Message, success bool) error {
 			}
 		}
 		data, _ := json.Marshal(record)
-		return txn.Set(key, data)
+		return s.setRecord(txn, key, data)
 	})
 }
 func (s *crawlQueue) Len() int64 {
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+	if s.closed {
+		return -1
+	}
 	var count int64
 	err := s.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
@@ -309,6 +356,11 @@ func (s *crawlQueue) Len() int64 {
 }
 
 func (s *crawlQueue) LoadOutputs(msg types.Message) ([]types.Message, bool, error) {
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+	if s.closed {
+		return nil, false, badger.ErrDBClosed
+	}
 	key, err := s.key(msg)
 	if err != nil {
 		return nil, false, err
@@ -335,10 +387,15 @@ func (s *crawlQueue) SaveOutputs(msg types.Message, outputs []types.Message) err
 	if err != nil {
 		return err
 	}
-	return s.db.Update(func(txn *badger.Txn) error { return txn.Set(append([]byte("outputs\x00"), key...), data) })
+	return s.update(context.Background(), func(txn *badger.Txn) error { return txn.Set(append([]byte("outputs\x00"), key...), data) })
 }
 
 func (s *crawlQueue) ReferencedObjects() ([]types.UUID, error) {
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+	if s.closed {
+		return nil, badger.ErrDBClosed
+	}
 	var result []types.UUID
 	err := s.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
@@ -358,4 +415,50 @@ func (s *crawlQueue) ReferencedObjects() ([]types.UUID, error) {
 		return nil
 	})
 	return result, err
+}
+
+func (s *crawlQueue) pendingKey(key []byte) []byte { return append([]byte("pending\x00"), key...) }
+func (s *crawlQueue) setRecord(txn *badger.Txn, key, data []byte) error {
+	var record crawlRecord
+	if err := json.Unmarshal(data, &record); err != nil {
+		return err
+	}
+	var err error
+	if record.State == "pending" {
+		err = txn.Set(s.pendingKey(key), nil)
+	} else {
+		err = txn.Delete(s.pendingKey(key))
+	}
+	if err != nil {
+		return err
+	}
+	return txn.Set(key, data)
+}
+func (s *crawlQueue) Health() string {
+	s.healthMu.Lock()
+	defer s.healthMu.Unlock()
+	return s.lastError
+}
+
+func (s *crawlQueue) update(ctx context.Context, fn func(*badger.Txn) error) error {
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+	if s.closed {
+		return badger.ErrDBClosed
+	}
+	for attempt := 0; attempt < 16; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := s.db.Update(fn)
+		if err != badger.ErrConflict {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Millisecond):
+		}
+	}
+	return badger.ErrConflict
 }

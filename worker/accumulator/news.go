@@ -1,7 +1,10 @@
 package accumulator
 
 import (
+	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -102,6 +105,9 @@ func NewNewsAccumulator(params NewsAccumulatorParams) worker.Worker {
 }
 
 func (s *newsAccumulator) OnMessage(msg types.Message) (interface{}, error) {
+	return s.OnMessageContext(context.Background(), msg)
+}
+func (s *newsAccumulator) OnMessageContext(ctx context.Context, msg types.Message) (interface{}, error) {
 	var URIs features.URIs
 	composite := message.CompositeAnalysis{}
 
@@ -118,7 +124,9 @@ func (s *newsAccumulator) OnMessage(msg types.Message) (interface{}, error) {
 	}
 
 	urls := s.processUrls(composite, URIs)
-	s.processArticle(composite)
+	if err := s.processArticleContext(ctx, composite); err != nil {
+		return nil, err
+	}
 
 	log.Printf("published %d requests for uri %s", len(urls), composite.URI)
 
@@ -172,27 +180,27 @@ func (s *newsAccumulator) processUrls(composite message.CompositeAnalysis, URIs 
 	return results
 }
 
-func (s *newsAccumulator) processArticle(composite message.CompositeAnalysis) {
+func (s *newsAccumulator) processArticle(composite message.CompositeAnalysis) error {
+	return s.processArticleContext(context.Background(), composite)
+}
+func (s *newsAccumulator) processArticleContext(ctx context.Context, composite message.CompositeAnalysis) error {
 	if composite.Depth == 0 {
-		return
+		return nil
 	}
 
 	msg, err := json.Marshal(composite)
 
 	if err != nil {
-		log.Errorf("failed to serialize message segment for URI: %s", composite.URI)
-		return
+		return err
 	}
 
 	article := types.Message{
-		ID:          string(types.NewV4()),
+		ID:          fmt.Sprintf("%x", sha256.Sum256([]byte("news:"+string(composite.RequestID)+":"+composite.URI))),
 		MessageType: types.CompositeAnalysisType,
 		Message:     json.RawMessage(msg),
 	}
 
-	if err := s.newsQueue.Put(article, 0); err != nil {
-		log.Errorf("Failed to log article: %s", composite.URI)
-	}
+	return queue.PutContext(ctx, s.newsQueue, article, 0)
 }
 
 func (s *newsAccumulator) isValidFormat(composite message.CompositeAnalysis) bool {

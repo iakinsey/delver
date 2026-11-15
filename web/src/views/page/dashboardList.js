@@ -1,6 +1,6 @@
 import React from "react";
 import { templateCells } from "../../templates";
-import { request, hasUserInfo, routeTo } from "../../util";
+import { request, routeTo } from "../../util";
 import { input, btn } from "../../styles/input";
 import { errorText } from "../../styles/err";
 import {
@@ -26,8 +26,7 @@ export default class DashboardList extends React.Component {
   }
   componentDidMount() {
     this.abort = new AbortController();
-    if (hasUserInfo()) this.getDashboards();
-    else routeTo("/login");
+    this.getDashboards();
   }
   componentWillUnmount() {
     this.abort.abort();
@@ -220,9 +219,7 @@ export default class DashboardList extends React.Component {
   }
 
   render() {
-    if (!hasUserInfo()) {
-      return <div></div>;
-    }
+
 
     const dashLogo = Object.assign({}, styles.dashBox, styles.dashItemLogo);
     const dashAdd = Object.assign({}, styles.dashBox, styles.dashItemAdd);

@@ -48,13 +48,23 @@ func Load(path string) (config.Application, error) {
 	return Decode(f)
 }
 func Decode(reader io.Reader) (config.Application, error) {
-	data, err := io.ReadAll(io.LimitReader(reader, 4<<20))
+	data, err := io.ReadAll(io.LimitReader(reader, (4<<20)+1))
 	if err != nil {
 		return config.Application{}, err
 	}
+	if len(data) > 4<<20 {
+		return config.Application{}, fmt.Errorf("configuration exceeds 4 MiB limit")
+	}
 	var raw interface{}
-	if err = json.Unmarshal(data, &raw); err != nil {
+	rawDecoder := json.NewDecoder(bytes.NewReader(data))
+	rawDecoder.UseNumber()
+	if err = rawDecoder.Decode(&raw); err != nil {
 		return config.Application{}, err
+	}
+	stripObsoleteAccountConfig(raw)
+	var trailing interface{}
+	if err := rawDecoder.Decode(&trailing); err != io.EOF {
+		return config.Application{}, fmt.Errorf("configuration must contain one JSON object")
 	}
 	if err = normalizeDurations(raw); err != nil {
 		return config.Application{}, err
@@ -75,6 +85,14 @@ func normalizeDurations(value interface{}) error {
 	switch v := value.(type) {
 	case map[string]interface{}:
 		for key, child := range v {
+			if key == "parameters" {
+				kind, _ := v["type"].(string)
+				switch kind {
+				case "http_fetcher", "composite_extractor", "dfs_basic_accumulator", "news_accumulator", "dfs_basic_publisher", "fixed_seed_publisher", "rss_feed_publisher", "transformer", "jsonl_sink", "file_queue", "channel_queue", "timer", "bloom_filter", "rolling_bloom_filter", "persistent_map", "multi_host_map", "filesystem_object_store", "crawl_queue":
+				default:
+					continue
+				}
+			}
 			switch key {
 			case "timeout", "interval", "delay", "request_delay", "expiration", "clear_expired_delay", "gc_interval", "save_interval", "default_save_interval", "rotate_after", "recrawl_after", "shutdown_timeout":
 				if text, ok := child.(string); ok {
@@ -137,6 +155,9 @@ func Validate(app config.Application) error {
 		if w.Manager == "job" && w.Interval <= 0 {
 			return fmt.Errorf("worker %s requires positive interval", w.Name)
 		}
+		if w.Manager != "job" && resources[w.Inbox].Type == "timer" && knownWorkers[w.Type] && w.Type != "fixed_seed_publisher" && w.Type != "rss_feed_publisher" && w.Type != "dfs_basic_publisher" {
+			return fmt.Errorf("worker %s cannot consume timer messages", w.Name)
+		}
 		if w.Manager != "job" {
 			r, ok := resources[w.Inbox]
 			if !ok || (!isQueue(r.Type) && resourceFactories[r.Type] == nil) {
@@ -145,6 +166,9 @@ func Validate(app config.Application) error {
 		}
 		if w.Outbox != "" {
 			r, ok := resources[w.Outbox]
+			if ok && r.Type == "timer" {
+				return fmt.Errorf("worker %s cannot publish to a timer", w.Name)
+			}
 			if !ok || (!isQueue(r.Type) && resourceFactories[r.Type] == nil) {
 				return fmt.Errorf("worker %s has invalid outbox", w.Name)
 			}
@@ -159,6 +183,16 @@ func isQueue(kind string) bool {
 	return kind == "file_queue" || kind == "channel_queue" || kind == "timer" || kind == "crawl_queue"
 }
 func Run(ctx context.Context, app config.Application) (err error) {
+	var resourcesDone <-chan struct{}
+	if control, ok := ctx.Value(runtimeKey{}).(*runtimeControl); ok && control.resourcesDone != nil {
+		defer func() {
+			if resourcesDone == nil {
+				close(control.resourcesDone)
+			} else {
+				go func() { <-resourcesDone; close(control.resourcesDone) }()
+			}
+		}()
+	}
 	if err = Validate(app); err != nil {
 		return err
 	}
@@ -179,12 +213,14 @@ func Run(ctx context.Context, app config.Application) (err error) {
 	instrument.Stop()
 	defer instrument.Stop()
 	config.Apply(app.Config)
-	gateway.ResetClientStreamer()
+	if ctx.Value(runtimeKey{}) == nil {
+		gateway.ResetClientStreamer()
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	shutdownStarted := false
-	prepared := &preparedApplication{app: app, resources: map[string]interface{}{}, workers: map[string]worker.WorkerManager{}}
+	prepared := &preparedApplication{ctx: ctx, app: app, resources: map[string]interface{}{}, workers: map[string]worker.WorkerManager{}}
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			err = fmt.Errorf("application construction: %v", recovered)
@@ -210,6 +246,13 @@ func Run(ctx context.Context, app config.Application) (err error) {
 	}
 	for _, w := range app.Workers {
 		CreateWorker(w, prepared)
+		if control, ok := ctx.Value(runtimeKey{}).(*runtimeControl); ok && control.log != nil && w.Type == "http_fetcher" {
+			if manager, ok := prepared.workers[w.Name].(interface {
+				SetObserver(func(types.Message, []types.Message, error))
+			}); ok {
+				manager.SetObserver(control.log.record)
+			}
+		}
 	}
 	retained := map[types.UUID]bool{}
 	canReconcile := true
@@ -237,8 +280,13 @@ func Run(ctx context.Context, app config.Application) (err error) {
 		}
 	}
 
-	serviceErrors := make(chan error, 2)
-	server, cleanup, err := api.NewServer(app.Config.API)
+	serviceErrors := make(chan error, len(app.Resources)+2)
+	apiConfig := app.Config.API
+	supervised := ctx.Value(runtimeKey{}) != nil
+	if supervised {
+		apiConfig.Enabled = false
+	}
+	server, cleanup, err := api.NewServer(apiConfig)
 	if err != nil {
 		return err
 	}
@@ -252,7 +300,7 @@ func Run(ctx context.Context, app config.Application) (err error) {
 		defer server.Close()
 	}
 	streamer := gateway.NewClientStreamer()
-	if app.Config.Streamer.Enabled {
+	if app.Config.Streamer.Enabled && !supervised {
 		go func() { serviceErrors <- streamer.Start() }()
 		defer func() {
 			if c, ok := streamer.(io.Closer); ok {
@@ -274,6 +322,22 @@ func Run(ctx context.Context, app config.Application) (err error) {
 				return err
 			}
 			started = append(started, q)
+			if source, ok := q.(interface{ Failures() <-chan error }); ok {
+				go func() {
+					select {
+					case err, open := <-source.Failures():
+						if open && err != nil {
+							serviceErrors <- err
+						}
+					case <-ctx.Done():
+					}
+				}()
+			}
+		}
+	}
+	if control, ok := ctx.Value(runtimeKey{}).(*runtimeControl); ok && control.initialPaused {
+		for _, manager := range prepared.workers {
+			manager.(interface{ Pause(bool) }).Pause(true)
 		}
 	}
 	if app.Config.Workers.Enabled {
@@ -290,6 +354,12 @@ func Run(ctx context.Context, app config.Application) (err error) {
 			}
 		}
 	}
+	if control, ok := ctx.Value(runtimeKey{}).(*runtimeControl); ok {
+		control.mu.Lock()
+		control.prepared = prepared
+		control.mu.Unlock()
+		defer func() { control.mu.Lock(); control.prepared = nil; control.mu.Unlock() }()
+	}
 	var serviceErr error
 	select {
 	case <-ctx.Done():
@@ -303,40 +373,56 @@ func Run(ctx context.Context, app config.Application) (err error) {
 	defer cancelShutdown()
 	done := make(chan struct{})
 	shutdownDone = done
+	resourcesDone = done
+	shutdownErrors := &cleanupErrors{}
 	go func() {
 		var wg sync.WaitGroup
 		for _, m := range prepared.workers {
 			wg.Add(1)
-			go func(m worker.WorkerManager) { defer wg.Done(); m.Stop() }(m)
+			go func(m worker.WorkerManager) {
+				defer wg.Done()
+				shutdownErrors.run("worker", func() error { m.Stop(); return nil })
+			}(m)
 		}
 		wg.Wait()
-		for _, q := range started {
-			q.Stop()
+		if control, ok := ctx.Value(runtimeKey{}).(*runtimeControl); ok {
+			control.mu.Lock()
+			control.prepared = nil
+			control.mu.Unlock()
 		}
-		for _, r := range prepared.resources {
-			if _, ok := r.(queue.Queue); ok {
-				if c, ok := r.(io.Closer); ok {
-					c.Close()
+		for _, q := range started {
+			shutdownErrors.run("queue", q.Stop)
+		}
+		for name, resource := range prepared.resources {
+			if _, ok := resource.(queue.Queue); ok {
+				if closer, ok := resource.(io.Closer); ok {
+					shutdownErrors.run(name, closer.Close)
 				}
 				continue
 			}
-			switch c := r.(type) {
+			switch closer := resource.(type) {
 			case interface{ Close() }:
-				c.Close()
+				shutdownErrors.run(name, func() error { closer.Close(); return nil })
 			case io.Closer:
-				c.Close()
+				shutdownErrors.run(name, closer.Close)
 			}
 		}
 		if server != nil {
-			server.Shutdown(shutdownCtx)
+			shutdownErrors.run("api", func() error { return server.Shutdown(shutdownCtx) })
 		}
-		if c, ok := streamer.(io.Closer); ok {
-			c.Close()
+		if closer, ok := streamer.(io.Closer); ok && !supervised {
+			shutdownErrors.run("streamer", closer.Close)
 		}
 		close(done)
 	}()
 	select {
 	case <-done:
+		if cleanupErr := shutdownErrors.err(); cleanupErr != nil {
+			if serviceErr != nil {
+				return fmt.Errorf("%v; %w", serviceErr, cleanupErr)
+			}
+			return cleanupErr
+		}
 		return serviceErr
 	case <-shutdownCtx.Done():
 		releaseRun = false

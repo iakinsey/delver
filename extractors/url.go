@@ -1,6 +1,7 @@
 package extractors
 
 import (
+	"context"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"golang.org/x/net/html"
@@ -14,6 +15,13 @@ type urlExtractor struct{}
 
 func NewUrlExtractor() Extractor { return &urlExtractor{} }
 func (s *urlExtractor) Perform(f *os.File, c message.CompositeAnalysis) (interface{}, error) {
+	return s.PerformContext(context.Background(), f, c)
+}
+func (s *urlExtractor) PerformContext(ctx context.Context, f *os.File, c message.CompositeAnalysis) (interface{}, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	origin := c.EffectiveURI
 	if origin == "" {
 		origin = c.URI
@@ -22,7 +30,7 @@ func (s *urlExtractor) Perform(f *os.File, c message.CompositeAnalysis) (interfa
 	if err != nil {
 		return nil, err
 	}
-	tokenizer := html.NewTokenizer(f)
+	tokenizer := html.NewTokenizer(contextReader{ctx, f})
 	var refs []string
 	hasBase := false
 	for {
@@ -54,6 +62,9 @@ func (s *urlExtractor) Perform(f *os.File, c message.CompositeAnalysis) (interfa
 	result := features.URIs{}
 	seen := map[string]bool{}
 	for _, ref := range refs {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		u, err := base.Parse(strings.TrimSpace(ref))
 		if err != nil {
 			continue

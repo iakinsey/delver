@@ -20,16 +20,8 @@ export default class Connection {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.ws.close();
-        reject(new Error("Authentication timed out"));
+        reject(new Error("Connection timed out"));
       }, 10000);
-      this.ws.onopen = () =>
-        this.ws.send(
-          JSON.stringify({
-            version: 1,
-            type: "authenticate",
-            token: localStorage.auth,
-          }),
-        );
       this.ws.onmessage = (event) => {
         let msg;
         try {
@@ -37,16 +29,10 @@ export default class Connection {
         } catch {
           return;
         }
-        if (msg.type === "authenticated") {
+        if (msg.type === "ready") {
           clearTimeout(timeout);
           this.connected = true;
           resolve(this.ws);
-        } else if (msg.type === "auth_error") {
-          clearTimeout(timeout);
-          this.intentionalClose = true;
-          reject(new Error("Session expired"));
-          window.dispatchEvent(new Event("session-expired"));
-          this.ws.close();
         } else this.onMessage(msg);
       };
       this.ws.onerror = () => {
@@ -58,7 +44,7 @@ export default class Connection {
         const opened = this.connected;
         this.connected = false;
         if (!opened)
-          reject(new Error("Connection closed before authentication"));
+          reject(new Error("Connection closed before ready"));
         if (!this.intentionalClose) this.onDisconnect?.();
       };
     });

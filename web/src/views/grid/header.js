@@ -87,6 +87,7 @@ export default class GridHeader extends React.Component {
           <div className="classic-add-options">
             {Object.entries({
               entityFeed: "Feed",
+ crawlLog: "Crawl log",
               chart: "Chart",
               map: "Map",
               metric: "Metric",

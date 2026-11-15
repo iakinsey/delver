@@ -69,7 +69,7 @@ func MakeTempFile(name string) *os.File {
 	f, err := os.CreateTemp("", name)
 
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	return f
@@ -79,7 +79,7 @@ func MakeTempFolder(name string) string {
 	path, err := os.MkdirTemp("", name)
 
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	return path

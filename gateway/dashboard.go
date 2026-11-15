@@ -4,10 +4,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/errs"
-	log "github.com/sirupsen/logrus"
 )
 
 var NoDashErr = errs.NewDashError("Dashboard does not exist")
@@ -16,35 +16,34 @@ var createDashboard = `
     CREATE TABLE IF NOT EXISTS dashboard (
         id STRING PRIMARY KEY,
         name STRING NOT NULL,
-        user_id STRING NOT NULL,
         value BLOB NOT NULL,
         description STRING
     )
 `
 
 var getDashboard = `
-    SELECT id, name, user_id, value, description FROM dashboard WHERE id = ?
+    SELECT id, name, value, description FROM dashboard WHERE id = ?
     ORDER BY name asc LIMIT 1
 `
 
 var putDashboard = `
-    REPLACE INTO dashboard (id, name, user_id, value, description) VALUES (?, ?, ?, ?, ?)
+    REPLACE INTO dashboard (id, name, value, description) VALUES (?, ?, ?, ?)
 `
 
 var deleteDashboard = `
     DELETE FROM dashboard WHERE id = ?
 `
 
-var getUserDashboards = `
-    SELECT id, name, user_id, value, description FROM dashboard WHERE user_id = ?
+var getDashboards = `
+    SELECT id, name, value, description FROM dashboard ORDER BY name, id
 `
 
 type DashboardGateway interface {
-	EnsureDefault(string) error
+	EnsureDefault() error
 	Put(dash types.Dashboard) error
 	Get(dashID string) (*types.Dashboard, error)
 	Delete(dashID string) error
-	List(userID string) ([]types.Dashboard, error)
+	List() ([]types.Dashboard, error)
 }
 
 type dashboardGateway struct {
@@ -52,36 +51,28 @@ type dashboardGateway struct {
 }
 
 func NewDashboardGateway(path string) DashboardGateway {
-	db, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?_busy_timeout=5000", path))
-
+	gateway, err := OpenDashboardGateway(path)
 	if err != nil {
-		log.Fatalf("failed to open dashboard sqlite database %s", err)
+		panic(err)
 	}
-
-	g := &dashboardGateway{
-		db: db,
-	}
-
-	g.setupDashDb()
-	if _, err := db.Exec("CREATE TABLE IF NOT EXISTS dashboard_defaults (user_id TEXT PRIMARY KEY, dashboard_id TEXT NOT NULL)"); err != nil {
-		log.Fatalf("default dashboard schema: %v", err)
-	}
-
-	return g
+	return gateway
 }
-
-func (s *dashboardGateway) setupDashDb() {
-	if _, err := s.db.Exec(createDashboard); err != nil {
-		log.Fatalf("failed to setup dashboard database: %s", err)
+func OpenDashboardGateway(path string) (DashboardGateway, error) {
+	db, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?_busy_timeout=5000", path))
+	if err != nil {
+		return nil, err
 	}
+	if err := migrateDashboard(db); err != nil {
+		db.Close()
+		return nil, err
+	}
+
+	return &dashboardGateway{db: db}, nil
 }
 
 func (s *dashboardGateway) Put(d types.Dashboard) error {
-	if err := s.isAuthorized(d.UserID, d.ID); err != nil {
-		return err
-	}
 
-	_, err := s.db.Exec(putDashboard, d.ID, d.Name, d.UserID, d.Value, d.Description)
+	_, err := s.db.Exec(putDashboard, d.ID, d.Name, d.Value, d.Description)
 
 	return err
 }
@@ -96,7 +87,7 @@ func (s *dashboardGateway) Get(dashID string) (*types.Dashboard, error) {
 	d := &types.Dashboard{}
 	var val []byte
 
-	if err := row.Scan(&d.ID, &d.Name, &d.UserID, &val, &d.Description); err != nil {
+	if err := row.Scan(&d.ID, &d.Name, &val, &d.Description); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, NoDashErr
 		}
@@ -121,8 +112,8 @@ func (s *dashboardGateway) Delete(dashID string) error {
 	return err
 }
 
-func (s *dashboardGateway) List(userID string) ([]types.Dashboard, error) {
-	rows, err := s.db.Query(getUserDashboards, userID)
+func (s *dashboardGateway) List() ([]types.Dashboard, error) {
+	rows, err := s.db.Query(getDashboards)
 
 	if err != nil {
 		return nil, err
@@ -135,7 +126,7 @@ func (s *dashboardGateway) List(userID string) ([]types.Dashboard, error) {
 		d := types.Dashboard{}
 		var val []byte
 
-		if err := rows.Scan(&d.ID, &d.Name, &d.UserID, &val, &d.Description); err != nil {
+		if err := rows.Scan(&d.ID, &d.Name, &val, &d.Description); err != nil {
 			return nil, err
 		}
 
@@ -147,18 +138,6 @@ func (s *dashboardGateway) List(userID string) ([]types.Dashboard, error) {
 	}
 
 	return result, rows.Err()
-}
-
-func (s *dashboardGateway) isAuthorized(userID, dashID string) error {
-	if dash, err := s.Get(dashID); errors.Is(err, NoDashErr) {
-		return nil
-	} else if err != nil {
-		return err
-	} else if dash.UserID != userID {
-		return errs.NewAuthError("Unauthorized")
-	}
-
-	return nil
 }
 
 func (s *dashboardGateway) Close() error { return s.db.Close() }

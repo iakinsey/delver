@@ -16,6 +16,7 @@ import (
 	"github.com/iakinsey/delver/worker/fetcher"
 	"github.com/iakinsey/delver/worker/publisher"
 	"github.com/iakinsey/delver/worker/transformer"
+	"net"
 	"net/url"
 	"path/filepath"
 	"reflect"
@@ -37,6 +38,17 @@ func validateParameters(app config.Application, resources map[string]config.Reso
 	}
 	if http.Timeout <= 0 || (http.MaxRetries < 0 || http.MaxRetries > 10) || http.MaxResponseBytes < 1 || http.PerOriginConcurrency < 1 || http.RequestDelay < 0 {
 		return fmt.Errorf("invalid HTTP client limits")
+	}
+	if http.HTTPProxyUrl != "" {
+		proxy, err := url.Parse(http.HTTPProxyUrl)
+		if err != nil || proxy.Hostname() == "" || (proxy.Scheme != "http" && proxy.Scheme != "https") {
+			return fmt.Errorf("invalid HTTP proxy URL")
+		}
+	}
+	if http.Socks5Url != "" {
+		if _, _, err := net.SplitHostPort(http.Socks5Url); err != nil {
+			return fmt.Errorf("invalid SOCKS5 proxy address")
+		}
 	}
 	paths := map[string]string{}
 	for _, r := range app.Resources {
@@ -172,6 +184,9 @@ func validateParameters(app config.Application, resources map[string]config.Reso
 			if !ok {
 				return fmt.Errorf("worker %s references missing resource %s", w.Name, name)
 			}
+			if resource.Type == "timer" {
+				return fmt.Errorf("worker %s cannot publish through timer resource %s", w.Name, name)
+			}
 			var resourceType reflect.Type
 			switch resource.Type {
 			case "file_queue", "channel_queue", "crawl_queue", "timer":
@@ -203,6 +218,27 @@ func validateParameters(app config.Application, resources map[string]config.Reso
 					return fmt.Errorf("worker %s invalid seed URL %s", w.Name, uri)
 				}
 			}
+		case *publisher.RssFeedPublisherParams:
+			for _, uri := range params.Uris {
+				parsed, err := url.Parse(uri)
+				if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+					return fmt.Errorf("worker %s invalid feed URL", w.Name)
+				}
+			}
+		case *publisher.DfsBasicPublisherParams:
+			if params.UrlStorePath == "" || params.RotateAfter < 0 {
+				return fmt.Errorf("worker %s invalid DFS publisher path or rotation", w.Name)
+			}
+		case *accumulator.NewsAccumulatorParams:
+			if params.MaxDepth < 0 {
+				return fmt.Errorf("worker %s negative depth", w.Name)
+			}
+		case *transformer.TransformerParams:
+			for _, enabled := range params.Enabled {
+				if enabled != "composite" && enabled != "metric" {
+					return fmt.Errorf("worker %s unknown transformer %s", w.Name, enabled)
+				}
+			}
 		case *accumulator.DfsBasicAccumulatorParams:
 			if params.MaxDepth < 0 {
 				return fmt.Errorf("worker %s negative depth", w.Name)
@@ -211,7 +247,13 @@ func validateParameters(app config.Application, resources map[string]config.Reso
 		if w.Type != "transformer" && w.Type != "jsonl_sink" && w.Type != "dfs_basic_publisher" && w.Outbox == "" {
 			return fmt.Errorf("worker %s requires an outbox", w.Name)
 		}
+		if p, ok := target.(*publisher.RssFeedPublisherParams); ok && p.MaxConcurrency < 0 {
+			return fmt.Errorf("worker %s max_concurrency must be nonnegative", w.Name)
+		}
 		if p, ok := target.(*extractor.CompositeArgs); ok {
+			if p.Timeout < 0 {
+				return fmt.Errorf("worker %s timeout must be nonnegative", w.Name)
+			}
 			names := map[string]bool{}
 			known := map[string][]string{"url": nil, "text": nil, "title": nil, "language": {"text"}, "sentiment": {"language", "title"}, "country": {"text"}, "company_name": {"text"}, "adversarial": {"url"}, "ngram": {"text"}}
 			for _, name := range p.Enabled {

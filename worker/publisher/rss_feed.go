@@ -1,7 +1,13 @@
 package publisher
 
 import (
+	"context"
+	"fmt"
+	"github.com/iakinsey/delver/config"
+	"io"
+	"net/http"
 	"net/url"
+	"sync"
 
 	log "github.com/sirupsen/logrus"
 
@@ -13,56 +19,119 @@ import (
 )
 
 type rssFeedPublisher struct {
-	uris   []string
-	client util.DelverHTTPClient
+	concurrency int
+	uris        []string
+	client      util.DelverHTTPClient
+	healthMu    sync.Mutex
+	failures    map[string]string
 }
 
 type RssFeedPublisherParams struct {
-	Uris []string `json:"uris"`
+	MaxConcurrency int      `json:"max_concurrency"`
+	Uris           []string `json:"uris"`
 }
 
 func NewRssFeedPublisher(params RssFeedPublisherParams) worker.Worker {
 	return &rssFeedPublisher{
-		uris:   params.Uris,
-		client: util.NewHTTPClient(),
+		uris:        params.Uris,
+		concurrency: params.MaxConcurrency,
+		client:      util.NewHTTPClient(),
 	}
 }
 
 func (s *rssFeedPublisher) OnMessage(msg types.Message) (interface{}, error) {
-	// TODO filter out pages already seen
+	return s.OnMessageContext(context.Background(), msg)
+}
+
+func (s *rssFeedPublisher) OnMessageContext(ctx context.Context, msg types.Message) (interface{}, error) {
 	var messages []interface{}
 	done := make(chan []interface{}, len(s.uris))
-
+	concurrency := s.concurrency
+	if concurrency <= 0 {
+		concurrency = 8
+	}
+	slots := make(chan struct{}, concurrency)
+	var active sync.WaitGroup
 	for _, uri := range s.uris {
-		go s.getRssUrls(uri, done)
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+			active.Wait()
+			return nil, ctx.Err()
+		}
+		active.Add(1)
+		go func(uri string) {
+			defer active.Done()
+			defer func() { <-slots }()
+			s.getRssUrlsContext(ctx, uri, done)
+		}(uri)
 	}
-
-	for i := 0; i < len(s.uris); i++ {
-		messages = append(messages, <-done...)
+	active.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
-
-	log.Infof("published %d requests from RSS feeds", len(messages))
-
-	return types.MultiMessage{
-		Values: messages,
-	}, nil
+	close(done)
+	for batch := range done {
+		messages = append(messages, batch...)
+	}
+	return types.MultiMessage{Values: messages}, nil
 }
 
 func (s *rssFeedPublisher) getRssUrls(feedUri string, done chan []interface{}) {
+	s.getRssUrlsContext(context.Background(), feedUri, done)
+}
+
+func (s *rssFeedPublisher) getRssUrlsContext(ctx context.Context, feedUri string, done chan []interface{}) {
 	var result []interface{}
-	res, err := s.client.Perform(feedUri)
+	var failure error
+	defer func() {
+		s.healthMu.Lock()
+		defer s.healthMu.Unlock()
+		if s.failures == nil {
+			s.failures = map[string]string{}
+		}
+		if failure != nil {
+			s.failures[feedUri] = failure.Error()
+		} else {
+			delete(s.failures, feedUri)
+		}
+	}()
+	var res *http.Response
+	var err error
+	if client, ok := s.client.(interface {
+		PerformContext(context.Context, string) (*http.Response, error)
+	}); ok {
+		res, err = client.PerformContext(ctx, feedUri)
+	} else {
+		res, err = s.client.Perform(feedUri)
+	}
+	if err == nil && (res == nil || res.Body == nil) {
+		err = fmt.Errorf("empty feed response")
+	}
 
 	if err != nil {
+		failure = err
 		log.Errorf("failed to perform http request: %s", err)
 		done <- result
 		return
 	}
 
 	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		failure = fmt.Errorf("HTTP %d", res.StatusCode)
+		log.Errorf("feed %s returned HTTP %d", feedUri, res.StatusCode)
+		done <- result
+		return
+	}
 	parser := gofeed.NewParser()
-	feed, err := parser.Parse(res.Body)
+	limit := config.Get().HTTPClient.MaxResponseBytes
+	if limit <= 0 {
+		limit = 16 << 20
+	}
+	feed, err := parser.Parse(&feedBody{ctx: ctx, reader: res.Body, remaining: limit})
 
 	if err != nil {
+		failure = err
 		log.Errorf("failed to parse RSS feed: %s", err)
 		done <- result
 		return
@@ -76,7 +145,7 @@ func (s *rssFeedPublisher) getRssUrls(feedUri string, done chan []interface{}) {
 		for _, uri := range util.DedupeStrSlice(links) {
 			meta, err := url.Parse(uri)
 
-			if err != nil {
+			if err != nil || meta.Host == "" || (meta.Scheme != "http" && meta.Scheme != "https") {
 				log.Errorf("failed to parse url: %s for feed %s", uri, feedUri)
 				continue
 			}
@@ -95,3 +164,38 @@ func (s *rssFeedPublisher) getRssUrls(feedUri string, done chan []interface{}) {
 }
 
 func (s *rssFeedPublisher) OnComplete() {}
+
+func (s *rssFeedPublisher) Health() string {
+	s.healthMu.Lock()
+	defer s.healthMu.Unlock()
+	if len(s.failures) == 0 {
+		return ""
+	}
+	return fmt.Sprint(s.failures)
+}
+
+type feedBody struct {
+	ctx       context.Context
+	reader    io.Reader
+	remaining int64
+}
+
+func (r *feedBody) Read(buffer []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	if r.remaining == 0 {
+		var probe [1]byte
+		n, err := r.reader.Read(probe[:])
+		if n > 0 {
+			return 0, fmt.Errorf("feed exceeds configured response-size limit")
+		}
+		return n, err
+	}
+	if int64(len(buffer)) > r.remaining {
+		buffer = buffer[:r.remaining]
+	}
+	n, err := r.reader.Read(buffer)
+	r.remaining -= int64(n)
+	return n, err
+}

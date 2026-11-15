@@ -38,3 +38,8 @@ func (s *jobManager) Stop() {
 	s.timer.Stop()
 	s.manager.Stop()
 }
+
+func (s *jobManager) Pause(value bool) { s.manager.(interface{ Pause(bool) }).Pause(value) }
+func (s *jobManager) Activity() Activity {
+	return s.manager.(interface{ Activity() Activity }).Activity()
+}

@@ -5,6 +5,7 @@ import (
 )
 
 type Message struct {
+	LastError   string          `json:"last_error,omitempty"`
 	DeliveryID  string          `json:"-"`
 	Attempts    int             `json:"attempts,omitempty"`
 	ID          string          `json:"id"`

@@ -21,7 +21,6 @@ require (
 	github.com/twmb/murmur3 v1.1.6
 	github.com/xitongsys/parquet-go v1.6.2
 	github.com/xitongsys/parquet-go-source v0.0.0-20200817004010-026bad9b25d0
-	golang.org/x/crypto v0.0.0-20220525230936-793ad666bf5e
 	golang.org/x/net v0.0.0-20220622184535-263ec571b305
 	golang.org/x/text v0.3.7
 )

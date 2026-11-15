@@ -31,29 +31,7 @@ export function routeTo(url) {
   window.location.href = url;
 }
 
-export function getUserInfo() {
-  return {
-    email: localStorage.email,
-    ...(localStorage.auth && !["user/create", "user/authenticate"].includes(url)
-      ? { auth: localStorage.auth }
-      : {}),
-  };
-}
-export function setUserInfo(email, auth) {
-  localStorage.email = email;
-  localStorage.auth = auth;
-}
-
-export function hasUserInfo() {
-  return localStorage.email && localStorage.auth;
-}
-
 export async function request(url, data, options = {}) {
-  if (!hasUserInfo() && !["user/create", "user/authenticate"].includes(url)) {
-    routeTo("/login");
-    return { success: false, error: "Authentication required" };
-  }
-
   const requestUrl = `${API_SERVER}/${url}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
@@ -68,21 +46,11 @@ export async function request(url, data, options = {}) {
       body: JSON.stringify(data),
       headers: {
         "Content-Type": "application/json",
-        ...(localStorage.auth &&
-        !["user/create", "user/authenticate"].includes(url)
-          ? { auth: localStorage.auth }
-          : {}),
+
       },
     });
 
     const result = await response.json();
-    if (
-      response.status === 401 ||
-      (result.http_code === 2 &&
-        !["user/create", "user/authenticate"].includes(url)) ||
-      /session expired|invalid token/i.test(result.error || "")
-    )
-      window.dispatchEvent(new Event("session-expired"));
     return result;
   } catch (error) {
     return {
@@ -93,14 +61,6 @@ export async function request(url, data, options = {}) {
     clearTimeout(timeout);
     options.signal?.removeEventListener("abort", forwardAbort);
   }
-}
-
-export async function logout() {
-  await request("user/logout", {});
-  delete localStorage.email;
-  delete localStorage.auth;
-
-  routeTo("/");
 }
 
 export function getDateQueryString(d) {

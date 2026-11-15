@@ -12,23 +12,16 @@ import (
 	"github.com/iakinsey/delver/api/controller"
 	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/gateway"
-	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/errs"
-	"github.com/iakinsey/delver/util"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
 
 var corsHeaders = map[string]string{
-	"Access-Control-Allow-Origin":      "*",
-	"Access-Control-Allow-Headers":     "*",
-	"Access-Control-Allow-Credentials": "true",
-	"Access-Control-Allow-Methods":     "GET, POST, OPTIONS",
-	"Access-Control-Max-Age":           "1728000",
-}
-var noAuthWhitelist = []string{
-	"/user/create",
-	"/user/authenticate",
+	"Access-Control-Allow-Origin":  "*",
+	"Access-Control-Allow-Headers": "*",
+	"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+	"Access-Control-Max-Age":       "1728000",
 }
 
 type Controller func(context.Context, json.RawMessage) (interface{}, error)
@@ -53,68 +46,60 @@ func StartHTTPServer() {
 		log.Error(err)
 	}
 }
+
+type Operations interface {
+	Handle(context.Context, string, json.RawMessage) (interface{}, error)
+}
+
 func NewServer(conf config.APIConfig) (*http.Server, func(), error) {
+	return NewServerWithOperations(conf, nil)
+}
+func NewServerWithOperations(conf config.APIConfig, operations Operations) (*http.Server, func(), error) {
 	if !conf.Enabled {
 		return nil, func() {}, nil
 	}
-	for _, path := range []string{conf.UserDBPath, conf.DashDBPath} {
-		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-			return nil, nil, err
+	if err := os.MkdirAll(filepath.Dir(conf.DashDBPath), 0700); err != nil {
+		return nil, nil, err
+	}
+	dash, err := gateway.OpenDashboardGateway(conf.DashDBPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	routes := routesWithDashboard(dash)
+
+	if operations != nil {
+		for _, name := range []string{"status", "draft", "validate", "command", "operations", "failed", "log"} {
+			action := name
+			routes["/crawler/"+action] = func(ctx context.Context, raw json.RawMessage) (interface{}, error) {
+
+				return operations.Handle(ctx, action, raw)
+			}
 		}
 	}
-	user := gateway.NewUserGateway(conf.UserDBPath)
-	dash := gateway.NewDashboardGateway(conf.DashDBPath)
-	routes := routesWithGateways(user, dash)
 	handler := http.NewServeMux()
 	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		h := requestHandler{user: user, conf: conf, routes: routes, req: r, resp: w}
+		h := requestHandler{conf: conf, routes: routes, req: r, resp: w}
 		h.Perform()
 	})
 	cleanup := func() {
-		if c, ok := user.(io.Closer); ok {
-			c.Close()
-		}
-		if c, ok := dash.(io.Closer); ok {
-			c.Close()
+		if closer, ok := dash.(io.Closer); ok {
+			closer.Close()
 		}
 	}
-	ids, err := user.ListIDs()
-	if err != nil {
+	if err := dash.EnsureDefault(); err != nil {
 		cleanup()
 		return nil, nil, err
 	}
-	for _, id := range ids {
-		if err := dash.EnsureDefault(id); err != nil {
-			cleanup()
-			return nil, nil, err
-		}
-	}
+
 	return &http.Server{Addr: conf.Address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second}, cleanup, nil
 }
 
-func getRoutes(conf config.APIConfig, user gateway.UserGateway) map[string]Controller {
-	return routesWithGateways(user, gateway.NewDashboardGateway(conf.DashDBPath))
-}
-func routesWithGateways(user gateway.UserGateway, dashboard gateway.DashboardGateway) map[string]Controller {
-	routes := make(map[string]Controller)
+func routesWithDashboard(dashboard gateway.DashboardGateway) map[string]Controller {
 	dash := controller.NewDashboardController(dashboard)
-	auth := controller.NewAuthController(user, dashboard)
-
-	routes["/dashboard/save"] = dash.Save
-	routes["/dashboard/load"] = dash.Load
-	routes["/dashboard/delete"] = dash.Delete
-	routes["/dashboard/list"] = dash.List
-	routes["/user/create"] = auth.CreateUser
-	routes["/user/delete"] = auth.DeleteUser
-	routes["/user/authenticate"] = auth.Authenticate
-	routes["/user/change_password"] = auth.ChangePassword
-	routes["/user/logout"] = auth.Logout
-
-	return routes
+	return map[string]Controller{"/dashboard/save": dash.Save, "/dashboard/load": dash.Load, "/dashboard/delete": dash.Delete, "/dashboard/list": dash.List}
 }
 
 type requestHandler struct {
-	user   gateway.UserGateway
 	conf   config.APIConfig
 	routes map[string]Controller
 	req    *http.Request
@@ -139,12 +124,11 @@ func (s *requestHandler) handle() (interface{}, error) {
 		return nil, nil
 	}
 
-	ctx, err := s.getAuthContext()
+	ctx := s.req.Context()
 
-	if err != nil {
-		return nil, err
+	if len(s.req.URL.Path) >= 9 && s.req.URL.Path[:9] == "/crawler/" && s.req.Method != http.MethodPost {
+		return nil, errs.NewRequestError("POST required")
 	}
-
 	c, ok := s.routes[s.req.URL.Path]
 
 	if !ok {
@@ -168,36 +152,6 @@ func (s *requestHandler) handle() (interface{}, error) {
 	}
 
 	return c(ctx, req)
-}
-
-func (s *requestHandler) getAuthContext() (context.Context, error) {
-	parent := s.req.Context()
-	path := s.req.URL.Path
-	auth := s.req.Header.Get(string(types.AuthHeader))
-
-	// If the route doesn't require auth and no header is set then
-	// return the parent context
-	if auth == "" && util.StringInSlice(path, noAuthWhitelist) {
-		return parent, nil
-	}
-
-	t, err := s.user.ValidateToken(auth)
-
-	if err != nil {
-		return nil, err
-	}
-
-	u, err := s.user.Get(t.UserID)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return context.WithValue(
-		context.WithValue(parent, types.AuthHeader, t),
-		types.UserHeader,
-		u,
-	), nil
 }
 
 func (s *requestHandler) respondSuccess(resp interface{}) {

@@ -1,7 +1,9 @@
 package extractors
 
 import (
+	"context"
 	"os"
+	"strings"
 
 	"github.com/pkg/errors"
 
@@ -32,6 +34,13 @@ func NewCountryExtractor() Extractor {
 }
 
 func (s *countryExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
+	return s.PerformContext(context.Background(), f, composite)
+}
+func (s *countryExtractor) PerformContext(ctx context.Context, f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	var results []string
 	var textContent string
 
@@ -40,11 +49,17 @@ func (s *countryExtractor) Perform(f *os.File, composite message.CompositeAnalys
 	}
 
 	for iso3166Alpha3, regex := range s.countries {
-		if r := regex.Find([]byte(textContent)); r != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if r := regex.FindReaderIndex(contextRuneReader{ctx, strings.NewReader(textContent)}); r != nil {
 			results = append(results, iso3166Alpha3)
 		}
 	}
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return features.Countries(util.DedupeStrSlice(results)), nil
 }
 

@@ -156,6 +156,13 @@ func (s *searchGateway) Index(indexable *types.Indexable) error {
 }
 
 func (s *searchGateway) Declare(index types.Index) {
+	if err := s.DeclareContext(context.Background(), index); err != nil {
+		log.Panic(err)
+	}
+}
+func (s *searchGateway) DeclareContext(parent context.Context, index types.Index) error {
+	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
+	defer cancel()
 	request := esapi.IndicesCreateRequest{
 		Index:  index.Name,
 		Human:  true,
@@ -163,19 +170,25 @@ func (s *searchGateway) Declare(index types.Index) {
 		Body:   strings.NewReader(index.Spec),
 	}
 
-	res, err := request.Do(context.Background(), s.client)
+	res, err := request.Do(ctx, s.client)
 	if err != nil {
-		log.Panicf("failed to create index %s: %s", index.Name, err)
+		return errors.Wrapf(err, "failed to create index %s", index.Name)
 	}
 	defer res.Body.Close()
 	if res.StatusCode == 400 && strings.Contains(res.String(), indexExist) {
-		return
+		return nil
 	} else if res.StatusCode >= 300 {
-		log.Panicf("failed to create index %s (code %d): %s", index.Name, res.StatusCode, res.String())
+		return fmt.Errorf("failed to create index %s (code %d): %s", index.Name, res.StatusCode, res.String())
 	}
+	return nil
 }
 
 func (s *searchGateway) IndexMany(entities []*types.Indexable) error {
+	return s.IndexManyContext(context.Background(), entities)
+}
+func (s *searchGateway) IndexManyContext(parent context.Context, entities []*types.Indexable) error {
+	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
+	defer cancel()
 	if len(entities) == 0 {
 		return nil
 	}
@@ -189,7 +202,7 @@ func (s *searchGateway) IndexMany(entities []*types.Indexable) error {
 			return err
 		}
 	}
-	res, err := s.client.Bulk(&body)
+	res, err := s.client.Bulk(&body, s.client.Bulk.WithContext(ctx))
 	if err != nil {
 		return err
 	}

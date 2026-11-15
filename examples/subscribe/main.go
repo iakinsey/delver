@@ -47,15 +47,12 @@ func run(address, filters string, count int, timeout time.Duration) error {
 		return err
 	}
 	defer conn.Close()
-	if err := websocket.JSON.Send(conn, map[string]interface{}{"version": 1, "type": "authenticate", "token": os.Getenv("DELVER_AUTH_TOKEN")}); err != nil {
-		return err
-	}
 	var ack map[string]interface{}
 	if err := websocket.JSON.Receive(conn, &ack); err != nil {
 		return err
 	}
-	if ack["type"] != "authenticated" {
-		return fmt.Errorf("authentication failed")
+	if ack["type"] != "ready" {
+		return fmt.Errorf("connection not ready")
 	}
 	for i, fp := range validated {
 		if err := websocket.JSON.Send(conn, map[string]interface{}{"version": 1, "type": "subscribe", "id": fmt.Sprint(i), "filter": fp}); err != nil {

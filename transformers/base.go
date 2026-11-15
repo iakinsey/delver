@@ -1,6 +1,7 @@
 package transformers
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/iakinsey/delver/queue"
@@ -30,6 +31,9 @@ func GetTransformer(name string) Transformer {
 }
 
 func Send(q queue.Queue, id string, msgType types.MessageType, data interface{}) error {
+	return SendContext(context.Background(), q, id, msgType, data)
+}
+func SendContext(ctx context.Context, q queue.Queue, id string, msgType types.MessageType, data interface{}) error {
 	if q == nil {
 		return nil
 	}
@@ -51,7 +55,7 @@ func Send(q queue.Queue, id string, msgType types.MessageType, data interface{})
 	}
 
 	return errors.Wrap(
-		q.Put(transformerMsg, 0),
+		queue.PutContext(ctx, q, transformerMsg, 0),
 		"failed to send transformer message",
 	)
 

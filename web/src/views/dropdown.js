@@ -1,5 +1,5 @@
 import React from 'react';
-import { routeTo, hasUserInfo } from '../util'
+import { routeTo } from '../util'
 
 
 function handleChange(e) {
@@ -7,26 +7,11 @@ function handleChange(e) {
 }
 
 export default function Dropdown() {
-    const loggedIn = hasUserInfo()
-
-    const loggedInValues = [
-        <option key="changePw" value="/changePassword">Change Password</option>,
-        <option key="dash" value="/dashboards">Dashboards</option>,
-        <option key="logout" value="/logout">Logout</option>
-    ]
-
-    const loggedOutValues = [
-        <option key="login" value="/login">Login</option>,
-        <option key="register" value="/register">Register</option>
-    ]
- 
     return (
         <select aria-label="Settings" onChange={handleChange} value="" name="Settings" style={dropdown}>
             <option style={{display: "none"}}></option>
             <option value="/help">Help</option>
-            {loggedIn 
-                ? loggedInValues
-                : loggedOutValues}
+            <option value="/crawler">Crawler</option><option value="/dashboards">Dashboards</option>
         </select>
     ) 
 }

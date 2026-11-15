@@ -104,15 +104,9 @@ func (s *clientStreamer) Start() error {
 		return err
 	}
 
-	authGateway := NewUserGateway(config.Get().API.UserDBPath)
-	defer func() {
-		if closer, ok := authGateway.(interface{ Close() error }); ok {
-			closer.Close()
-		}
-	}()
 	handler.Handle("/", websocket.Server{Handshake: func(c *websocket.Config, r *http.Request) error {
 		return validateStreamOrigin(r, conf.AllowedOrigins)
-	}, Handler: func(conn *websocket.Conn) { s.serveSession(conn, authGateway) }})
+	}, Handler: func(conn *websocket.Conn) { s.serveSession(conn) }})
 
 	log.Infof("streamer server listening on %s", conf.Address)
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
@@ -266,8 +260,6 @@ func (s *clientStreamer) Preload(c client) error {
 	return nil
 }
 
-// TODO modify this function to perform the apply transforms mechanism
-// Then make sure both stream and search paths go through it
 func (s *clientStreamer) send(c client, entities []json.RawMessage, aggPreflight bool, preload ...bool) error {
 	s.sendMutex.Lock()
 	defer s.sendMutex.Unlock()

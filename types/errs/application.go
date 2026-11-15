@@ -4,7 +4,7 @@ const (
 	InternalError = -1 + iota
 	BaseError
 	RequestError
-	AuthError
+	_
 	DashError
 	StreamError
 )
@@ -31,13 +31,6 @@ func IsApplicationError(code int, err error) bool {
 
 }
 
-func NewAuthError(msg string) error {
-	return &ApplicationError{
-		Code: AuthError,
-		Msg:  msg,
-	}
-}
-
 func NewDashError(msg string) error {
 	return &ApplicationError{
 		Code: DashError,
@@ -57,10 +50,6 @@ func NewStreamError(msg string) error {
 		Code: StreamError,
 		Msg:  msg,
 	}
-}
-
-func IsAuthError(err error) bool {
-	return IsApplicationError(AuthError, err)
 }
 
 func IsDashError(err error) bool {

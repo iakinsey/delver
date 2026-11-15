@@ -33,14 +33,16 @@ const identifierRegex = `^\d+-\d+-\d+-` + nameRegex + "$"
 var errQueueEmpty = errors.New("queue is empty")
 
 type fileQueue struct {
-	putLock      sync.Mutex
-	lockFile     *os.File
-	maxAttempts  int
-	name         string
-	path         string
-	dlqPath      string
-	maxPollDelay time.Duration
-	// TODO
+	failures       chan error
+	healthMu       sync.Mutex
+	lastError      string
+	putLock        sync.Mutex
+	lockFile       *os.File
+	maxAttempts    int
+	name           string
+	path           string
+	dlqPath        string
+	maxPollDelay   time.Duration
 	maxSize        int
 	channel        chan types.Message
 	terminate      chan bool
@@ -91,7 +93,7 @@ func NewFileQueue(params FileQueueParams) Queue {
 		panic(err)
 	}
 
-	return &fileQueue{
+	return &fileQueue{failures: make(chan error, 1),
 		name:           params.Name,
 		maxAttempts:    params.MaxAttempts,
 		path:           params.Path,
@@ -215,6 +217,11 @@ func (s *fileQueue) Put(message types.Message, priority int) error {
 }
 
 func (s *fileQueue) Prepare() error {
+	s.putLock.Lock()
+	defer s.putLock.Unlock()
+	if err := s.restoreReplays(); err != nil {
+		return err
+	}
 	if !s.reset {
 		return nil
 	}
@@ -260,6 +267,13 @@ func (s *fileQueue) EndTransaction(message types.Message, success bool) error {
 
 	message.Attempts++
 	if s.maxAttempts > 0 && message.Attempts >= s.maxAttempts {
+		payload, err := json.Marshal(message)
+		if err != nil {
+			return err
+		}
+		if err = os.WriteFile(messagePath, payload, 0600); err != nil {
+			return err
+		}
 		if err := os.Rename(messagePath, filepath.Join(s.dlqPath, delivery)); err != nil {
 			return err
 		}
@@ -297,6 +311,7 @@ func (s *fileQueue) Len() int64 {
 }
 
 func (s *fileQueue) perform() {
+	defer close(s.failures)
 	defer close(s.terminated)
 	defer func() {
 		if s.lockFile != nil {
@@ -318,9 +333,14 @@ func (s *fileQueue) perform() {
 
 			if err == errQueueEmpty {
 				continue
-			} else if err != nil && !s.resilient {
-				panic(err)
 			} else if err != nil {
+				s.healthMu.Lock()
+				s.lastError = err.Error()
+				s.healthMu.Unlock()
+				if !s.resilient {
+					s.failures <- err
+					return
+				}
 				log.Error(err)
 			} else if message == nil && !s.resilient {
 				log.Errorf("Queue %s got nil message", s.name)
@@ -341,7 +361,8 @@ func (s *fileQueue) perform() {
 }
 
 func (s *fileQueue) next() (*types.Message, error) {
-	// TODO regex filter results
+	s.putLock.Lock()
+	defer s.putLock.Unlock()
 	files, err := util.ReadDirAlphabetized(s.path)
 	sortQueueFiles(files)
 
@@ -490,3 +511,6 @@ func (s *fileQueue) ReferencedObjects() ([]types.UUID, error) {
 	}
 	return result, nil
 }
+
+func (s *fileQueue) Health() string         { s.healthMu.Lock(); defer s.healthMu.Unlock(); return s.lastError }
+func (s *fileQueue) Failures() <-chan error { return s.failures }

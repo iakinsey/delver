@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 
 	"github.com/iakinsey/delver/util"
 	"github.com/pkg/errors"
@@ -13,7 +14,6 @@ import (
 
 type multiHostMap struct {
 	basePath string
-	mapLock  util.KeyedMutex
 }
 
 type MultiHostMapParams struct {
@@ -26,7 +26,6 @@ func NewMultiHostMap(params MultiHostMapParams) Map {
 	}
 	m := &multiHostMap{
 		basePath: params.BasePath,
-		mapLock:  *util.NewKeyedMutex(),
 	}
 
 	return m
@@ -88,15 +87,18 @@ func (s *multiHostMap) Iter(fn func([]byte, []byte) error) error {
 		if !entry.IsDir() {
 			continue
 		}
-		host, err := base64.URLEncoding.DecodeString(entry.Name())
+		_, err := base64.URLEncoding.DecodeString(entry.Name())
 		if err != nil {
 			return err
 		}
-		s.mapLock.Lock(string(host))
-		m := NewPersistentMap(PersistentMapParams{Path: path.Join(s.basePath, entry.Name())})
-		err = m.Iter(fn)
-		m.Close()
-		s.mapLock.Unlock(string(host))
+		hostPath := path.Join(s.basePath, entry.Name())
+		err = func() error {
+			lockHostPath(hostPath)
+			defer unlockHostPath(hostPath)
+			m := NewPersistentMap(PersistentMapParams{Path: hostPath})
+			defer m.Close()
+			return m.Iter(fn)
+		}()
 		if err != nil {
 			return err
 		}
@@ -117,16 +119,48 @@ func (s *multiHostMap) transaction(key []byte, fn func(m Map) ([]byte, error)) (
 	mapKey := util.GetSLDAndTLD(meta.Host)
 	fName := base64.URLEncoding.EncodeToString([]byte(mapKey))
 
-	s.mapLock.Lock(mapKey)
+	hostPath := path.Join(s.basePath, fName)
+	lockHostPath(hostPath)
+	defer unlockHostPath(hostPath)
 
 	params := PersistentMapParams{
 		Path: path.Join(s.basePath, fName),
 	}
 	mapper := NewPersistentMap(params)
+	defer mapper.Close()
 	res, err := fn(mapper)
 
-	mapper.Close()
-	s.mapLock.Unlock(mapKey)
-
 	return res, err
+}
+
+var domainLocks = util.NewKeyedMutex()
+
+func lockHostPath(p string) {
+	absolute, err := filepath.Abs(p)
+	if err != nil {
+		absolute = p
+	}
+	domainLocks.Lock(absolute)
+}
+func unlockHostPath(p string) {
+	absolute, err := filepath.Abs(p)
+	if err != nil {
+		absolute = p
+	}
+	domainLocks.Unlock(absolute)
+}
+func ConsumeHost(p string, consume func(Map) error) error {
+	lockHostPath(p)
+	defer unlockHostPath(p)
+	if _, err := os.Stat(p); os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	mapper := NewPersistentMap(PersistentMapParams{Path: p})
+	err := func() error { defer mapper.Close(); return consume(mapper) }()
+	if err != nil {
+		return err
+	}
+	return os.RemoveAll(p)
 }

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -39,7 +40,7 @@ func NewHttpFetcher(args HttpFetcherParams) worker.Worker {
 		if len(conf.AllowedDomains) > 0 {
 			allowed := false
 			for _, domain := range conf.AllowedDomains {
-				if u.Hostname() == domain || util.GetSLDAndTLD(u.Hostname()) == domain {
+				if strings.EqualFold(u.Hostname(), domain) || strings.EqualFold(util.GetSLDAndTLD(strings.ToLower(u.Hostname())), domain) {
 					allowed = true
 				}
 			}

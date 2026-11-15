@@ -1,6 +1,7 @@
 package extractors
 
 import (
+	"context"
 	"os"
 
 	"github.com/iakinsey/delver/types/features"
@@ -16,13 +17,23 @@ func NewTitleExtractor() Extractor {
 }
 
 func (s *titleExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
-	document, err := html.Parse(f)
+	return s.PerformContext(context.Background(), f, composite)
+}
+func (s *titleExtractor) PerformContext(ctx context.Context, f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	document, err := html.Parse(contextReader{ctx, f})
 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse html document for title extraction")
 	}
 
-	if title, ok := seekTitle(document); ok {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if title, ok := seekTitleContext(ctx, document); ok {
 		return features.Title(title), nil
 	}
 
@@ -38,6 +49,12 @@ func (s *titleExtractor) Requires() []string {
 }
 
 func seekTitle(node *html.Node) (string, bool) {
+	return seekTitleContext(context.Background(), node)
+}
+func seekTitleContext(ctx context.Context, node *html.Node) (string, bool) {
+	if ctx.Err() != nil {
+		return "", false
+	}
 	if node.FirstChild == nil {
 		return "", false
 	}
@@ -47,7 +64,7 @@ func seekTitle(node *html.Node) (string, bool) {
 	}
 
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		if title, ok := seekTitle(child); ok {
+		if title, ok := seekTitleContext(ctx, child); ok {
 			return title, ok
 		}
 	}

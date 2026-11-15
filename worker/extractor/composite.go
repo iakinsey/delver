@@ -1,12 +1,14 @@
 package extractor
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -28,6 +30,8 @@ type compositeResult struct {
 }
 
 type compositeExtractor struct {
+	active           sync.WaitGroup
+	Timeout          time.Duration
 	initOnce         sync.Once
 	cached           []extractors.Extractor
 	initErr          error
@@ -37,6 +41,7 @@ type compositeExtractor struct {
 }
 
 type CompositeArgs struct {
+	Timeout          time.Duration           `json:"timeout"`
 	Enabled          []string                `json:"enabled"`
 	ObjectStore      objectstore.ObjectStore `json:"-" resource:"object_store"`
 	TransformerQueue queue.Queue             `json:"-" resource:"transformer_queue"`
@@ -45,8 +50,12 @@ type CompositeArgs struct {
 func NewCompositeExtractorWorker(opts CompositeArgs) worker.Worker {
 	s := &compositeExtractor{
 		Enabled:          opts.Enabled,
+		Timeout:          opts.Timeout,
 		ObjectStore:      opts.ObjectStore,
 		TransformerQueue: opts.TransformerQueue,
+	}
+	if s.Timeout == 0 {
+		s.Timeout = 30 * time.Second
 	}
 	s.getExtractors()
 	if s.initErr != nil {
@@ -56,6 +65,9 @@ func NewCompositeExtractorWorker(opts CompositeArgs) worker.Worker {
 }
 
 func (s *compositeExtractor) executeExtractors(path string, meta message.FetcherResponse) (*message.CompositeAnalysis, error) {
+	return s.executeExtractorsContext(context.Background(), path, meta)
+}
+func (s *compositeExtractor) executeExtractorsContext(ctx context.Context, path string, meta message.FetcherResponse) (*message.CompositeAnalysis, error) {
 	composite := &message.CompositeAnalysis{
 		FetcherResponse: meta,
 		Features:        make(map[string]interface{}),
@@ -85,7 +97,12 @@ func (s *compositeExtractor) executeExtractors(path string, meta message.Fetcher
 			return composite, errors.New("extractor dependencies were not produced")
 		}
 
-		newCompleted, newErrs := s.executeExtractorSet(toExecute, path, composite)
+		newCompleted, newErrs := s.executeExtractorSetContext(ctx, toExecute, path, composite)
+		for _, err := range newErrs {
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+				return nil, err
+			}
+		}
 		completed = append(completed, newCompleted...)
 		errs = append(errs, newErrs...)
 		pending = s.getNextPending(pending, toExecute)
@@ -123,6 +140,15 @@ func (s *compositeExtractor) canExecuteExtractor(ext extractors.Extractor, compl
 }
 
 func (s *compositeExtractor) executeExtractorSet(exts []extractors.Extractor, path string, composite *message.CompositeAnalysis) ([]string, []error) {
+	return s.executeExtractorSetContext(context.Background(), exts, path, composite)
+}
+func (s *compositeExtractor) executeExtractorSetContext(ctx context.Context, exts []extractors.Extractor, path string, composite *message.CompositeAnalysis) ([]string, []error) {
+	timeout := s.Timeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	var errors []error
 	var completed []string
 	results := make(chan compositeResult, len(exts))
@@ -137,12 +163,21 @@ func (s *compositeExtractor) executeExtractorSet(exts []extractors.Extractor, pa
 		for key, value := range composite.Features {
 			snapshot.Features[key] = value
 		}
-		go s.executeExtractor(ext, path, snapshot, results)
+		s.active.Add(1)
+		go func(ext extractors.Extractor, snapshot message.CompositeAnalysis) {
+			defer s.active.Done()
+			s.executeExtractorContext(ctx, ext, path, snapshot, results)
+		}(ext, snapshot)
 	}
 
-	// TODO add timeouts to execution
 	for i := 0; i < len(exts); i++ {
-		if newComplete, err := s.updateCompositeAnalysis(<-results, composite); err != nil {
+		var result compositeResult
+		select {
+		case result = <-results:
+		case <-ctx.Done():
+			return completed, append(errors, ctx.Err())
+		}
+		if newComplete, err := s.updateCompositeAnalysis(result, composite); err != nil {
 			errors = append(errors, err)
 		} else {
 			completed = append(completed, newComplete)
@@ -171,6 +206,14 @@ func (s *compositeExtractor) updateCompositeAnalysis(result compositeResult, com
 }
 
 func (s *compositeExtractor) executeExtractor(ext extractors.Extractor, path string, composite message.CompositeAnalysis, results chan compositeResult) {
+	s.executeExtractorContext(context.Background(), ext, path, composite, results)
+}
+func (s *compositeExtractor) executeExtractorContext(ctx context.Context, ext extractors.Extractor, path string, composite message.CompositeAnalysis, results chan compositeResult) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			results <- compositeResult{Extractor: ext, Result: fmt.Errorf("extractor panic: %v", recovered)}
+		}
+	}()
 	f, err := os.Open(path)
 
 	if err != nil {
@@ -179,7 +222,12 @@ func (s *compositeExtractor) executeExtractor(ext extractors.Extractor, path str
 	}
 
 	defer f.Close()
-	result, err := ext.Perform(f, composite)
+	var result interface{}
+	if contextual, ok := ext.(extractors.ContextExtractor); ok {
+		result, err = contextual.PerformContext(ctx, f, composite)
+	} else {
+		result, err = ext.Perform(f, composite)
+	}
 
 	if err != nil {
 		result = err
@@ -192,6 +240,9 @@ func (s *compositeExtractor) executeExtractor(ext extractors.Extractor, path str
 }
 
 func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
+	return s.OnMessageContext(context.Background(), msg)
+}
+func (s *compositeExtractor) OnMessageContext(ctx context.Context, msg types.Message) (interface{}, error) {
 	meta := message.FetcherResponse{}
 	var result interface{} = nil
 
@@ -201,7 +252,7 @@ func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 
 	if !meta.Success && meta.StoreKey == "" {
 		failed := message.CompositeAnalysis{FetcherResponse: meta, Features: map[string]interface{}{}}
-		if err := transformers.Send(s.TransformerQueue, string(meta.RequestID), types.CompositeAnalysisType, failed); err != nil {
+		if err := transformers.SendContext(ctx, s.TransformerQueue, string(meta.RequestID), types.CompositeAnalysisType, failed); err != nil {
 			return nil, err
 		}
 		return failed, nil
@@ -218,14 +269,14 @@ func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 		return nil, err
 	}
 
-	composite, extractorErr := s.executeExtractors(path, meta)
+	composite, extractorErr := s.executeExtractorsContext(ctx, path, meta)
 
 	if composite == nil {
 		return nil, extractorErr
 	}
 	result = *composite
 
-	transformerErr := transformers.Send(
+	transformerErr := transformers.SendContext(ctx,
 		s.TransformerQueue,
 		string(composite.RequestID),
 		types.CompositeAnalysisType,
@@ -239,10 +290,9 @@ func (s *compositeExtractor) OnMessage(msg types.Message) (interface{}, error) {
 	return result, extractorErr
 }
 
-func (s *compositeExtractor) OnComplete() {}
+func (s *compositeExtractor) OnComplete() { s.active.Wait() }
 
 func (s *compositeExtractor) getExtractor(name string) extractors.Extractor {
-	// TODO extractors should be passed into composite on init time
 
 	switch name {
 	case features.UrlField:

@@ -2,7 +2,7 @@ import React from "react";
 import { markSaved } from "../../event/dirty";
 import GridHeader from "./header";
 import GridProper from "./proper";
-import { routeTo, request, hasUserInfo } from "../../util";
+import { routeTo, request } from "../../util";
 import { setCells, setDashboard } from "../../event/actions";
 import store from "../../event/store";
 
@@ -23,7 +23,6 @@ export default class Grid extends React.Component {
   }
 
   async getDashOrReset() {
-    if (!hasUserInfo()) return routeTo("/login");
     const dashUuid = this.getDashUuid();
 
     if (!dashUuid) {
@@ -50,7 +49,7 @@ export default class Grid extends React.Component {
         (c) =>
           !c ||
           typeof c.uuid !== "string" ||
-          !["chart", "metric", "map", "entityFeed"].includes(c.type),
+          !["chart", "metric", "map", "entityFeed", "crawlLog"].includes(c.type),
       )
     ) {
       this.setState({

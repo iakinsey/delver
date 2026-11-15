@@ -6,7 +6,6 @@ import (
 
 	"github.com/iakinsey/delver/gateway"
 	"github.com/iakinsey/delver/types"
-	"github.com/iakinsey/delver/types/errs"
 	"github.com/iakinsey/delver/types/rpc"
 )
 
@@ -38,16 +37,9 @@ func (s *dashController) Save(ctx context.Context, msg json.RawMessage) (interfa
 		req.ID = string(types.NewV4())
 	}
 
-	user := GetCurrentUser(ctx)
-
-	if user == nil {
-		return nil, errs.NewAuthError("Unauthorized")
-	}
-
 	dashboard := types.Dashboard{
 		ID:          req.ID,
 		Name:        req.Name,
-		UserID:      user.ID,
 		Value:       req.Value,
 		Description: req.Description,
 	}
@@ -84,31 +76,8 @@ func (s *dashController) Delete(ctx context.Context, msg json.RawMessage) (inter
 }
 
 func (s *dashController) List(ctx context.Context, msg json.RawMessage) (interface{}, error) {
-	user := GetCurrentUser(ctx)
-
-	if user == nil {
-		return nil, errs.NewAuthError("unauthorized")
-	}
-
-	return s.gateway.List(user.ID)
+	return s.gateway.List()
 }
-
 func (s *dashController) getDash(ctx context.Context, id string) (*types.Dashboard, error) {
-	user := GetCurrentUser(ctx)
-
-	if user == nil {
-		return nil, errs.NewAuthError("unauthorized")
-	}
-
-	d, err := s.gateway.Get(id)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if d.UserID != user.ID {
-		return nil, errs.NewAuthError("Unauthorized")
-	}
-
-	return d, err
+	return s.gateway.Get(id)
 }

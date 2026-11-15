@@ -1,6 +1,7 @@
 package extractors
 
 import (
+	"context"
 	"net/url"
 	"os"
 
@@ -15,7 +16,6 @@ type adversarialExtractor struct {
 	config.AdversarialConfig
 }
 
-// TODO turn these into matrix operations
 func NewAdversarialExtractor() Extractor {
 	conf := config.Get()
 
@@ -25,6 +25,13 @@ func NewAdversarialExtractor() Extractor {
 }
 
 func (s *adversarialExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
+	return s.PerformContext(context.Background(), f, composite)
+}
+func (s *adversarialExtractor) PerformContext(ctx context.Context, f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	var uris features.URIs
 
 	if err := composite.Load(features.UrlField, &uris); err != nil {
@@ -40,6 +47,9 @@ func (s *adversarialExtractor) Perform(f *os.File, composite message.CompositeAn
 	var urls []*url.URL
 
 	for _, u := range uris {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		u1, err := url.Parse(u)
 
 		if err == nil && u1.Host != "" {
@@ -47,9 +57,12 @@ func (s *adversarialExtractor) Perform(f *os.File, composite message.CompositeAn
 		}
 	}
 
-	enumeration := s.detectEnumeration(urls)
-	subdomainExplosion := s.detectSubdomainExplosion(origin, urls)
+	enumeration := s.detectEnumerationContext(ctx, urls)
+	subdomainExplosion := s.detectSubdomainExplosionContext(ctx, origin, urls)
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return features.Adversarial{
 		Enumeration:        &enumeration,
 		SubdomainExplosion: &subdomainExplosion,
@@ -67,47 +80,49 @@ func (s *adversarialExtractor) Requires() []string {
 }
 
 func (s *adversarialExtractor) detectEnumeration(urls []*url.URL) bool {
-	counter := 0
-
-	for _, u1 := range urls {
-		d1 := util.GetSLD(u1.Host)
-
-		if d1 == "" {
-			continue
+	return s.detectEnumerationContext(context.Background(), urls)
+}
+func (s *adversarialExtractor) detectEnumerationContext(ctx context.Context, urls []*url.URL) bool {
+	var endings [256]int
+	for _, u := range urls {
+		if ctx.Err() != nil {
+			return false
 		}
-
-		for _, u2 := range urls {
-			if u1 == u2 {
-				continue
-			}
-
-			d2 := util.GetSLD(u2.Host)
-
-			if d2 == "" {
-				continue
-			}
-
-			if d1[len(d1)-1] != d2[len(d2)-1]+1 {
-				continue
-			}
-
-			counter += 1
-
-			if counter >= int(s.EnumerationThreshold) {
-				return true
-			}
+		domain := util.GetSLD(u.Host)
+		if domain != "" {
+			endings[domain[len(domain)-1]]++
 		}
 	}
-
+	counter := 0
+	for _, u := range urls {
+		if ctx.Err() != nil {
+			return false
+		}
+		domain := util.GetSLD(u.Host)
+		if domain == "" {
+			continue
+		}
+		last := domain[len(domain)-1]
+		counter += endings[last-1]
+		if counter > 0 && counter >= s.EnumerationThreshold {
+			return true
+		}
+	}
 	return false
 }
 
 func (s *adversarialExtractor) detectSubdomainExplosion(origin *url.URL, urls []*url.URL) bool {
+	return s.detectSubdomainExplosionContext(context.Background(), origin, urls)
+}
+func (s *adversarialExtractor) detectSubdomainExplosionContext(ctx context.Context, origin *url.URL, urls []*url.URL) bool {
 	sld1 := util.GetSLD(origin.Host)
 	counter := 0
 	keys := make(map[string]bool)
 
 	for _, target := range urls {
+		if ctx.Err() != nil {
+			return false
+		}
 		sld2 := util.GetSLD(target.Host)
 
 		// Deduplicate on SLD

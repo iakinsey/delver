@@ -2,6 +2,7 @@ package extractors
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"unicode"
 
@@ -48,6 +49,13 @@ func NewNgramExtractor() Extractor {
 }
 
 func (s *ngramExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
+	return s.PerformContext(context.Background(), f, composite)
+}
+func (s *ngramExtractor) PerformContext(ctx context.Context, f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	var textContent string
 	feature := make(features.Ngrams)
 	var result [][]string
@@ -61,6 +69,11 @@ func (s *ngramExtractor) Perform(f *os.File, composite message.CompositeAnalysis
 
 	runes := []rune(textContent)
 	for i := 0; i <= len(runes); i++ {
+		if i%1024 == 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+		}
 		if i < len(runes) {
 			r = runes[i]
 		} else {

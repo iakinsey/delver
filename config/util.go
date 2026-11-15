@@ -14,7 +14,7 @@ func DataFilePath(dataPath string, name string) string {
 	_, b, _, ok := runtime.Caller(0)
 
 	if !ok {
-		log.Fatalf("failed to get base path for data file")
+		log.Panicf("failed to get base path for data file")
 	}
 
 	basepath := ""
@@ -22,7 +22,7 @@ func DataFilePath(dataPath string, name string) string {
 	if IsTest() {
 		basepath = path.Dir(path.Dir(b))
 	} else if p, err := os.Executable(); err != nil {
-		log.Fatalf(err.Error())
+		log.Panicf(err.Error())
 	} else {
 		basepath = path.Dir(p)
 	}

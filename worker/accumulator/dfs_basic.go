@@ -2,7 +2,6 @@ package accumulator
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/url"
 
 	"github.com/pkg/errors"
@@ -52,7 +51,10 @@ func (s *dfsBasicAccumulator) OnMessage(msg types.Message) (interface{}, error) 
 		return nil, errors.Wrap(err, "dfs basic accumulator")
 	}
 
-	requests := s.prepareRequests(composite, URIs)
+	requests, err := s.prepareRequests(composite, URIs)
+	if err != nil {
+		return nil, err
+	}
 
 	log.Printf("published %d requests from uri %s", len(requests), composite.URI)
 
@@ -65,7 +67,7 @@ func (s *dfsBasicAccumulator) markVisited(composite message.CompositeAnalysis) {
 	}
 }
 
-func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysis, URIs features.URIs) []interface{} {
+func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysis, URIs features.URIs) ([]interface{}, error) {
 	var result []interface{}
 	var urlPairs [][2][]byte
 	var source string
@@ -118,10 +120,10 @@ func (s *dfsBasicAccumulator) prepareRequests(composite message.CompositeAnalysi
 	}
 
 	if err := s.urlStore.SetMany(urlPairs); err != nil {
-		fmt.Printf("error saving urls in urlStore: %s", err)
+		return nil, errors.Wrap(err, "persisting discovered URLs")
 	}
 
-	return result
+	return result, nil
 }
 
 func (s *dfsBasicAccumulator) OnComplete() {

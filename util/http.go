@@ -45,7 +45,7 @@ func NewHTTPClient() DelverHTTPClient {
 		dialer, err := proxy.SOCKS5("tcp", params.Socks5Url, nil, proxy.Direct)
 
 		if err != nil {
-			log.Fatalf("failed to create http client dialer %s", err)
+			log.Panicf("failed to create http client dialer %s", err)
 		}
 
 		if contextDialer, ok := dialer.(proxy.ContextDialer); ok {
@@ -53,7 +53,7 @@ func NewHTTPClient() DelverHTTPClient {
 				DialContext: contextDialer.DialContext,
 			}
 		} else {
-			log.Fatalf("unable to generate context dialer")
+			log.Panicf("unable to generate context dialer")
 		}
 	} else if params.HTTPProxyUrl != "" {
 		if url, err := url.Parse(params.HTTPProxyUrl); err == nil {
@@ -61,7 +61,7 @@ func NewHTTPClient() DelverHTTPClient {
 				Proxy: http.ProxyURL(url),
 			}
 		} else {
-			log.Fatalf("failed to parse http proxy string %s %s", params.HTTPProxyUrl, err)
+			log.Panicf("failed to parse http proxy string %s %s", params.HTTPProxyUrl, err)
 		}
 	}
 

@@ -13,7 +13,7 @@ func NewRegexFilter(pattern string) Filter {
 	patternRegexp, err := regexp.Compile(pattern)
 
 	if err != nil {
-		log.Fatalf("failed to compile pattern: %s", err)
+		log.Panicf("failed to compile pattern: %s", err)
 	}
 
 	return &regexFilter{

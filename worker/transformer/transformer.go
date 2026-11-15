@@ -1,6 +1,7 @@
 package transformer
 
 import (
+	"context"
 	"github.com/hashicorp/go-multierror"
 	"github.com/iakinsey/delver/gateway"
 	"github.com/iakinsey/delver/transformers"
@@ -21,6 +22,9 @@ type TransformerParams struct {
 }
 
 func NewTransformerWorker(opts TransformerParams) worker.Worker {
+	return NewTransformerWorkerContext(context.Background(), opts)
+}
+func NewTransformerWorkerContext(ctx context.Context, opts TransformerParams) worker.Worker {
 	var t []transformers.Transformer
 
 	for _, name := range opts.Enabled {
@@ -30,7 +34,15 @@ func NewTransformerWorker(opts TransformerParams) worker.Worker {
 	search := gateway.NewSearchGateway(opts.SearchAddresses)
 
 	for _, index := range types.Indices {
-		search.Declare(index)
+		if contextual, ok := search.(interface {
+			DeclareContext(context.Context, types.Index) error
+		}); ok {
+			if err := contextual.DeclareContext(ctx, index); err != nil {
+				panic(err)
+			}
+		} else {
+			search.Declare(index)
+		}
 	}
 
 	return &transformer{
@@ -41,6 +53,9 @@ func NewTransformerWorker(opts TransformerParams) worker.Worker {
 }
 
 func (s *transformer) OnMessage(msg types.Message) (interface{}, error) {
+	return s.OnMessageContext(context.Background(), msg)
+}
+func (s *transformer) OnMessageContext(ctx context.Context, msg types.Message) (interface{}, error) {
 	var tErr error
 	var entities []*types.Indexable
 
@@ -58,7 +73,15 @@ func (s *transformer) OnMessage(msg types.Message) (interface{}, error) {
 		entities = append(entities, idx...)
 	}
 
-	if err := s.search.IndexMany(entities); err != nil {
+	var indexErr error
+	if contextual, ok := s.search.(interface {
+		IndexManyContext(context.Context, []*types.Indexable) error
+	}); ok {
+		indexErr = contextual.IndexManyContext(ctx, entities)
+	} else {
+		indexErr = s.search.IndexMany(entities)
+	}
+	if err := indexErr; err != nil {
 		tErr = multierror.Append(tErr, err)
 	} else {
 		log.Infof("transformer indexed %d entities", len(entities))

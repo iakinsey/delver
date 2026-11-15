@@ -2,6 +2,7 @@ package extractors
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"html"
 	"os"
@@ -24,9 +25,19 @@ var spacing = []*unicode.RangeTable{
 }
 
 func (s *textExtractor) Perform(f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
-	p := bluemonday.StripTagsPolicy()
-	buf := p.SanitizeReader(f)
+	return s.PerformContext(context.Background(), f, composite)
+}
+func (s *textExtractor) PerformContext(ctx context.Context, f *os.File, composite message.CompositeAnalysis) (interface{}, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
+	p := bluemonday.StripTagsPolicy()
+	buf := p.SanitizeReader(contextReader{ctx, f})
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if buf.Len() == 0 {
 		return nil, fmt.Errorf("request has no content: %s", composite.RequestID)
 	}
@@ -34,7 +45,12 @@ func (s *textExtractor) Perform(f *os.File, composite message.CompositeAnalysis)
 	content := html.UnescapeString(buf.String())
 	var dedupeBuf bytes.Buffer
 	prevIsSpacing := false
-	for _, char := range content {
+	for index, char := range content {
+		if index%1024 == 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+		}
 		isSpacing := unicode.IsOneOf(spacing, char)
 		if !(prevIsSpacing && isSpacing) {
 			dedupeBuf.WriteRune(char)

@@ -1,6 +1,7 @@
 package application
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -24,6 +25,7 @@ import (
 var resourceKeyLookupError = errors.New("failed to find resource key")
 
 type preparedApplication struct {
+	ctx       context.Context
 	app       config.Application
 	resources map[string]interface{}
 	workers   map[string]worker.WorkerManager
@@ -72,7 +74,7 @@ func CreateWorker(wc config.Worker, preparedApp *preparedApplication) {
 	case "transformer":
 		tfp := transformer.TransformerParams{}
 		parseParamWithResources(wc.Parameters, &tfp, preparedApp.resources)
-		w = transformer.NewTransformerWorker(tfp)
+		w = transformer.NewTransformerWorkerContext(preparedApp.ctx, tfp)
 	default:
 		registryMutex.RLock()
 		factory := workerFactories[wc.Type]

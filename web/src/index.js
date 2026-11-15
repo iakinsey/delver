@@ -2,13 +2,10 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import './theme.css'
 import Grid from './views/grid/grid'
-import Login from './views/page/login'
 import DashboardList from './views/page/dashboardList'
 import Header from './views/header'
-import ChangePassword from './views/page/changePassword'
-import Register from './views/page/register'
-import Logout from './views/page/logout'
 import Help from './views/page/help'
+import Crawler from './views/page/crawler'
 import { Provider } from 'react-redux'
 import startJobs from './event/jobs'
 import store from './event/store'
@@ -18,7 +15,6 @@ import { BrowserRouter as Router, Switch, Route } from "react-router-dom";
 
 
 startJobs()
-window.addEventListener('session-expired',()=>{localStorage.removeItem('auth');localStorage.removeItem('email');window.location.assign('/login')})
 
 
 createRoot(document.getElementById('root')).render(
@@ -26,26 +22,15 @@ createRoot(document.getElementById('root')).render(
         <Router>
             <Header />
             <Switch>
+                <Route exact path="/crawler"><Crawler /></Route>
                 <Route exact path="/">
                     <Grid />
                 </Route>
                 <Route path="/dashboard/:dashId">
                     <Grid />
                 </Route>
-                <Route exact path="/login">
-                    <Login />
-                </Route>
-                <Route exact path="/logout">
-                    <Logout/>
-                </Route>
-                <Route exact path="/register">
-                    <Register />
-                </Route>
                 <Route exact path="/dashboards">
                     <DashboardList />
-                </Route>
-                <Route exact path="/changePassword">
-                    <ChangePassword />
                 </Route>
                 <Route exact path="/help">
                     <Help />
