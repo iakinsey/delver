@@ -1,4 +1,4 @@
-# Keep source code and required build/dependency metadata only.
+# Application source, documentation, and required build/dependency metadata.
 *
 !*/
 !**/*.go
@@ -18,17 +18,13 @@
 !web/package.json
 !web/package-lock.json
 !web/src/views/page/fetchOptions.json
-!web2/package.json
-!web2/package-lock.json
-!web2/tsconfig.json
 
-# Local data, private configuration, generated artifacts, and documentation.
+# Local data, private configuration, and generated artifacts.
 .codex-attachments/
 **/node_modules/
 /build/
 /run-data/
 /data/
-/docs/
 /.github/
 /web/build/
 /web/public/index.html
@@ -39,7 +35,6 @@
 **/*.log
 **/*.bak
 **/TODO*
-**/README*
 
 # Tests, fixtures, experiments, and validation reports stay out of Git.
 **/*_test.go
@@ -57,3 +52,9 @@
 /examples/dashboard-fixture/
 /examples/workspace-fixture/
 /examples/site/
+
+# Keep project documentation; exclude obsolete frontend and operation artifacts.
+!**/README.md
+!docs/**/*.md
+/web2/
+/CRAWLER_OPERATIONS_PLAN.md
