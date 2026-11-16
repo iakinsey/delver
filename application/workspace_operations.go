@@ -21,7 +21,7 @@ func activeWorkflow(r *CrawlRecord) bool {
 	}
 	return false
 }
-func (w *Workspace) acceptWorkflow(r *CrawlRecord, slot *crawlSlot, action string, revision uint64, id string) (interface{}, error) {
+func (w *Workspace) acceptWorkflow(r *CrawlRecord, slot *crawlSlot, action string, revision uint64, id string, details ...Operation) (interface{}, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.closing || w.ctx.Err() != nil {
@@ -30,32 +30,49 @@ func (w *Workspace) acceptWorkflow(r *CrawlRecord, slot *crawlSlot, action strin
 	if id == "" {
 		id = string(types.NewV4())
 	}
-	if existing := r.Operations[id]; existing != nil {
-		if existing.Action != action || existing.Version != revision {
+	runID := ""
+	key := id
+	if len(details) > 0 && len(r.Runs) > 0 {
+		runID = r.Runs[len(r.Runs)-1].ID
+		key = runID + ":" + id
+	}
+	if existing := r.Operations[key]; existing != nil {
+		queue, record := "", ""
+		if len(details) > 0 {
+			queue, record = details[0].Queue, details[0].Record
+		}
+		// Run-scoped commands do not include a draft revision in their
+		// request signature. Saving a draft must not invalidate a retry.
+		revisionChanged := len(details) == 0 && existing.Version != revision
+		if existing.Action != action || revisionChanged || existing.Queue != queue || existing.Record != record {
 			return nil, errs.NewRequestError("operation ID was already used for another request")
 		}
 		copy := *existing
 		return copy, nil
 	}
 	if activeWorkflow(r) {
-		return nil, errs.NewRequestError("wait for the active crawl operation")
+		return nil, errs.NewRequestError("crawl operation in progress")
 	}
 	if revision != r.Revision {
-		return nil, errs.NewRequestError("this crawl changed; reload before running")
+		return nil, errs.NewRequestError("crawl revision conflict")
 	}
 	if r.Deletion != nil {
 		return nil, errs.NewRequestError("crawl deletion is in progress")
 	}
 	if r.Archived {
-		return nil, errs.NewRequestError("restore this crawl before running")
+		return nil, errs.NewRequestError("crawl archived")
 	}
 	if r.Operations == nil {
 		r.Operations = map[string]*Operation{}
 	}
-	op := &Operation{ID: id, Action: action, Version: revision, State: "accepted", Updated: time.Now().Unix()}
-	r.Operations[id] = op
+	op := &Operation{RunID: runID, ID: id, Action: action, Version: revision, State: "accepted", Updated: time.Now().Unix()}
+	if len(details) > 0 {
+		op.Queue = details[0].Queue
+		op.Record = details[0].Record
+	}
+	r.Operations[key] = op
 	if err := w.saveLocked(); err != nil {
-		delete(r.Operations, id)
+		delete(r.Operations, key)
 		return nil, err
 	}
 	w.background.Add(1)
@@ -71,7 +88,16 @@ func (w *Workspace) acceptWorkflow(r *CrawlRecord, slot *crawlSlot, action strin
 			if w.ctx.Err() != nil {
 				err = w.ctx.Err()
 			} else {
-				_, err = w.applyRun(r, slot, action, revision)
+				switch action {
+				case "start_run", "activate", "continue_run":
+					_, err = w.applyRun(r, slot, action, revision)
+				default:
+					if slot.supervisor == nil {
+						err = errs.NewRequestError("run required")
+					} else {
+						err = slot.supervisor.Execute(w.ctx, action, op.Queue, op.Record)
+					}
+				}
 			}
 		}
 		w.mu.Lock()
@@ -101,17 +127,5 @@ func (w *Workspace) crawlOperations(ctx context.Context, r *CrawlRecord, slot *c
 		out["workspace:"+id] = copy
 	}
 	w.mu.Unlock()
-	slot.runtimeMu.RLock()
-	s := slot.supervisor
-	slot.runtimeMu.RUnlock()
-	if s != nil {
-		value, err := s.Handle(ctx, "operations", nil)
-		if err != nil {
-			return nil, err
-		}
-		for id, op := range value.(map[string]Operation) {
-			out["run:"+id] = op
-		}
-	}
 	return out, nil
 }

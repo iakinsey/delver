@@ -44,10 +44,10 @@ func validateParameters(app config.Application, resources map[string]config.Reso
 		return fmt.Errorf("network phase timeouts must be nonnegative; zero inherits the overall timeout")
 	}
 	if http.RequireProxy && http.Socks5Url == "" && http.HTTPProxyUrl == "" {
-		return fmt.Errorf("this crawl requires a proxy; choose and configure a proxy connection")
+		return fmt.Errorf("proxy required")
 	}
 	if http.Socks5Url != "" && http.HTTPProxyUrl != "" {
-		return fmt.Errorf("choose a single proxy connection")
+		return fmt.Errorf("multiple proxy connections configured")
 	}
 	if http.IsolateProxySessions {
 		if http.Socks5Url == "" {

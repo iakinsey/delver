@@ -93,17 +93,12 @@ func CreateWorker(wc config.Worker, preparedApp *preparedApplication) {
 	default:
 		registryMutex.RLock()
 		factory := workerFactories[wc.Type]
-		contextual := runtimeWorkerFactories[wc.Type]
 		registryMutex.RUnlock()
 		if factory == nil {
 			panic("unknown worker type " + wc.Type)
 		}
 		var err error
-		if contextual != nil {
-			w, err = contextual(preparedApp.ctx, wc.Parameters, preparedApp.resources, preparedApp.dependencies())
-		} else {
-			w, err = factory(wc.Parameters, preparedApp.resources)
-		}
+		w, err = factory(preparedApp.ctx, wc.Parameters, preparedApp.resources, preparedApp.dependencies())
 		if err != nil {
 			panic(err)
 		}
@@ -117,18 +112,16 @@ func CreateWorker(wc config.Worker, preparedApp *preparedApplication) {
 		w = &worker.OnceWorker{Worker: w, Store: store, Key: wc.Name}
 	}
 	if preparedApp.metrics != nil {
-		if target, ok := w.(interface{ SetMetricSink(metrics.MetricSink) }); ok {
+		if target, ok := w.(worker.MetricAware); ok {
 			target.SetMetricSink(preparedApp.metrics)
 		}
 	}
-	if target, ok := w.(interface {
-		SetFlow(*flow.Controller, flow.Policy)
-	}); ok && preparedApp.flow != nil {
+	if target, ok := w.(worker.FlowAware); ok && preparedApp.flow != nil {
 		target.SetFlow(preparedApp.flow, *preparedApp.app.Config.Fetch)
 	}
 	m := GetWorkerManager(wc, preparedApp.resources, w)
 	if preparedApp.metrics != nil {
-		m.(interface{ SetMetricSink(metrics.MetricSink) }).SetMetricSink(preparedApp.metrics)
+		m.(worker.MetricAware).SetMetricSink(preparedApp.metrics)
 	}
 	if wc.Type == "http_fetcher" && preparedApp.flow != nil {
 		if gate, ok := inboxGate(preparedApp.resources[wc.Inbox]); ok {
@@ -219,17 +212,12 @@ func CreateResource(c config.Resource, preparedApp *preparedApplication) {
 	default:
 		registryMutex.RLock()
 		factory := resourceFactories[c.Type]
-		contextual := runtimeResourceFactories[c.Type]
 		registryMutex.RUnlock()
 		if factory == nil {
 			panic("unknown resource " + c.Type)
 		}
 		var err error
-		if contextual != nil {
-			r, err = contextual(preparedApp.ctx, c.Parameters, preparedApp.dependencies())
-		} else {
-			r, err = factory(c.Parameters)
-		}
+		r, err = factory(preparedApp.ctx, c.Parameters, preparedApp.dependencies())
 		if err != nil {
 			panic(err)
 		}

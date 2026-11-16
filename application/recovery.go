@@ -7,7 +7,7 @@ import (
 
 func (s *Supervisor) recovery(name string) (queue.Recovery, error) {
 	if s.control == nil {
-		return nil, fmt.Errorf("start the runtime before accessing queues")
+		return nil, fmt.Errorf("queue access requires an active runtime")
 	}
 	s.control.mu.Lock()
 	defer s.control.mu.Unlock()

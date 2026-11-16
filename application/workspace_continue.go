@@ -29,7 +29,7 @@ func continuationPipeline(a config.Application) (config.Application, error) {
 		}
 	}
 	if !hasFrontier {
-		return a, errs.NewRequestError("continuation requires a frontier-based pipeline; resume custom pipelines with their original controls")
+		return a, errs.NewRequestError("drain requires a frontier-based pipeline")
 	}
 	timers := map[string]bool{}
 	for _, r := range a.Resources {
@@ -62,22 +62,13 @@ func (w *Workspace) continueLatest(r *CrawlRecord, slot *crawlSlot, revision uin
 	w.mu.Lock()
 	if r.Archived || revision != r.Revision || len(r.Runs) == 0 {
 		w.mu.Unlock()
-		return nil, errs.NewRequestError("select a stopped run with preserved work")
+		return nil, errs.NewRequestError("stopped run with pending work required")
 	}
 	run := r.Runs[len(r.Runs)-1]
 	w.mu.Unlock()
-	probe, probeErr := CompileCrawl(w.runRoot(r.ID, run.ID), run.ID, run.Definition)
-	if run.Expert != nil {
-		probe = relocatePipeline(*run.Expert, w.runRoot(r.ID, run.ID))
-		if run.Legacy {
-			probe = *run.Expert
-		}
-		probeErr = nil
-	}
-	if probeErr != nil {
-		return nil, probeErr
-	}
-	if _, err := continuationPipeline(probe); err != nil {
+	probeRun := run
+	probeRun.Continued++
+	if _, err := prepareRunPipeline(w.runRoot(r.ID, run.ID), probeRun); err != nil {
 		return nil, err
 	}
 	if slot.supervisor != nil {
@@ -86,7 +77,7 @@ func (w *Workspace) continueLatest(r *CrawlRecord, slot *crawlSlot, revision uin
 		state := s.status
 		s.mu.Unlock()
 		if state != "stopped" && state != "failed" {
-			return nil, errs.NewRequestError("stop this run before continuing preserved work")
+			return nil, errs.NewRequestError("drain requires a stopped run")
 		}
 		if err := s.Close(); err != nil {
 			return nil, err
@@ -96,6 +87,7 @@ func (w *Workspace) continueLatest(r *CrawlRecord, slot *crawlSlot, revision uin
 	run.Continued++
 	run.State = "starting"
 	w.mu.Lock()
+	previousRun, previousRevision := r.Runs[len(r.Runs)-1], r.Revision
 	r.Revision++
 	r.Runs[len(r.Runs)-1] = run
 	slot.clockRunning = false
@@ -103,6 +95,9 @@ func (w *Workspace) continueLatest(r *CrawlRecord, slot *crawlSlot, revision uin
 	err := w.saveLocked()
 	w.mu.Unlock()
 	if err != nil {
+		w.mu.Lock()
+		r.Runs[len(r.Runs)-1], r.Revision = previousRun, previousRevision
+		w.mu.Unlock()
 		return nil, err
 	}
 	s, err := w.openSupervisor(r, run)

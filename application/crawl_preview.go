@@ -40,7 +40,7 @@ func previewDefinition(raw json.RawMessage) (interface{}, error) {
 			return nil, err
 		}
 		if len(suffixes) == 0 {
-			return nil, fmt.Errorf("enter at least one allowed hostname suffix")
+			return nil, fmt.Errorf("allowed hostname suffix required")
 		}
 	}
 	out := []map[string]interface{}{}
@@ -69,7 +69,7 @@ func previewDefinition(raw json.RawMessage) (interface{}, error) {
 		target, parseErr := url.Parse(uri)
 		valid := parseErr == nil && target.Hostname() != "" && (target.Scheme == "http" || target.Scheme == "https")
 		if len(d.Seeds) == 0 && len(d.Feeds) > 0 && d.Scope != "open_web" && valid && hostAllowed && (allow == nil || allow.MatchString(uri)) && (deny == nil || !deny.MatchString(uri)) {
-			row["reason"] = "Feed articles define their own starting boundaries. Add a starting URL to preview website boundaries before reading the feed."
+			row["reason"] = "Scope unresolved: feed sources not loaded"
 		}
 		out = append(out, row)
 	}

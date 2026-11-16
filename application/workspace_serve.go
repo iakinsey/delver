@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/iakinsey/delver/api"
 	"github.com/iakinsey/delver/config"
-	"github.com/iakinsey/delver/gateway"
 	"github.com/iakinsey/delver/types"
 	ui "github.com/iakinsey/delver/web"
 	"net"
@@ -71,7 +70,7 @@ func (w *Workspace) Handle(ctx context.Context, action string, raw json.RawMessa
 	w.mu.Lock()
 	if len(w.records) != 1 {
 		w.mu.Unlock()
-		return nil, fmt.Errorf("select a crawl through /crawls")
+		return nil, fmt.Errorf("crawl ID required: /crawls")
 	}
 	var r *CrawlRecord
 	for _, v := range w.records {
@@ -85,7 +84,7 @@ func (w *Workspace) Handle(ctx context.Context, action string, raw json.RawMessa
 		if action == "status" {
 			return map[string]interface{}{"state": "stopped"}, nil
 		}
-		return nil, fmt.Errorf("start this crawl first")
+		return nil, fmt.Errorf("crawl runtime unavailable")
 	}
 	return slot.supervisor.Handle(ctx, action, raw)
 }
@@ -113,15 +112,6 @@ func ServeWorkspace(ctx context.Context, options Options) error {
 	defer listener.Close()
 	failures := make(chan error, 2)
 	go func() { failures <- server.Serve(listener) }()
-	streamer := gateway.NewClientStreamer()
-	if a.Config.Streamer.Enabled {
-		go func() { failures <- streamer.Start() }()
-		defer func() {
-			if c, ok := streamer.(interface{ Close() error }); ok {
-				c.Close()
-			}
-		}()
-	}
 	fmt.Printf("Delver workspace: http://%s\n", listener.Addr())
 	select {
 	case <-ctx.Done():

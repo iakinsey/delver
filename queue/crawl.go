@@ -619,3 +619,6 @@ func (s *crawlQueue) transaction(fn func(*badger.Txn) error) error {
 	defer s.writeMu.Unlock()
 	return s.db.Update(fn)
 }
+
+func (s *crawlQueue) PauseDispatch(paused bool) { s.admission.pauseDispatch(paused) }
+func (s *crawlQueue) DispatchActive() int       { return s.admission.dispatchActive() }

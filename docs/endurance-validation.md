@@ -1,5 +1,6 @@
-# Final-code endurance and scale validation
+# Historical Final-code endurance and scale validation
 
+These measurements describe an earlier revision. Current acceptance requires rerunning the commands in `Makefile` against final code. Generated evidence is stored privately outside Git.
 These opt-in tests exercise the shipping Badger frontier and worker application. They use isolated storage and synthetic destinations served by local fixtures. No production crawl or Elasticsearch data is used.
 
 ## Workloads
@@ -24,7 +25,7 @@ The one-hour whole-application soak passed under the Go race detector in **3,602
 
 The persistent-disk million-URL case passed, including the same retry, deleted-cursor, unclean-process, expiry, rediscovery, and permanent-retention assertions. Its resumed process completed in **7,127.63 seconds**; this excludes the earlier admission of 250,665 URLs and must not be read as the duration of an empty-to-million run. The remaining 749,335 admissions used synchronous writes while other tests ran. The full active-index rebuild took **32.80 seconds**. Peak sampled live heap was **274.2 MiB**, peak sampled RSS was **1,216.0 MiB**, and the largest p95 for selecting 128 candidates was **9.8 ms**. Expiration removed 10,128 terminal URL records in six bounded cleanup calls (1.29 seconds). Final counters were 1,000,102 admissions, 10,129 terminal outcomes, 989,973 pending/active URLs, zero reserved requests, zero pending retries, and 20,256 cleanup operations.
 
-Evidence is saved in [the machine-readable summary](../.codex-attachments/endurance/summary.json), [soak resource samples](../.codex-attachments/endurance/soak-resources.csv), [tmpfs scale samples](../.codex-attachments/endurance/tmpfs-million.jsonl), and [persistent scale samples](../.codex-attachments/endurance/persistent-million.jsonl). The summary records SHA-256 hashes and local paths for the complete test logs. Interrupted or failing exploratory runs were excluded from successful results; their failure reproductions informed the corrections below.
+Earlier raw evidence was removed from Git with generated artifacts; retain new reports in the external validation directory.
 
 ## Defects reproduced and corrected
 

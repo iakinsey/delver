@@ -14,7 +14,6 @@ type transformer struct {
 	crawlID, runID string
 	t              []transformers.Transformer
 	search         gateway.SearchGateway
-	streamer       gateway.ClientStreamer
 }
 
 type TransformerParams struct {
@@ -50,9 +49,8 @@ func NewTransformerWorkerContext(ctx context.Context, opts TransformerParams) wo
 
 	return &transformer{
 		crawlID: opts.CrawlID, runID: opts.RunID,
-		t:        t,
-		search:   search,
-		streamer: gateway.NewClientStreamer(),
+		t:      t,
+		search: search,
 	}
 }
 
@@ -93,12 +91,6 @@ func (s *transformer) OnMessageContext(ctx context.Context, msg types.Message) (
 		tErr = multierror.Append(tErr, err)
 	} else {
 		log.Infof("transformer indexed %d entities", len(entities))
-	}
-
-	if err := s.streamer.Publish(entities); err != nil {
-		tErr = multierror.Append(tErr, err)
-	} else {
-		log.Infof("transformer published %d entities", len(entities))
 	}
 
 	return nil, tErr

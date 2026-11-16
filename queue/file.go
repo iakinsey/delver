@@ -541,3 +541,6 @@ func (s *fileQueue) ReferencedObjects() ([]types.UUID, error) {
 
 func (s *fileQueue) Health() string         { s.healthMu.Lock(); defer s.healthMu.Unlock(); return s.lastError }
 func (s *fileQueue) Failures() <-chan error { return s.failures }
+
+func (s *fileQueue) PauseDispatch(paused bool) { s.admission.pauseDispatch(paused) }
+func (s *fileQueue) DispatchActive() int       { return s.admission.dispatchActive() }

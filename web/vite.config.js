@@ -3,6 +3,12 @@ import { transformWithEsbuild } from "vite";
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   return {
+    test: {
+      environment: "jsdom",
+      setupFiles: ["./src/testSetup.js"],
+      include: ["src/**/*.test.{js,jsx,ts,tsx}"],
+      globals: true,
+    },
     plugins: [
       {
         name: "jsx-in-js",

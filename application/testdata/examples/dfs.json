@@ -1,0 +1,155 @@
+{
+  "config": {
+    "workers": {
+      "worker_counts": 4
+    },
+    "api": {
+      "enabled": false
+    },
+    "metrics": {
+      "enabled": false
+    },
+    "http_client": {
+      "allowed_domains": [],
+      "request_delay": "100ms"
+    },
+    "shutdown_timeout": "30s"
+  },
+  "resources": [
+    {
+      "name": "requests",
+      "type": "crawl_queue",
+      "parameters": {
+        "path": "run-data/dfs/crawl",
+        "crawl_id": "dfs",
+        "max_attempts": 3
+      }
+    },
+    {
+      "name": "fetched",
+      "type": "file_queue",
+      "parameters": {
+        "name": "fetched",
+        "path": "run-data/dfs/fetched",
+        "dlq_path": "run-data/dfs/fetched-dlq",
+        "max_poll_delay_ms": 20,
+        "max_attempts": 3,
+        "reset": true
+      }
+    },
+    {
+      "name": "analyzed",
+      "type": "file_queue",
+      "parameters": {
+        "name": "analyzed",
+        "path": "run-data/dfs/analyzed",
+        "dlq_path": "run-data/dfs/analyzed-dlq",
+        "max_poll_delay_ms": 20,
+        "max_attempts": 3,
+        "reset": true
+      }
+    },
+    {
+      "name": "results",
+      "type": "file_queue",
+      "parameters": {
+        "name": "results",
+        "path": "run-data/dfs/results",
+        "dlq_path": "run-data/dfs/results-dlq",
+        "max_poll_delay_ms": 20,
+        "max_attempts": 3,
+        "reset": true
+      }
+    },
+    {
+      "name": "objects",
+      "type": "filesystem_object_store",
+      "parameters": {
+        "path": "run-data/dfs/objects"
+      }
+    },
+    {
+      "name": "urls",
+      "type": "multi_host_map",
+      "parameters": {
+        "base_path": "run-data/dfs/urls"
+      }
+    },
+    {
+      "name": "visited_hosts",
+      "type": "persistent_map",
+      "parameters": {
+        "path": "run-data/dfs/visited-hosts"
+      }
+    }
+  ],
+  "workers": [
+    {
+      "name": "seeds",
+      "type": "fixed_seed_publisher",
+      "manager": "job",
+      "interval": "1h",
+      "outbox": "requests",
+      "parameters": {
+        "uris": [
+          "http://localhost:8088/"
+        ]
+      }
+    },
+    {
+      "name": "fetch",
+      "type": "http_fetcher",
+      "inbox": "requests",
+      "outbox": "fetched",
+      "parameters": {
+        "object_store": "objects"
+      }
+    },
+    {
+      "name": "extract",
+      "type": "composite_extractor",
+      "inbox": "fetched",
+      "outbox": "analyzed",
+      "parameters": {
+        "object_store": "objects",
+        "transformer_queue": "results",
+        "enabled": [
+          "url",
+          "text",
+          "title"
+        ]
+      }
+    },
+    {
+      "name": "discover",
+      "type": "dfs_basic_accumulator",
+      "inbox": "analyzed",
+      "outbox": "requests",
+      "parameters": {
+        "url_store": "urls",
+        "max_depth": 2
+      }
+    },
+    {
+      "name": "save",
+      "type": "jsonl_sink",
+      "inbox": "results",
+      "count": 1,
+      "parameters": {
+        "path": "run-data/dfs/results.jsonl"
+      }
+    },
+    {
+      "name": "rotate",
+      "type": "dfs_basic_publisher",
+      "manager": "job",
+      "interval": "5s",
+      "parameters": {
+        "output_queue": "requests",
+        "url_store_path": "run-data/dfs/urls",
+        "visited_hostmap": "visited_hosts",
+        "rotate_after": "5s"
+      }
+    }
+  ]
+}

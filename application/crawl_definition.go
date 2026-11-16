@@ -56,16 +56,16 @@ func decodeDefinition(raw json.RawMessage) (CrawlDefinition, error) {
 }
 func CompileCrawl(root, runID string, d CrawlDefinition) (config.Application, error) {
 	if strings.TrimSpace(d.Name) == "" || len(d.Seeds)+len(d.Feeds) == 0 {
-		return config.Application{}, errs.NewRequestError("give this crawl a name and at least one starting URL or feed")
+		return config.Application{}, errs.NewRequestError("name and at least one seed URL or feed required")
 	}
 	for _, raw := range append(append([]string{}, d.Seeds...), d.Feeds...) {
 		u, err := url.Parse(raw)
 		if err != nil || u.Hostname() == "" || u.User != nil || (u.Scheme != "http" && u.Scheme != "https") {
-			return config.Application{}, errs.NewRequestError("starting URLs must use HTTP or HTTPS without embedded user credentials")
+			return config.Application{}, errs.NewRequestError("seed URLs must use HTTP or HTTPS without credentials")
 		}
 	}
 	if d.MaxDepth < 1 || d.MaxHops < 1 || d.Concurrency < 1 || d.Concurrency > 2 {
-		return config.Application{}, errs.NewRequestError("set positive depth and hop limits and one or two parallel requests per site")
+		return config.Application{}, errs.NewRequestError("depth and hop limits must be positive; per-host concurrency must be 1 or 2")
 	}
 	delay, err := time.ParseDuration(d.RequestDelay)
 	if err != nil || delay < 0 {
@@ -75,7 +75,7 @@ func CompileCrawl(root, runID string, d CrawlDefinition) (config.Application, er
 	if !d.Termination.WhenDrained {
 		revisit, err = time.ParseDuration(d.Revisit)
 		if err != nil || revisit <= 0 {
-			return config.Application{}, errs.NewRequestError("revisit cadence must be a positive duration")
+			return config.Application{}, errs.NewRequestError("revisit interval must be positive")
 		}
 	}
 	if d.Termination.MaxRequests < 0 {
@@ -107,23 +107,23 @@ func CompileCrawl(root, runID string, d CrawlDefinition) (config.Application, er
 	case "", "direct":
 	case "http":
 		if d.Proxy.URL == "" {
-			return a, errs.NewRequestError("enter an HTTP proxy address")
+			return a, errs.NewRequestError("HTTP proxy URL required")
 		}
 		c.HTTPClient.HTTPProxyUrl = d.Proxy.URL
 	case "socks5":
 		if d.Proxy.URL == "" {
-			return a, errs.NewRequestError("enter a SOCKS5 proxy address")
+			return a, errs.NewRequestError("SOCKS5 proxy URL required")
 		}
 		c.HTTPClient.Socks5Url = d.Proxy.URL
 	default:
-		return a, errs.NewRequestError("choose direct, HTTP, or SOCKS5 connection")
+		return a, errs.NewRequestError("invalid proxy mode: expected direct, http, or socks5")
 	}
 	if err := applyNetworkSettings(&c.HTTPClient, d.Network); err != nil {
 		return a, errs.NewRequestError(err.Error())
 	}
 	for _, uri := range append(append([]string{}, d.Seeds...), d.Feeds...) {
 		if !util.URLHostnameAllowed(uri, c.HTTPClient.AllowedHostSuffixes) {
-			return a, errs.NewRequestError("starting URLs and feeds must match the allowed hostname suffixes")
+			return a, errs.NewRequestError("seed and feed URLs must match allowed hostname suffixes")
 		}
 	}
 	c.HTTPClient.Scope = d.Scope

@@ -6,9 +6,9 @@ New crawls start in **fixed** mode with `runtime.NumCPU() * 4` fetch workers (32
 
 The ordinary HTTP worker manager still owns workers and transactions. Optional queue admission acquires execution capacity **before** a crawl/file queue leases its next message, or a channel queue hands off its message. The permit is released when the delivery transaction ends. Waiting for an adaptive or process slot therefore does not consume a durable delivery attempt. Cancellation and shutdown release permits and cancel pending admission.
 
-Each crawl has its own initial concurrency, adaptive bounds, queues, frontier, results, and saved counters. A FIFO process broker shares capacity among eligible waiting crawls. The **smallest process request ceiling among active crawls** applies across them. Reducing a ceiling lets already admitted requests finish; it prevents additional admission until usage drops below the new ceiling. The same rule applies to adaptive reductions. Thus active requests can temporarily exceed a newly reduced effective limit.
+Each crawl has its own initial concurrency, adaptive bounds, queues, frontier, results, and saved counters. A FIFO process broker shares capacity among eligible waiting crawls. Workspace **Execution limits** sets the process ceiling once, defaulting to host CPU count × 16. Reducing a ceiling lets already admitted requests finish; it prevents additional admission until usage drops below the new ceiling. The same rule applies to adaptive reductions. Thus active requests can temporarily exceed a newly reduced effective limit.
 
-Shared host limits use the smallest active **Shared requests per host** and the largest **Shared delay per host**. Defaults remain two and 100ms. Per-crawl host limits/delays also apply; the stricter combination controls requests. Robots, feeds, and redirects share host pacing and HTTP timeout configuration. The total execution ceiling measures page-fetch deliveries, including their policy checks and object writes; feed jobs are separate worker jobs and are not counted as page-fetch attempts.
+Workspace **Execution limits** also sets shared host concurrency and delay, defaulting to two and 100ms. Per-crawl host limits/delays also apply; the stricter combination controls requests. Robots, feeds, and redirects share host pacing and HTTP timeout configuration. The total execution ceiling measures page-fetch deliveries, including their policy checks and object writes; feed jobs are separate worker jobs and are not counted as page-fetch attempts.
 
 Legacy definitions with no `fetch` object retain four guided fetch workers. Expert pipelines retain their explicit worker counts; omitted counts retain the existing runtime default. They still participate in process admission. **Configure fetch throughput** opts an older configuration into the new controls. In an expert pipeline, **Apply fetch settings and worker count** explicitly updates built-in HTTP worker counts, queue generation support, and frontier retry policy while preserving other component parameters and large JSON integers. Saving and editing are locked until Apply completes. Adaptive worker pools have the configured maximum number of ordinary workers; admission selects how many may execute. Custom inbox implementations must provide the optional `SetDispatchGate` hook to use these execution controls.
 
@@ -30,45 +30,26 @@ Downstream queue and heap watermarks pause new admission and publication, then r
 
 ## Adaptive control
 
-Adaptive mode starts at **Concurrent requests overall** and stays within **Minimum concurrency** and **Maximum concurrency**. It requires queued demand, completed samples, an evaluation window, and an adjustment cooldown before changing capacity. Healthy throughput gains grow capacity by **Concurrency increase step**. Configured pressure, CPU saturation, proxy/local failures, or smoothed latency inflation reduce it by **Concurrency decrease multiplier**. Unreachable destination failures do not by themselves indicate global overload; host cooldowns handle them.
+Adaptive mode starts at **Concurrent requests overall** and stays within configured minimum/maximum bounds. **Adjustment interval** defaults to 30s; a window expires even without completed requests. CPU pressure or a sampled local/proxy overload ratio can reduce concurrency by the configured multiplier. The minimum sample count applies only to the overload ratio. Destination latency and previous throughput gains do not control global reductions.
 
-The UI exposes sampling/evaluation intervals, minimum samples, cooldown, growth/decrease parameters, latency smoothing/inflation, useful throughput gain, overload failure ratio, CPU thresholds, heap thresholds, disk minimum, and all dispatch/recovery limits. Bounds and cross-field constraints are checked before saving. The source of truth for individual limits is [`flow.Options`](../flow/policy.go), also used to generate the UI catalogue. Fixed mode retains resource backpressure while keeping its concurrency target fixed.
+Memory, downstream queues, disk, and storage-health gates block admission independently. Blocking alone does not shrink concurrency. Gates clear using their own health checks and hysteresis. Remote failures remain subject to host retries and cooldowns.
+
+With clear pressure, runnable demand, and used execution capacity, each eligible interval increases concurrency by the configured step, defaulting to host CPU count (minimum one). Growth requires neither successes nor completed samples. Host pacing and shared-capacity waiting are distinguished from network saturation using bounded dispatcher observations and broker waits; no full-frontier demand scan is required.
+
+Old evaluation/cooldown settings migrate to their longer interval. Explicit increase steps remain unchanged. Retired latency/gain controls are removed from active configuration; historical snapshots retain the original values. Fixed mode retains admission gates with a fixed concurrency target. [`flow.Options`](../flow/policy.go) defines individual bounds and UI controls.
 
 ## Monitoring and persistence
 
-**Fetch performance** reports page-attempt, successful-response, HTML-response, unique-HTML, admitted-URL, finalized-request, and byte rates; active/effective/process capacity; retry/cooldown counters; response statuses and classified failures; received/stored bytes; heap/CPU/disk; queue depth, oldest age and growth; storage conflicts/failures; and bounded latency summaries for execution wait, origin wait, connect, TLS, headers, body, storage, and frontier storage. Header latency includes connect/TLS time. Body/storage measurements can overlap because object storage streams the body.
+**Fetch metrics** reports page-attempt, successful-response, HTML-response, unique-HTML, admitted-URL, finalized-request, and byte rates; active/effective/process capacity; retry/cooldown counters; response statuses and classified failures; received/stored bytes; heap/CPU/disk; queue depth, oldest age and growth; storage conflicts/failures; and bounded latency summaries for execution wait, origin wait, connect, TLS, headers, body, storage, and frontier storage. Header latency includes connect/TLS time. Body/storage measurements can overlap because object storage streams the body.
 
 Successful response rates count HTTP 2xx/3xx fetches; HTML response rate does not imply unique content. Unique HTML is established by the durable frontier after analysis. Rates use the configured window, starting with elapsed session time; latency summaries use at most **Maximum samples per metric** recent observations, while their sample count is cumulative for that process session. No per-URL metric series are retained.
 
 Cumulative attempt/error/status/byte/storage counters are atomically checkpointed beside runtime state at **Metrics save interval**, and on orderly shutdown. The file is private to the run and removed with crawl data. An abrupt process failure can lose counters since the last checkpoint; durable frontier state remains authoritative for retries and finalized work. Recent rate windows, latency samples, and adaptive learning restart with the process. Saved run summaries remain available in run history. Metrics persistence errors appear in the adjustment/status text.
 
-## Validation and reproducible capacity comparison
+## Validation
 
-Run:
+`make test` runs backend and frontend suites; `make test-race` runs backend race checks. `make test-ui` runs real-backend browser scenarios and requires complete coverage of the checked-in targeted inventory within 30 minutes. See [browser validation](../web/README.md).
 
-```sh
-go test ./...
-go test -race ./...
-go vet ./...
-go test ./util -run '^$' -bench BenchmarkFetchCapacity -benchtime=1x -count=1
-cd web
-npm test
-npm run build
-node ../scripts/package-ui.mjs
-npm run test:browser -- --workers=4
-```
+`make test-benchmark BASELINE=/private/path/baseline.log BASELINE_APP=/private/path/pipeline-baseline.log` compares five final repetitions against five same-host baseline repetitions at 4, 16, 32, and 64 slots. Both isolated network capacity and complete worker-pipeline median successful throughput may not regress by more than 10%. Raw attempts, successes, latency, heap, and peak concurrency are emitted by `BenchmarkFetchCapacity`; isolated application tests cover pipeline progress, retries, and adaptive recovery.
 
-The controlled benchmark sends 256 requests through a local HTTP proxy to distinct synthetic hostnames: 75% return HTML after 20ms, 12.5% return HTTP 503 after 60ms, and 12.5% remain offline until the configured 250ms timeout. It measures network/admission capacity, not extraction/sink throughput or real Tor latency. One eight-CPU run produced:
-
-| Slots | Attempts/s | Successful pages/s | p95 attempt ms | Peak requests | Heap MiB |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 4 | 73 | 55 | 251 | 4 | 2.9 |
-| 16 | 256 | 192 | 251 | 16 | 2.6 |
-| 32 | 424 | 318 | 251 | 32 | 2.6 |
-| 64 | 685 | 514 | 251 | 64 | 3.7 |
-
-The application integration test separately exercises full-pipeline durable retry and completion. UI tests cover all 864 combinations of mode × strategy × source × connection × robots × scope × completion behavior, plus nondefault round trips for every setting and 48 live combinations of mode × connection × robots × timeout inheritance × retry allowance. Numeric/duration boundaries, cross-field constraints, migration, lifecycle, expert editing, and existing workspace regressions are separate checks. Continuous numeric values and arbitrary custom plugins cannot be exhaustively enumerated.
-
-Verification completed on November 15, 2026 (Linux/Chromium): the 1,302-case full browser suite passed, followed by a 62-case focused run covering the latest runtime/editor changes and four additional mobile/accessibility and pressure-recovery cases. All 11 existing expert/action-recovery regressions passed again after locking Save during an outstanding Apply request. All 83 frontend unit cases, the full Go test suite, the full Go race suite, `go vet`, the production Go/UI builds, catalogue synchronization, and whitespace checks passed. Manual UI checks covered validation, configuration persistence, initiation, metrics, pause/resume/stop, and expert Apply/save using isolated local fixtures. These checks do not measure a live Tor network's capacity.
-
-The subsequent [final-code endurance and scale validation](endurance-validation.md) records the fresh 1,306-case browser rerun, uncached backend suites, sustained race-enabled crawl soak, and million-URL lifecycle checks, including defects found and corrected during those runs.
+`make test-soak`, `make test-million`, `make test-million-disk`, `make test-elasticsearch`, and `make test-tor` are separate acceptance gates. They require their documented prerequisites and retain the full endurance/scale/live-network workloads. Generated reports belong outside Git. Prior measurements in [endurance validation](endurance-validation.md) describe earlier code and do not establish current-code acceptance.

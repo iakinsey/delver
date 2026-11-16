@@ -149,7 +149,7 @@ func LoadConfig() Config {
 			DashDBPath: DataFilePath("data", "dash.db"),
 		},
 		Streamer: StreamerConfig{
-			Enabled: true,
+			Enabled: false,
 			Address: ":26548",
 		},
 		Robots: RobotsConfig{

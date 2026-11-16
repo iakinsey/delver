@@ -1,3 +1,5 @@
+import { ResultsPanel, RunHistory } from "./runViews";
+import { ExecutionLimits } from "./executionLimits";
 import { FetchMetrics } from "./fetchMetrics";
 import React, { useEffect, useState, useRef } from "react";
 import { useHistory, useLocation } from "react-router-dom";
@@ -9,10 +11,11 @@ import {
   operationTitle,
   words,
 } from "./crawlApi";
+import { crawlState, operationActive } from "./crawlStatus";
 import { CrawlEditor, Field } from "./crawlEditor";
 export { CrawlEditor } from "./crawlEditor";
 import "./workspace.css";
-export function WorkspaceLanding({ fallback }) {
+export function WorkspaceLanding() {
   const [defaults, setDefaults] = useState(null),
     [failure, setFailure] = useState(""),
     [attempt, setAttempt] = useState(0);
@@ -22,8 +25,7 @@ export function WorkspaceLanding({ fallback }) {
       .then((d) => live && setDefaults(d))
       .catch((e) => {
         if (live) {
-          if (e.legacy) setDefaults(false);
-          else setFailure(e.message);
+          setFailure(e.message);
         }
       });
     return () => {
@@ -47,12 +49,10 @@ export function WorkspaceLanding({ fallback }) {
     );
   return defaults === null ? (
     <main className="crawl-workspace">
-      <p role="status">Opening your workspace…</p>
+      <p role="status">Loading…</p>
     </main>
-  ) : defaults ? (
-    <Workspace defaults={defaults} />
   ) : (
-    fallback
+    <Workspace defaults={defaults} />
   );
 }
 export default function Workspace({ defaults }) {
@@ -65,7 +65,7 @@ export default function Workspace({ defaults }) {
     [editor, setEditor] = useState(null),
     [error, setError] = useState(""),
     [connectionError, setConnectionError] = useState(""),
-    [notice, setNotice] = useState(""),
+    [pendingAction, setPendingAction] = useState(""),
     [busy, setBusy] = useState(false),
     [archived, setArchived] = useState(false),
     [ops, setOps] = useState({}),
@@ -114,22 +114,9 @@ export default function Workspace({ defaults }) {
       setFailureOffset(offset);
     }
   }
-  const workflowBusy = Object.values(detail?.operations || {}).some((op) =>
-    ["accepted", "running"].includes(op.state),
-  );
-  const locked = busy || workflowBusy;
-  const state = workflowBusy
-    ? Object.values(detail?.operations || {}).some(
-        (op) =>
-          op.action === "delete" && ["accepted", "running"].includes(op.state),
-      )
-      ? "deleting"
-      : "starting"
-    : run?.state === "completed"
-      ? "completed"
-      : run?.state === "draining" && runtime.state === "running"
-        ? "draining"
-        : runtime.state || "not started";
+  const operations = { ...detail?.operations, ...ops };
+  const locked = busy || Object.values(operations).some(operationActive);
+  const state = crawlState(detail, ops, pendingAction);
   async function refresh() {
     const list = await crawlAPI("list");
     setCrawls(list);
@@ -201,10 +188,10 @@ export default function Workspace({ defaults }) {
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
   }, [editor]);
-  async function perform(fn) {
+  async function perform(fn, action = "") {
     setBusy(true);
     setError("");
-    setNotice("");
+    setPendingAction(action);
     try {
       await fn();
       await refresh();
@@ -212,20 +199,21 @@ export default function Workspace({ defaults }) {
       setError(e.message);
     } finally {
       setBusy(false);
+      setPendingAction("");
     }
   }
   function open(id) {
     if (editor) {
-      setError("Save or discard changes before leaving this editor.");
+      setError("Unsaved changes");
       return;
     }
     setError("");
-    setNotice("");
+    setPendingAction("");
     history.push(id ? `/crawls/${id}` : "/");
   }
   function newCrawl() {
     setError("");
-    setNotice("");
+    setPendingAction("");
     setEditor({
       record: null,
       definition: clone(defaults),
@@ -247,18 +235,26 @@ export default function Workspace({ defaults }) {
       pipeline,
     });
   }
+  async function dispatch(action, data) {
+    setPendingAction(action);
+    const op = await crawlAPI(action, data);
+    if (op?.id && op?.state) setOps((old) => ({ ...old, [op.id]: op }));
+    return op;
+  }
   async function command(action) {
-    await crawlAPI("command", { crawl_id: selected, action, id: uuid4() });
-    setNotice("Command accepted. Watch run activity for completion.");
+    const op = await crawlAPI("command", {
+      crawl_id: selected,
+      action,
+      id: uuid4(),
+    });
+    setOps((old) => ({ ...old, [op.id]: op }));
   }
   async function save(start) {
     const e = editor;
     if (!e.record) {
       const signature = JSON.stringify(e.definition);
       if (e.pendingStart && e.pendingStart.signature !== signature) {
-        throw Error(
-          "This crawl was already saved. Discard this editor and open the saved crawl before changing its configuration.",
-        );
+        throw Error("Crawl already created; reopen to edit");
       }
       let c = e.pendingStart?.record;
       if (!c) {
@@ -271,7 +267,7 @@ export default function Workspace({ defaults }) {
         );
       }
       if (start)
-        await crawlAPI("start_run", {
+        await dispatch("start_run", {
           crawl_id: c.id,
           revision: c.revision,
           id: `${e.createID}:start`,
@@ -284,7 +280,7 @@ export default function Workspace({ defaults }) {
       try {
         JSON.parse(e.pipeline);
       } catch {
-        throw Error("Pipeline JSON is not valid. Check its syntax.");
+        throw Error("Invalid pipeline JSON");
       }
     }
     const data =
@@ -316,17 +312,12 @@ export default function Workspace({ defaults }) {
     pending = { ...pending, record: c };
     setEditor((old) => old && { ...old, record: c, pendingSave: pending });
     if (start)
-      await crawlAPI("activate", {
+      await dispatch("activate", {
         crawl_id: c.id,
         revision: c.revision,
         id: pending.activationID,
       });
     setEditor(null);
-    setNotice(
-      start
-        ? "Replacement run started; previous run data is preserved."
-        : "Draft saved; the active run is unchanged.",
-    );
   }
 
   return (
@@ -340,13 +331,13 @@ export default function Workspace({ defaults }) {
           )}
         </div>
         <div className="crawl-actions">
-          {selected && <button onClick={() => open("")}>← All crawls</button>}
+          {selected && <button onClick={() => open("")}>← Crawls</button>}
           <button
             className="crawl-primary"
             disabled={locked || !!editor}
             onClick={newCrawl}
           >
-            ＋ Create a crawl
+            ＋ Create crawl
           </button>
         </div>
       </div>
@@ -355,11 +346,7 @@ export default function Workspace({ defaults }) {
           {error || connectionError}
         </p>
       )}
-      {notice && (
-        <p role="status" className="crawl-notice">
-          {notice}
-        </p>
-      )}
+      {!editor && <ExecutionLimits onError={setError} />}
       {editor ? (
         <CrawlEditor
           editor={editor}
@@ -377,7 +364,9 @@ export default function Workspace({ defaults }) {
           <section className="crawl-panel">
             <div className="crawl-heading">
               <div>
-                <span className={`crawl-state ${state}`}>{words(state)}</span>
+                <span role="status" className={`crawl-state ${state}`}>
+                  {words(state)}
+                </span>
                 <p>
                   {detail.expert
                     ? "Custom worker pipeline"
@@ -391,19 +380,19 @@ export default function Workspace({ defaults }) {
                       disabled={locked}
                       onClick={() =>
                         perform(() =>
-                          crawlAPI("start_run", {
+                          dispatch("start_run", {
                             crawl_id: selected,
                             revision: detail.revision,
                           }),
                         )
                       }
                     >
-                      {run ? "Start a new run" : "Start crawl"}
+                      {run ? "Restart" : "Start"}
                     </button>
                     {["running", "draining"].includes(state) && (
                       <button
                         disabled={locked}
-                        onClick={() => perform(() => command("pause"))}
+                        onClick={() => perform(() => command("pause"), "pause")}
                       >
                         Pause
                       </button>
@@ -411,9 +400,9 @@ export default function Workspace({ defaults }) {
                     {state === "stopped" && run?.state !== "completed" && (
                       <button
                         disabled={locked}
-                        onClick={() => perform(() => command("start"))}
+                        onClick={() => perform(() => command("start"), "start")}
                       >
-                        Resume this run
+                        Resume
                       </button>
                     )}
                     {["stopped", "completed", "failed"].includes(state) &&
@@ -424,7 +413,7 @@ export default function Workspace({ defaults }) {
                           disabled={locked}
                           onClick={() =>
                             perform(() =>
-                              crawlAPI("continue_run", {
+                              dispatch("continue_run", {
                                 crawl_id: selected,
                                 revision: detail.revision,
                                 id: uuid4(),
@@ -432,21 +421,31 @@ export default function Workspace({ defaults }) {
                             )
                           }
                         >
-                          Continue remaining work until drained
+                          Drain
                         </button>
                       )}
-                    {state === "paused" && (
+                    {["paused", "pausing"].includes(state) && (
                       <button
                         disabled={locked}
-                        onClick={() => perform(() => command("resume"))}
+                        onClick={() =>
+                          perform(() => command("resume"), "resume")
+                        }
                       >
                         Resume
                       </button>
                     )}
-                    {["running", "paused", "draining"].includes(state) && (
+                    {[
+                      "running",
+                      "paused",
+                      "draining",
+                      "pausing",
+                      "starting",
+                      "stopping",
+                      "failed",
+                    ].includes(state) && (
                       <button
                         disabled={locked}
-                        onClick={() => perform(() => command("stop"))}
+                        onClick={() => perform(() => command("stop"), "stop")}
                       >
                         Stop
                       </button>
@@ -455,7 +454,7 @@ export default function Workspace({ defaults }) {
                       disabled={locked}
                       onClick={() => perform(() => edit(detail))}
                     >
-                      Edit crawl
+                      Edit
                     </button>
                   </>
                 )}
@@ -482,7 +481,7 @@ export default function Workspace({ defaults }) {
                     )
                   }
                 >
-                  {detail.archived ? "Restore crawl" : "Archive crawl"}
+                  {detail.archived ? "Restore" : "Archive"}
                 </button>
                 <button
                   ref={deleteTrigger}
@@ -493,7 +492,7 @@ export default function Workspace({ defaults }) {
                     setDeleteOpen(true);
                   }}
                 >
-                  Delete crawl
+                  Delete
                 </button>
               </div>
             </div>
@@ -526,7 +525,7 @@ export default function Workspace({ defaults }) {
                     e.preventDefault();
                     perform(async () => {
                       deleting.current = selected;
-                      await crawlAPI("delete", {
+                      await dispatch("delete", {
                         crawl_id: selected,
                         revision: detail.revision,
                         id: uuid4(),
@@ -542,9 +541,7 @@ export default function Workspace({ defaults }) {
                   <h2 id="delete-crawl-title">
                     Delete {detail.definition.name}?
                   </h2>
-                  <p>
-                    This permanently removes its saved data and all run history.
-                  </p>
+                  <p>Delete saved data and run history.</p>
                   <label className="crawl-check">
                     <input
                       type="checkbox"
@@ -554,12 +551,6 @@ export default function Workspace({ defaults }) {
                     />
                     Preserve crawl logs
                   </label>
-                  <p>
-                    <small>
-                      Checked keeps Elasticsearch logs. Unchecked deletes this
-                      crawl’s Elasticsearch logs.
-                    </small>
-                  </p>
                   <div className="crawl-actions">
                     <button
                       autoFocus
@@ -570,7 +561,7 @@ export default function Workspace({ defaults }) {
                       Cancel
                     </button>
                     <button type="submit" disabled={busy}>
-                      Delete permanently
+                      Delete
                     </button>
                   </div>
                 </form>
@@ -578,26 +569,26 @@ export default function Workspace({ defaults }) {
             )}
             {(detail.draft || detail.expert_draft) && (
               <p className="crawl-notice">
-                A draft is saved. Applying it starts a replacement run.
+                Draft saved
                 <button
                   disabled={locked}
                   onClick={() =>
                     perform(() =>
-                      crawlAPI("activate", {
+                      dispatch("activate", {
                         crawl_id: selected,
                         revision: detail.revision,
                       }),
                     )
                   }
                 >
-                  Apply draft and start new run
+                  Apply and restart
                 </button>
               </p>
             )}
             <div className="crawl-flow" aria-label="Crawl progress">
               {[
                 ["Discovered", stats.admitted],
-                ["Waiting for room", stats.deferred_discoveries],
+                ["Deferred discoveries", stats.deferred_discoveries],
                 ["Fetch queue", frame?.queues?.requests],
                 ["Frontier backlog", stats.pending_and_active],
                 ["Processed", stats.terminal_outcomes],
@@ -610,64 +601,15 @@ export default function Workspace({ defaults }) {
                 </div>
               ))}
             </div>
-            <p role="status">
-              {state === "completed"
-                ? "This run is complete. Results and history are preserved."
-                : state === "draining"
-                  ? "A termination condition was reached. Dispatched work is finishing; remaining discoveries are preserved."
-                  : state === "paused"
-                    ? "Paused. Queues and discoveries are preserved."
-                    : state === "stopped"
-                      ? "Stopped. Results and pending work are preserved; resume this run or start a new one."
-                      : pipelineFailures > 0
-                        ? "Pipeline processing needs attention. Failed records are preserved for retry."
-                        : state === "running" &&
-                            !stats.pending_and_active &&
-                            !stats.deferred_discoveries
-                          ? run?.continued > 0 ||
-                            detail.definition.termination.when_drained
-                            ? "Waiting for sources and processing to settle before completing."
-                            : "Caught up. Monitoring continues."
-                          : "Discoveries enter the queue as capacity becomes available."}
-            </p>
             {pipelineFailures > 0 && (
               <p role="alert" className="crawl-error">
-                {pipelineFailures} pipeline records failed. Open Recover failed
-                work to inspect and retry them.
+                Failed pipeline records: {pipelineFailures}
               </p>
             )}
-            {state === "completed" &&
-              (stats.pending_and_active || 0) +
-                (stats.deferred_discoveries || 0) >
-                0 && (
-                <p>
-                  {(stats.pending_and_active || 0) +
-                    (stats.deferred_discoveries || 0)}{" "}
-                  discoveries remain preserved outside the drained fetch queue
-                  because this run reached a termination limit.
-                </p>
-              )}
-            {!runtime.runtime && run?.summary && (
-              <p>
-                <small>
-                  Saved queue snapshot from the last running session. Remaining
-                  discoveries can be continued without restarting from the
-                  original URLs.
-                </small>
-              </p>
-            )}
-            {run?.continued > 0 && (
-              <p className="crawl-notice">
-                {state === "completed"
-                  ? "Preserved work was continued until drained."
-                  : "Continuing preserved work until drained."}{" "}
-                The previous request and time limits no longer apply; source
-                polling and scheduled revisits are disabled.
-              </p>
-            )}
+            {run?.continued > 0 && <p>Drain mode</p>}
             {detail.persistence_error && (
               <p role="alert" className="crawl-error">
-                Workspace changes could not be saved: {detail.persistence_error}
+                Persistence error: {detail.persistence_error}
               </p>
             )}
             {runtime.error && <p className="crawl-error">{runtime.error}</p>}
@@ -679,23 +621,23 @@ export default function Workspace({ defaults }) {
           </section>
           <FetchMetrics data={frame.fetch} frontier={stats} />
           <section className="crawl-panel">
-            <h2>Run activity</h2>
+            <h2>Operations</h2>
             {Object.values(ops).length ? (
               <ul>
                 {Object.values(ops)
                   .slice(-12)
                   .map((op) => (
-                    <li key={op.id}>
+                    <li key={op.id} role={op.error ? "alert" : undefined}>
                       {operationTitle(op.action)}: {words(op.state)}
                       {op.error ? ` — ${op.error}` : ""}
                     </li>
                   ))}
               </ul>
             ) : (
-              <p>No commands yet.</p>
+              <p>Empty</p>
             )}
             <details>
-              <summary>Queue and worker details</summary>
+              <summary>Queues and workers</summary>
               <div className="crawl-table-scroll">
                 <table>
                   <thead>
@@ -750,8 +692,8 @@ export default function Workspace({ defaults }) {
               </div>
             </details>
             <details>
-              <summary>Recover failed work</summary>
-              <Field label="Queue name">
+              <summary>Failed records</summary>
+              <Field label="Queue">
                 <input
                   value={queue}
                   onChange={(e) => {
@@ -765,18 +707,14 @@ export default function Workspace({ defaults }) {
                 disabled={locked || !queue || !runtime.runtime}
                 onClick={() => perform(() => loadFailures(0))}
               >
-                Inspect failed records
+                Inspect
               </button>
-              {!runtime.runtime && (
-                <p>Resume this run to inspect or retry failed queue records.</p>
-              )}
-              {failures?.length === 0 && (
-                <p role="status">No failed records in this queue.</p>
-              )}
+              {!runtime.runtime && <p>Runtime offline</p>}
+              {failures?.length === 0 && <p role="status">Empty</p>}
               {!!failures?.length && (
                 <nav aria-label="Failed record pages">
                   <p>
-                    Showing failed records {failureOffset + 1}–
+                    Records {failureOffset + 1}–
                     {failureOffset + failures.length}.
                   </p>
                   <button
@@ -787,7 +725,7 @@ export default function Workspace({ defaults }) {
                       )
                     }
                   >
-                    Previous failed records
+                    Previous
                   </button>
                   <button
                     disabled={
@@ -802,7 +740,7 @@ export default function Workspace({ defaults }) {
                       perform(() => loadFailures(failureOffset + 50))
                     }
                   >
-                    Next failed records
+                    Next
                   </button>
                 </nav>
               )}
@@ -823,91 +761,18 @@ export default function Workspace({ defaults }) {
                       )
                     }
                   >
-                    Retry record
+                    Retry
                   </button>
                 </div>
               ))}
             </details>
           </section>
-          <section className="crawl-panel">
-            <h2>Recent results</h2>
-            {resultsRun && (
-              <p>
-                Showing a previous run.{" "}
-                <button onClick={() => setResultsRun("")}>
-                  View latest run
-                </button>
-              </p>
-            )}
-            {results.available === false ? (
-              <p>
-                This pipeline uses a custom output sink. Results remain in that
-                sink.
-              </p>
-            ) : results.rows?.length ? (
-              <div className="crawl-table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Page</th>
-                      <th>HTTP status</th>
-                      <th>Title or error</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {results.rows.map((row, i) => (
-                      <tr key={`${row.uri}:${i}`}>
-                        <td className="crawl-result-uri">
-                          {/^https?:\/\//.test(row.uri) ? (
-                            <a href={row.uri} target="_blank" rel="noreferrer">
-                              {row.uri}
-                            </a>
-                          ) : (
-                            row.uri
-                          )}
-                        </td>
-                        <td>{row.http_status || "Unavailable"}</td>
-                        <td>{row.error || row.title || "Untitled page"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p>No page results yet.</p>
-            )}
-            {results.limited && (
-              <small>
-                This preview reads a bounded tail. Full records remain in the
-                run's output storage.
-              </small>
-            )}
-          </section>
-          <section className="crawl-panel">
-            <h2>Run history</h2>
-            <ul>
-              {[...detail.runs].reverse().map((r) => (
-                <li key={r.id}>
-                  {new Date(r.created * 1000).toLocaleString()} · version{" "}
-                  {r.version} · {words(r.state)}
-                  {r.continued > 0
-                    ? ` · continued ${r.continued} time(s)`
-                    : ""}{" "}
-                  <button onClick={() => setResultsRun(r.id)}>
-                    View results for this run
-                  </button>
-                  <details>
-                    <summary>Configuration for this run</summary>
-                    <p>
-                      {r.expert
-                        ? "Custom pipeline preserved in expert configuration."
-                        : `${words(r.definition.strategy)}; ${words(r.definition.scope)}; ${r.definition.termination.when_drained ? "finish when drained" : "monitor every " + r.definition.revisit}`}
-                    </p>
-                  </details>
-                </li>
-              ))}
-            </ul>
-          </section>
+          <ResultsPanel
+            results={results}
+            resultsRun={resultsRun}
+            setResultsRun={setResultsRun}
+          />
+          <RunHistory runs={detail.runs} onView={setResultsRun} />
         </>
       ) : !selected ? (
         <>
@@ -919,21 +784,14 @@ export default function Workspace({ defaults }) {
                 checked={archived}
                 onChange={(e) => setArchived(e.target.checked)}
               />
-              Show archived crawls
+              Show archived
             </label>
           </div>
           {!crawls.some((c) => archived || !c.archived) ? (
             <section className="crawl-empty">
-              <div className="crawl-orbit" aria-hidden="true">
-                ◎ → ◉ → ◎
-              </div>
-              <h2>Where should we start?</h2>
-              <p>
-                Add a website or a few starting pages. Explore a site, follow
-                the wider web, or keep watching for changes.
-              </p>
+              <h2>Empty</h2>
               <button className="crawl-primary" onClick={newCrawl}>
-                Create your first crawl
+                Create crawl
               </button>
             </section>
           ) : (
@@ -942,10 +800,7 @@ export default function Workspace({ defaults }) {
                 .filter((c) => archived || !c.archived)
                 .map((c) => {
                   const r = c.runs.at(-1),
-                    status =
-                      r?.state === "completed"
-                        ? "completed"
-                        : c.runtime?.state || "not started",
+                    status = crawlState(c),
                     snapshot = c.runtime?.runtime || r?.summary || {},
                     f =
                       snapshot.frontier ||
@@ -967,11 +822,11 @@ export default function Workspace({ defaults }) {
                       <p>
                         {c.expert
                           ? "Custom pipeline"
-                          : `${c.definition.seeds.length} starting URLs · ${c.definition.feeds.length} feeds`}
+                          : `${c.definition.seeds.length} seed URLs · ${c.definition.feeds.length} feeds`}
                       </p>
                       {!c.expert && (
                         <p>
-                          {`${strategyTitle(c.definition.strategy)} · ${c.definition.termination.when_drained ? "Finish when drained" : "Continuous monitoring"}`}
+                          {`${strategyTitle(c.definition.strategy)} · ${c.definition.termination.when_drained ? "Drain" : "Monitor"}`}
                         </p>
                       )}
                       <div className="crawl-card-metrics">
@@ -986,7 +841,7 @@ export default function Workspace({ defaults }) {
                           waiting
                         </span>
                       </div>
-                      <button onClick={() => open(c.id)}>Open crawl →</button>
+                      <button onClick={() => open(c.id)}>Open →</button>
                     </article>
                   );
                 })}
@@ -994,7 +849,7 @@ export default function Workspace({ defaults }) {
           )}
         </>
       ) : (
-        <p>Loading crawl…</p>
+        <p>Loading…</p>
       )}
     </main>
   );

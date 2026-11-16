@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /good
+Allow: /alsogood
+Disallow: /bad
+Disallow: /alsobad

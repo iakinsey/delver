@@ -313,6 +313,9 @@ func (s *limitedTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 			return nil, err
 		}
 		originLimit, originDelay := flow.SharedOriginLimits()
+		if s.owner.Flow != nil {
+			originLimit, originDelay = s.owner.Flow.SharedOriginLimits()
+		}
 		global, err := s.owner.GlobalGate.Acquire(req.Context(), req.URL.Scheme+"://"+req.URL.Host, originLimit, originDelay)
 		if err != nil {
 			local()
@@ -347,6 +350,11 @@ func (s *limitedTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 
 	if s.owner.Flow != nil {
 		s.owner.Flow.Measure("origin_wait", time.Since(gateStart))
+	}
+	if s.owner.Flow != nil {
+		networkDone := s.owner.Flow.BeginNetwork(req.Context())
+		prior := release
+		release = func() { networkDone(); prior() }
 	}
 	networkStart := time.Now()
 	var connectStart, tlsStart time.Time

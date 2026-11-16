@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/iakinsey/delver/config"
+	"github.com/iakinsey/delver/flow"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/errs"
 	"github.com/iakinsey/delver/util"
@@ -20,17 +21,19 @@ import (
 )
 
 type CrawlRun struct {
-	LogsScoped bool                `json:"logs_scoped,omitempty"`
-	Continued  int                 `json:"continued,omitempty"`
-	Summary    *RuntimeSnapshot    `json:"summary,omitempty"`
-	Legacy     bool                `json:"legacy,omitempty"`
-	ID         string              `json:"id"`
-	Version    uint64              `json:"version"`
-	Created    int64               `json:"created"`
-	State      string              `json:"state"`
-	Elapsed    int64               `json:"elapsed_ns"`
-	Definition CrawlDefinition     `json:"definition"`
-	Expert     *config.Application `json:"expert,omitempty"`
+	ConfigurationSnapshot json.RawMessage     `json:"configuration_snapshot,omitempty"`
+	Desired               string              `json:"desired"`
+	LogsScoped            bool                `json:"logs_scoped,omitempty"`
+	Continued             int                 `json:"continued,omitempty"`
+	Summary               *RuntimeSnapshot    `json:"summary,omitempty"`
+	Legacy                bool                `json:"legacy,omitempty"`
+	ID                    string              `json:"id"`
+	Version               uint64              `json:"version"`
+	Created               int64               `json:"created"`
+	State                 string              `json:"state"`
+	Elapsed               int64               `json:"elapsed_ns"`
+	Definition            CrawlDefinition     `json:"definition"`
+	Expert                *config.Application `json:"expert,omitempty"`
 }
 type CrawlRecord struct {
 	Deletion     *CrawlDeletion        `json:"deletion,omitempty"`
@@ -61,6 +64,8 @@ type crawlSlot struct {
 	clockRunning bool
 }
 type Workspace struct {
+	settings         WorkspaceSettings
+	broker           *flow.Broker
 	dirty            bool
 	persistenceError string
 	background       sync.WaitGroup
@@ -74,7 +79,7 @@ type Workspace struct {
 	records          map[string]*CrawlRecord
 	slots            map[string]*crawlSlot
 	lock             *os.File
-	gate             config.HTTPGate
+	gate             *util.OriginGate
 	done             chan struct{}
 }
 
@@ -96,10 +101,10 @@ func NewWorkspace(parent context.Context, options Options) (*Workspace, error) {
 		return nil, errs.NewRequestError("workspace is already open")
 	}
 	ctx, cancel := context.WithCancel(parent)
-	w := &Workspace{ctx: ctx, cancel: cancel, options: options, root: root, records: map[string]*CrawlRecord{}, slots: map[string]*crawlSlot{}, lock: lock, gate: util.ProcessOriginGate(), done: make(chan struct{})}
+	w := &Workspace{settings: WorkspaceSettings{Revision: 1, Execution: flow.DefaultExecutionLimits()}, ctx: ctx, cancel: cancel, options: options, root: root, records: map[string]*CrawlRecord{}, slots: map[string]*crawlSlot{}, lock: lock, gate: util.NewOriginGate(), done: make(chan struct{})}
 	b, err := os.ReadFile(filepath.Join(root, "crawls.json"))
 	if err == nil {
-		if err = json.Unmarshal(b, &w.records); err != nil {
+		if err = w.loadRegistry(b); err != nil {
 			w.CloseWithoutMonitor()
 			return nil, err
 		}
@@ -107,11 +112,27 @@ func NewWorkspace(parent context.Context, options Options) (*Workspace, error) {
 		w.CloseWithoutMonitor()
 		return nil, err
 	}
+	w.broker = flow.NewBroker(w.settings.Execution)
+	w.gate.SetLimits(w.settings.Execution.HostConcurrency, w.settings.Execution.HostDelay.Value())
+	w.ctx = flow.WithBroker(w.ctx, w.broker)
 	if w.records == nil {
 		w.CloseWithoutMonitor()
 		return nil, errs.NewRequestError("invalid workspace registry")
 	}
-	if options.ImportPath != "" {
+	if options.initial != nil {
+		found := false
+		for _, record := range w.records {
+			if record.Expert != nil && sameLegacyPipeline(*record.Expert, *options.initial) {
+				found = true
+			}
+		}
+		if !found {
+			if e := w.importLegacy(*options.initial); e != nil {
+				w.CloseWithoutMonitor()
+				return nil, e
+			}
+		}
+	} else if options.ImportPath != "" {
 		a, e := Load(options.ImportPath)
 		if e != nil {
 			w.CloseWithoutMonitor()
@@ -150,10 +171,32 @@ func NewWorkspace(parent context.Context, options Options) (*Workspace, error) {
 		}
 	}
 
+	for id, record := range w.records {
+		if record == nil || record.ID != id || !validWorkspaceID(id) {
+			w.CloseWithoutMonitor()
+			return nil, fmt.Errorf("invalid stored crawl identity")
+		}
+		for _, run := range record.Runs {
+			if !validWorkspaceID(run.ID) {
+				w.CloseWithoutMonitor()
+				return nil, fmt.Errorf("invalid stored run identity")
+			}
+		}
+	}
+	if e := w.importRunState(); e != nil {
+		w.CloseWithoutMonitor()
+		return nil, e
+	}
+	if w.dirty {
+		if e := w.saveLocked(); e != nil {
+			w.CloseWithoutMonitor()
+			return nil, e
+		}
+	}
 	interrupted := false
 	for _, record := range w.records {
 		for key, op := range record.Operations {
-			if op == nil || op.ID != key {
+			if op == nil || (op.ID != key && op.RunID+":"+op.ID != key) {
 				w.CloseWithoutMonitor()
 				return nil, errs.NewRequestError("invalid persisted crawl operation")
 			}
@@ -232,7 +275,7 @@ func (w *Workspace) saveLocked() (err error) {
 			w.dirty = false
 		}
 	}()
-	b, err := json.MarshalIndent(w.records, "", "  ")
+	b, err := json.MarshalIndent(workspaceRegistry{Version: 2, Settings: w.settings, Crawls: w.records}, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -263,26 +306,9 @@ func (w *Workspace) saveLocked() (err error) {
 }
 func (w *Workspace) openSupervisor(r *CrawlRecord, run CrawlRun) (*Supervisor, error) {
 	root := w.runRoot(r.ID, run.ID)
-	a, err := CompileCrawl(root, run.ID, run.Definition)
-	if run.Expert != nil {
-		a = relocatePipeline(*run.Expert, root)
-		if run.Legacy {
-			a = *run.Expert
-		}
-		if run.Continued > 0 {
-			err = Validate(a)
-		} else {
-			a, err = expertRuntimeControls(a, effectiveTermination(run))
-		}
-	}
+	a, err := prepareRunPipeline(root, run)
 	if err != nil {
 		return nil, err
-	}
-	if run.Continued > 0 {
-		a, err = continuationPipeline(a)
-		if err != nil {
-			return nil, err
-		}
 	}
 	if !run.Legacy {
 		a.Config.API.OperationsPath = filepath.Join(root, "state.json")
@@ -294,19 +320,26 @@ func (w *Workspace) openSupervisor(r *CrawlRecord, run CrawlRun) (*Supervisor, e
 	if err != nil {
 		return nil, err
 	}
-	if run.Continued > 0 {
-		prior, _ := json.Marshal(s.state.Active)
-		next, _ := json.Marshal(a)
-		if string(prior) != string(next) {
-			s.state.Active = a
-			s.state.Version++
-			if err := s.save(); err != nil {
-				s.Close()
-				return nil, err
-			}
-		}
-	}
 	s.crawlID, s.runID = r.ID, run.ID
+	s.state.Version = run.Version
+	s.state.Desired = run.Desired
+	if s.state.Desired == "" {
+		s.state.Desired = "stopped"
+	}
+	s.onDesired = func(desired string) error {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		if len(r.Runs) == 0 || r.Runs[len(r.Runs)-1].ID != run.ID {
+			return fmt.Errorf("run identity changed")
+		}
+		previous := r.Runs[len(r.Runs)-1].Desired
+		r.Runs[len(r.Runs)-1].Desired = desired
+		if err := w.saveLocked(); err != nil {
+			r.Runs[len(r.Runs)-1].Desired = previous
+			return err
+		}
+		return nil
+	}
 	s.originGate = w.gate
 	s.onFinalSnapshot = func(snapshot RuntimeSnapshot) {
 		w.saveRunSummary(r.ID, run.ID, sanitizeRuntimeSnapshot(snapshot, s.state.Active))
@@ -553,7 +586,7 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 		return w.snapshot(id)
 	}
 	if action == "delete" && !validWorkspaceID(req.CrawlID) {
-		return nil, errs.NewRequestError("select a crawl to delete")
+		return nil, errs.NewRequestError("crawl ID required")
 	}
 	w.mu.Lock()
 	r := w.records[req.CrawlID]
@@ -569,7 +602,7 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 		if action == "delete" && req.Confirm && validWorkspaceID(req.CrawlID) {
 			return map[string]interface{}{"deleted": true}, nil
 		}
-		return nil, errs.NewRequestError("select a crawl")
+		return nil, errs.NewRequestError("crawl ID required")
 	}
 	if action == "delete" {
 		return w.acceptDeletion(r, slot, req.Revision, req.ID, req.Confirm, req.PreserveLogs)
@@ -636,10 +669,10 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 			return publicRecord(&saved), nil
 		}
 		if activeWorkflow(r) {
-			return nil, errs.NewRequestError("wait for the active crawl operation")
+			return nil, errs.NewRequestError("crawl operation in progress")
 		}
 		if req.Revision != r.Revision {
-			return nil, errs.NewRequestError("this crawl changed; reload before saving")
+			return nil, errs.NewRequestError("crawl revision conflict")
 		}
 		before := *r
 		if req.ConfigurationJSON != nil || len(req.Configuration) > 0 {
@@ -682,7 +715,7 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 				}
 				if metadata.Name != nil {
 					if strings.TrimSpace(*metadata.Name) == "" {
-						return nil, errs.NewRequestError("give this crawl a name")
+						return nil, errs.NewRequestError("name required")
 					}
 					d.Name = *metadata.Name
 				}
@@ -759,30 +792,43 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 		}
 		w.mu.Lock()
 		defer w.mu.Unlock()
+		previousArchived, previousRevision := r.Archived, r.Revision
 		r.Archived = action == "archive"
 		r.Revision++
 		if err := w.saveLocked(); err != nil {
+			r.Archived, r.Revision = previousArchived, previousRevision
 			return nil, err
 		}
 		return publicRecord(r), nil
 	}
 
 	if slot.supervisor == nil {
-		return nil, errs.NewRequestError("start a run first")
+		return nil, errs.NewRequestError("run required")
 	}
 	if action == "command" && req.Action == "start" {
 		w.mu.Lock()
 		completed := len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "completed"
 		w.mu.Unlock()
 		if completed {
-			return nil, errs.NewRequestError("this run is complete; start a new run")
+			return nil, errs.NewRequestError("run completed")
 		}
 	}
 	switch action {
-	case "command", "status", "operations", "failed", "log":
+	case "command":
+		switch req.Action {
+		case "start", "resume", "stop", "pause", "replay", "recrawl":
+		default:
+			return nil, errs.NewRequestError("unknown execution action")
+		}
+		return w.acceptWorkflow(r, slot, req.Action, r.Revision, req.ID, Operation{Queue: req.Queue, Record: req.Record})
+	case "status", "failed", "log":
 		return slot.supervisor.Handle(ctx, action, raw)
+	case "operations":
+		return w.crawlOperations(ctx, r, slot)
 	case "pipeline":
-		return slot.supervisor.Handle(ctx, "draft", nil)
+		slot.supervisor.mu.Lock()
+		defer slot.supervisor.mu.Unlock()
+		return pipelinePreview(slot.supervisor.state.Active), nil
 	}
 	return nil, errs.NewRequestError("unknown crawl action")
 }
@@ -812,11 +858,11 @@ func (w *Workspace) applyRun(r *CrawlRecord, slot *crawlSlot, action string, rev
 	w.mu.Lock()
 	if r.Archived {
 		w.mu.Unlock()
-		return nil, errs.NewRequestError("restore this crawl before running")
+		return nil, errs.NewRequestError("crawl archived")
 	}
 	if revision != r.Revision {
 		w.mu.Unlock()
-		return nil, errs.NewRequestError("this crawl changed; reload before running")
+		return nil, errs.NewRequestError("crawl revision conflict")
 	}
 	d := r.Definition
 	expert := r.Expert
@@ -828,6 +874,7 @@ func (w *Workspace) applyRun(r *CrawlRecord, slot *crawlSlot, action string, rev
 			expert = r.ExpertDraft
 		}
 	}
+	execution := w.settings.Execution
 	w.mu.Unlock()
 	if slot.supervisor != nil {
 		if err := stopSupervisor(slot.supervisor); err != nil {
@@ -838,7 +885,7 @@ func (w *Workspace) applyRun(r *CrawlRecord, slot *crawlSlot, action string, rev
 		}
 		slot.setSupervisor(nil)
 	}
-	run := CrawlRun{LogsScoped: true, ID: string(types.NewV4()), Created: time.Now().Unix(), Version: r.Revision + 1, State: "running", Definition: d, Expert: expert}
+	run := CrawlRun{ConfigurationSnapshot: configurationSnapshot(d, expert, execution), Desired: "running", LogsScoped: true, ID: string(types.NewV4()), Created: time.Now().Unix(), Version: r.Revision + 1, State: "running", Definition: d, Expert: expert}
 	s, err := w.openSupervisor(r, run)
 	if err != nil {
 		return nil, err
@@ -851,6 +898,8 @@ func (w *Workspace) applyRun(r *CrawlRecord, slot *crawlSlot, action string, rev
 	if len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State != "completed" {
 		r.Runs[len(r.Runs)-1].State = "stopped"
 	}
+	before := *r
+	before.Runs = append([]CrawlRun(nil), r.Runs...)
 	r.Definition = d
 	r.Expert = expert
 	r.Draft = nil
@@ -866,7 +915,7 @@ func (w *Workspace) applyRun(r *CrawlRecord, slot *crawlSlot, action string, rev
 		s.Close()
 		slot.setSupervisor(nil)
 		w.mu.Lock()
-		r.Runs[len(r.Runs)-1].State = "failed"
+		*r = before
 		w.mu.Unlock()
 		return nil, err
 	}

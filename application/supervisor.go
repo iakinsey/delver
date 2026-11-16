@@ -5,23 +5,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
-	"net/http"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/iakinsey/delver/api"
 	"github.com/iakinsey/delver/config"
-	"github.com/iakinsey/delver/gateway"
 	"github.com/iakinsey/delver/types/errs"
 	"github.com/iakinsey/delver/util"
 )
 
 type Operation struct {
+	RunID   string `json:"run_id,omitempty"`
 	Version uint64 `json:"configuration_version,omitempty"`
 	Queue   string `json:"queue,omitempty"`
 	Record  string `json:"record,omitempty"`
@@ -39,9 +35,17 @@ type operationsState struct {
 	Version    uint64                `json:"version"`
 	Operations map[string]*Operation `json:"operations"`
 }
+
+// operationsState is read only by the one-time legacy importer.
+type executionState struct {
+	Desired string
+	Active  config.Application
+	Version uint64
+}
 type runtimeResult struct{ err error }
 
 type Supervisor struct {
+	onDesired       func(string) error
 	crawlID, runID  string
 	onStatus        func(string, time.Time)
 	onFinalSnapshot func(RuntimeSnapshot)
@@ -51,9 +55,8 @@ type Supervisor struct {
 	result          *runtimeResult
 	lockFile        *os.File
 	closing         bool
-	commands        sync.WaitGroup
 	mu              sync.Mutex
-	state           operationsState
+	state           executionState
 	path            string
 	status          string
 	lastError       string
@@ -83,7 +86,7 @@ func newSupervisor(ctx context.Context, app config.Application) (*Supervisor, er
 	if path == "" {
 		path = app.Config.API.DashDBPath + ".operations.json"
 	}
-	s := &Supervisor{path: path, ctx: ctx, status: "stopped", state: operationsState{Desired: "running", Active: app, Version: 1, Operations: map[string]*Operation{}}}
+	s := &Supervisor{path: path, ctx: ctx, status: "stopped", state: executionState{Desired: "stopped", Active: app, Version: 1}}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
@@ -104,86 +107,8 @@ func newSupervisor(ctx context.Context, app config.Application) (*Supervisor, er
 		}
 	}()
 
-	data, err := os.ReadFile(path)
-	if err == nil {
-		var stored interface{}
-		if err = json.Unmarshal(data, &stored); err != nil {
-			return nil, err
-		}
-		stripObsoleteAccountConfig(stored)
-		data, err = json.Marshal(stored)
-		if err != nil {
-			return nil, err
-		}
-		if err = json.Unmarshal(data, &s.state); err != nil {
-			return nil, err
-		}
-		if s.state.Desired != "running" && s.state.Desired != "paused" && s.state.Desired != "stopped" {
-			return nil, fmt.Errorf("invalid persisted desired state")
-		}
-		if s.state.Version == 0 {
-			return nil, fmt.Errorf("invalid persisted configuration version")
-		}
-		s.state.Active.Config.API = app.Config.API
-		s.state.Active.Config.Streamer = app.Config.Streamer
-		if err = Validate(s.state.Active); err != nil {
-			return nil, err
-		}
-		if s.state.Operations == nil {
-			s.state.Operations = map[string]*Operation{}
-		}
-		for id, op := range s.state.Operations {
-			if op == nil || op.ID != id {
-				return nil, fmt.Errorf("invalid persisted operation %s", id)
-			}
-			if op.State != "accepted" && op.State != "running" && op.State != "completed" && op.State != "failed" {
-				return nil, fmt.Errorf("invalid persisted operation state")
-			}
-			if op.State == "accepted" || op.State == "running" {
-				op.State = "failed"
-				op.Error = "Interrupted by process restart; inspect runtime before issuing a new command"
-			}
-		}
-	} else if !os.IsNotExist(err) {
-		return nil, err
-	}
-	if err := s.save(); err != nil {
-		return nil, err
-	}
 	success = true
 	return s, nil
-}
-func (s *Supervisor) save() error {
-	if err := os.MkdirAll(filepath.Dir(s.path), 0700); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(s.state, "", "  ")
-	if err != nil {
-		return err
-	}
-	file, err := os.OpenFile(s.path+".tmp", os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
-	if err != nil {
-		return err
-	}
-	if _, err = file.Write(data); err == nil {
-		err = file.Sync()
-	}
-	closeErr := file.Close()
-	if err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return err
-	}
-	if err = os.Rename(s.path+".tmp", s.path); err != nil {
-		return err
-	}
-	dir, err := os.Open(filepath.Dir(s.path))
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
 }
 func (s *Supervisor) start() error {
 	if s.done != nil {
@@ -313,107 +238,6 @@ func (s *Supervisor) Handle(ctx context.Context, action string, raw json.RawMess
 			entries[i].Error = s.safeError(entries[i].Error)
 		}
 		return entries, nil
-	case "operations":
-		result := map[string]Operation{}
-		for id, op := range s.state.Operations {
-			copy := *op
-			copy.Error = s.safeError(copy.Error)
-			result[id] = copy
-		}
-		return result, nil
-	case "draft", "validate":
-		for _, op := range s.state.Operations {
-			if op.State == "accepted" || op.State == "running" {
-				return nil, errs.NewRequestError("wait for the active operation")
-			}
-		}
-		var input struct {
-			Configuration json.RawMessage `json:"configuration"`
-		}
-		if len(raw) > 0 {
-			if err := json.Unmarshal(raw, &input); err != nil {
-				return nil, errs.NewRequestError(err.Error())
-			}
-		}
-		if len(input.Configuration) == 0 {
-			return redactConfiguration(s.state), nil
-		}
-
-		base := s.state.Active
-		if s.state.Draft != nil {
-			base = *s.state.Draft
-		}
-		restored, err := restoreConfiguration(input.Configuration, base)
-		if err != nil {
-			return nil, errs.NewRequestError(err.Error())
-		}
-		app, err := DecodeBytes(restored)
-		if err != nil {
-			return nil, errs.NewRequestError(err.Error())
-		}
-		if app.Config.API.Address != s.state.Active.Config.API.Address || app.Config.API.DashDBPath != s.state.Active.Config.API.DashDBPath {
-			return nil, errs.NewRequestError("API bindings and databases require process restart")
-		}
-
-		if !reflect.DeepEqual(app.Config.Streamer, s.state.Active.Config.Streamer) {
-			return nil, errs.NewRequestError("Streaming bindings require process restart")
-		}
-		if !reflect.DeepEqual(app.Config.API, s.state.Active.Config.API) {
-			return nil, errs.NewRequestError("API administration settings require process restart")
-		}
-		if action == "draft" {
-			previous := s.state.Draft
-			s.state.Draft = &app
-			if err = s.save(); err != nil {
-				s.state.Draft = previous
-				return nil, err
-			}
-		}
-		return map[string]interface{}{"valid": true, "resolved": redactConfiguration(operationsState{Active: app})}, nil
-	case "command":
-		if s.closing {
-			return nil, errs.NewRequestError("service is shutting down")
-		}
-		var command struct {
-			ID     string `json:"id"`
-			Action string `json:"action"`
-			Queue  string `json:"queue"`
-			Record string `json:"record"`
-		}
-		if err := json.Unmarshal(raw, &command); err != nil {
-			return nil, errs.NewRequestError(err.Error())
-		}
-		if command.ID == "" {
-			return nil, errs.NewRequestError("command id required")
-		}
-		if op := s.state.Operations[command.ID]; op != nil {
-			if op.Action != command.Action || op.Queue != command.Queue || op.Record != command.Record {
-				return nil, errs.NewRequestError("command id already used")
-			}
-			copy := *op
-			copy.Error = s.safeError(copy.Error)
-			return copy, nil
-		}
-		switch command.Action {
-		case "start", "stop", "pause", "resume", "activate", "rollback", "replay", "recrawl":
-		default:
-			return nil, errs.NewRequestError("unknown command")
-		}
-		for _, op := range s.state.Operations {
-			if op.State == "accepted" || op.State == "running" {
-				return nil, errs.NewRequestError("another operation is in progress")
-			}
-		}
-		op := &Operation{Queue: command.Queue, Record: command.Record, ID: command.ID, Action: command.Action, State: "accepted", Updated: time.Now().Unix()}
-		s.state.Operations[op.ID] = op
-		if err := s.save(); err != nil {
-			delete(s.state.Operations, op.ID)
-			return nil, err
-		}
-		result := *op
-		s.commands.Add(1)
-		go s.execute(command.ID, command.Queue, command.Record)
-		return result, nil
 	case "failed":
 		var input struct {
 			Queue  string `json:"queue"`
@@ -427,38 +251,28 @@ func (s *Supervisor) Handle(ctx context.Context, action string, raw json.RawMess
 	return nil, errs.NewRequestError("unknown operation")
 }
 func DecodeBytes(data []byte) (config.Application, error) { return Decode(bytes.NewReader(data)) }
-func (s *Supervisor) execute(id, queueName, record string) {
-	defer s.commands.Done()
+
+// Execute performs one serialized execution action. Workspace owns its journal.
+func (s *Supervisor) Execute(ctx context.Context, action, queueName, record string) error {
 	s.transition.Lock()
 	defer s.transition.Unlock()
 	s.mu.Lock()
-	op := s.state.Operations[id]
-	op.State = "running"
-	if err := s.save(); err != nil {
-		op.State = "failed"
-		op.Error = err.Error()
-		s.lastError = err.Error()
-		s.mu.Unlock()
-		return
-	}
-	s.mu.Unlock()
-	s.mu.Lock()
-	var err error
+	defer s.mu.Unlock()
 	if s.closing {
-		op.State = "failed"
-		op.Error = "service is shutting down"
-		s.save()
-		s.mu.Unlock()
-		return
+		return fmt.Errorf("service is shutting down")
 	}
-	switch op.Action {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	var err error
+	switch action {
 	case "start", "resume":
 		err = s.setDesired("running")
 		if err == nil {
 			if s.done == nil {
 				err = s.start()
 			} else {
-				err = s.control.pause(s.ctx, false)
+				err = s.control.pause(ctx, false)
 				if err == nil {
 					s.setStatus("running")
 				}
@@ -470,81 +284,33 @@ func (s *Supervisor) execute(id, queueName, record string) {
 			err = s.stop()
 		}
 	case "pause":
-		s.setStatus("pausing")
+		if s.control == nil {
+			return fmt.Errorf("runtime is stopped")
+		}
 		err = s.setDesired("paused")
 		if err == nil {
-			ctx, cancel := context.WithTimeout(s.ctx, s.state.Active.Config.ShutdownTimeout)
+			s.setStatus("pausing")
 			control := s.control
+			deadline, cancel := context.WithTimeout(ctx, s.state.Active.Config.ShutdownTimeout)
 			s.mu.Unlock()
-			if control == nil {
-				err = fmt.Errorf("runtime is stopped")
-			} else {
-				err = control.pause(ctx, true)
-			}
+			err = control.pause(deadline, true)
 			s.mu.Lock()
 			cancel()
 			if err == nil {
 				s.setStatus("paused")
 			}
 		}
-	case "activate", "rollback":
-		target := s.state.Draft
-		if op.Action == "rollback" {
-			target = s.state.Previous
-		}
-		if target == nil {
-			err = fmt.Errorf("no configuration available")
-			break
-		}
-		if err = Validate(*target); err != nil {
-			break
-		}
-		target.Config.API = s.state.Active.Config.API
-		target.Config.Streamer = s.state.Active.Config.Streamer
-		oldVersion, oldPrevious := s.state.Version, s.state.Previous
-		old := s.state.Active
-		if err = s.stop(); err != nil {
-			break
-		}
-		s.state.Active = *target
-		s.state.Previous = &old
-		s.state.Version++
-		if err = s.save(); err == nil && s.state.Desired != "stopped" {
-			err = s.start()
-		}
-		if err != nil {
-			activationErr := err
-			s.state.Active = old
-			s.state.Version = oldVersion
-			s.state.Previous = oldPrevious
-			if saveErr := s.save(); saveErr != nil {
-				err = fmt.Errorf("activation: %v; restoring configuration: %v", activationErr, saveErr)
-			}
-			if s.done == nil && s.state.Desired != "stopped" {
-				if rollbackErr := s.start(); rollbackErr != nil {
-					err = fmt.Errorf("activation: %v; rollback: %v", activationErr, rollbackErr)
-				}
-			}
-		}
-
 	case "replay", "recrawl":
-		err = s.recoverRecord(queueName, record, op.Action == "recrawl")
+		err = s.recoverRecord(queueName, record, action == "recrawl")
+	default:
+		return fmt.Errorf("unknown execution action")
 	}
 	if err != nil {
-		op.State = "failed"
-		op.Error = err.Error()
 		s.lastError = err.Error()
 	} else {
-		op.State = "completed"
 		s.lastError = ""
 	}
-	op.Updated = time.Now().Unix()
-	if saveErr := s.save(); saveErr != nil {
-		s.lastError = saveErr.Error()
-		op.State = "failed"
-		op.Error = saveErr.Error()
-	}
-	s.mu.Unlock()
+	return err
 }
 func (s *Supervisor) controlPause(ctx context.Context) error {
 	if s.control == nil {
@@ -552,63 +318,17 @@ func (s *Supervisor) controlPause(ctx context.Context) error {
 	}
 	return s.control.pause(ctx, true)
 }
+
+// Serve imports a pipeline into the workspace server rather than creating a second control surface.
 func Serve(ctx context.Context, app config.Application) error {
 	if !app.Config.API.Enabled {
 		return Run(ctx, app)
 	}
-	s, err := newSupervisor(ctx, app)
-	if err != nil {
-		return err
+	statePath := app.Config.API.OperationsPath
+	if statePath == "" {
+		statePath = app.Config.API.DashDBPath + ".operations.json"
 	}
-	defer s.Close()
-	config.Apply(app.Config)
-	server, cleanup, err := api.NewServerWithOperations(app.Config.API, s)
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-	errors := make(chan error, 2)
-	if server != nil {
-		listener, e := net.Listen("tcp", server.Addr)
-		if e != nil {
-			return e
-		}
-		go func() { errors <- server.Serve(listener) }()
-		defer server.Close()
-	}
-	stream := gateway.NewClientStreamer()
-	if app.Config.Streamer.Enabled {
-		go func() { errors <- stream.Start() }()
-		defer func() {
-			if c, ok := stream.(interface{ Close() error }); ok {
-				c.Close()
-			}
-		}()
-	}
-	s.transition.Lock()
-	s.mu.Lock()
-	if s.state.Desired != "stopped" {
-		err = s.start()
-
-	}
-	if err != nil {
-		s.lastError = err.Error()
-		err = nil
-	}
-	s.mu.Unlock()
-	s.transition.Unlock()
-	select {
-	case <-ctx.Done():
-	case err = <-errors:
-		if err == http.ErrServerClosed {
-			err = nil
-		}
-	}
-	stopErr := s.Close()
-	if err == nil {
-		err = stopErr
-	}
-	return err
+	return ServeWorkspace(ctx, Options{Address: app.Config.API.Address, DataDirectory: filepath.Dir(statePath), initial: &app})
 }
 func redactConfiguration(state operationsState) interface{} {
 	app := state.Active
@@ -635,7 +355,6 @@ func (s *Supervisor) Close() error {
 	err := s.stop()
 	s.mu.Unlock()
 	s.transition.Unlock()
-	s.commands.Wait()
 	s.mu.Lock()
 	if s.lockFile != nil && s.done == nil {
 		syscall.Flock(int(s.lockFile.Fd()), syscall.LOCK_UN)
@@ -649,9 +368,11 @@ func (s *Supervisor) Close() error {
 func (s *Supervisor) setDesired(desired string) error {
 	old := s.state.Desired
 	s.state.Desired = desired
-	if err := s.save(); err != nil {
-		s.state.Desired = old
-		return err
+	if s.onDesired != nil {
+		if err := s.onDesired(desired); err != nil {
+			s.state.Desired = old
+			return err
+		}
 	}
 	return nil
 }

@@ -123,15 +123,6 @@
   text-align: center;
   padding: 40px 24px;
 }
-.crawl-empty p {
-  color: #c3c7bb;
-}
-.crawl-orbit {
-  font-size: 2rem;
-  letter-spacing: 0.25em;
-  color: #a7bb82;
-  margin-bottom: 24px;
-}
 .crawl-editor {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 310px;
@@ -379,4 +370,10 @@
 }
 .crawl-delete-dialog h2 {
   overflow-wrap: anywhere;
+}
+
+.crawl-panel pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 100%;
 }

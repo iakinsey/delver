@@ -30,8 +30,7 @@ Durations accept Go strings such as `"250ms"`, `"10s"`, or `"1h"`; numeric durat
 | `robots.clear_expired_delay` | `1h`; periodic cleanup; lookup expiry also enforces freshness |
 | `api.enabled`, `api.address` | `true`, `:8080`; examples disable the API unless needed |
 | `api.allow_cors` | `true` |
-| `streamer.enabled`, `streamer.address` | `true`, `:26548` |
-| `streamer.search_addresses` | Elasticsearch preload endpoints; configure explicitly for remote search |
+| `streamer.enabled` | `false`; enabled legacy streaming destinations return an explicit migration error |
 | `metrics.enabled` | `true`; metrics output requires a queue named `transformer_queue` |
 | `persistent_map.gc_interval` | `5m` |
 | `persistent_map.gc_discard_ratio` | `0.7`, strictly between 0 and 1 |
@@ -79,7 +78,7 @@ Common fields: `name`, `type`, `inbox`, `outbox`, `count`, `manager`, `interval`
 | `dfs_basic_accumulator` | `url_store` map, `max_depth`; optional `visited_urls` Bloom resource. Same-domain children return to its outbox; external domains are persisted. Omit the approximate filter with an exact crawl queue. |
 | `dfs_basic_publisher` | `output_queue`, `url_store_path`, `visited_hostmap`, `rotate_after`; normally a job. Publishes one stored domain after the request queue remains empty long enough. |
 | `news_accumulator` | `news_queue`; optional `seen_urls`, `max_depth` (default 1). Publishes article analyses and filters discovered links with news heuristics. |
-| `transformer` | `enabled` values `composite` and/or `metric`; `search_addresses`. Indexes accepted messages synchronously and publishes live updates. |
+| `transformer` | `enabled` values `composite` and/or `metric`; `search_addresses`. Indexes accepted messages synchronously. |
 | `jsonl_sink` | `path`. Appends message envelopes and synchronizes writes. No outbox. |
 
 Publishing workers require an outbox. `dfs_basic_publisher` publishes directly to its `output_queue`; transformers and sinks terminate their message path.
@@ -100,4 +99,6 @@ Publishing workers require an outbox. `dfs_basic_publisher` publishes directly t
 
 Dependencies must be listed explicitly. Unknown, duplicate, missing, or cyclic dependencies fail validation.
 
-### Dashboard streaming access
+### Retired services
+
+Dashboard CRUD and streaming subscriptions are removed. Configure Elasticsearch indexing through transformer workers. Workspace execution limits are configured once through `/workspace/settings`; per-crawl policies retain local concurrency, pacing, retry, admission, and metric controls.

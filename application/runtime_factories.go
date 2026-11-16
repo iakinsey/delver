@@ -17,31 +17,22 @@ type RuntimeDependencies struct {
 type RuntimeResourceFactory func(context.Context, json.RawMessage, RuntimeDependencies) (interface{}, error)
 type RuntimeWorkerFactory func(context.Context, json.RawMessage, map[string]interface{}, RuntimeDependencies) (worker.Worker, error)
 
-var runtimeResourceFactories = map[string]RuntimeResourceFactory{}
-var runtimeWorkerFactories = map[string]RuntimeWorkerFactory{}
-
 func RegisterResourceWithRuntime(name string, factory RuntimeResourceFactory) {
 	registryMutex.Lock()
 	defer registryMutex.Unlock()
-	runtimeResourceFactories[name] = factory
 	if factory == nil {
-		resourceFactories[name] = nil
+		delete(resourceFactories, name)
 	} else {
-		resourceFactories[name] = func(raw json.RawMessage) (interface{}, error) {
-			return factory(context.Background(), raw, RuntimeDependencies{Configuration: config.Get(), Metrics: &metrics.BlackholeSink{}})
-		}
+		resourceFactories[name] = factory
 	}
 }
 func RegisterWorkerWithRuntime(name string, factory RuntimeWorkerFactory) {
 	registryMutex.Lock()
 	defer registryMutex.Unlock()
-	runtimeWorkerFactories[name] = factory
 	if factory == nil {
-		workerFactories[name] = nil
+		delete(workerFactories, name)
 	} else {
-		workerFactories[name] = func(raw json.RawMessage, resources map[string]interface{}) (worker.Worker, error) {
-			return factory(context.Background(), raw, resources, RuntimeDependencies{Configuration: config.Get(), Metrics: &metrics.BlackholeSink{}})
-		}
+		workerFactories[name] = factory
 	}
 }
 func (p *preparedApplication) dependencies() RuntimeDependencies {

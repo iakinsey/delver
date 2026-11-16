@@ -1,0 +1,650 @@
+{
+  "version": 1,
+  "strategy": "targeted-interactions-and-boundaries",
+  "cases": [
+    {
+      "file": "accessibility.spec.js",
+      "title": "crawl workspace has accessible labels and contrast"
+    },
+    {
+      "file": "crawler-failures.spec.js",
+      "title": "lost stop response does not duplicate the executed operation"
+    },
+    {
+      "file": "crawler.spec.js",
+      "title": "retired control surfaces do not create dashboards or streaming connections"
+    },
+    {
+      "file": "navigation.spec.js",
+      "title": "crawl workspace replaces the retired builder at /"
+    },
+    {
+      "file": "navigation.spec.js",
+      "title": "crawl workspace replaces the retired builder at /dashboard/old-saved-id"
+    },
+    {
+      "file": "navigation.spec.js",
+      "title": "crawl workspace replaces the retired builder at /dashboards"
+    },
+    {
+      "file": "navigation.spec.js",
+      "title": "crawl workspace replaces the retired builder at /help"
+    },
+    {
+      "file": "navigation.spec.js",
+      "title": "workspace exposes no legacy single-crawl controls"
+    },
+    {
+      "file": "workspace-action-recovery.spec.js",
+      "title": "lost activate response safely retries save-and-start replacement"
+    },
+    {
+      "file": "workspace-action-recovery.spec.js",
+      "title": "lost create response does not duplicate a UI-created run"
+    },
+    {
+      "file": "workspace-action-recovery.spec.js",
+      "title": "lost draft response safely retries save-and-start replacement"
+    },
+    {
+      "file": "workspace-action-recovery.spec.js",
+      "title": "lost start_run response does not duplicate a UI-created run"
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "feed-only same_domain preview explains unresolved boundaries"
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "feed-only same_origin preview explains unresolved boundaries"
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "invalid guided inputs retain editor state"
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "late preview responses cannot replace changed rules"
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "permanent retention combination 000"
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "permanent retention combination 001"
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "permanent retention combination 010"
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "permanent retention combination 011"
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "permanent retention combination 100"
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "permanent retention combination 101"
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "permanent retention combination 110"
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "permanent retention combination 111"
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "preview invalidates old verdicts after rules change"
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "reject http proxy \"\""
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "reject http proxy \"ftp://proxy.invalid:21\""
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "reject http proxy \"not a valid proxy\""
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "reject socks5 proxy \"\""
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "reject socks5 proxy \"ftp://proxy.invalid:21\""
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "reject socks5 proxy \"not a valid proxy\""
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "scope preview matrix open_web"
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "scope preview matrix same_domain"
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "scope preview matrix same_origin"
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "zero-delay pacing and rapid retention concurrency 1"
+    },
+    {
+      "file": "workspace-boundaries.spec.js",
+      "title": "zero-delay pacing and rapid retention concurrency 2"
+    },
+    {
+      "file": "workspace-delete.spec.js",
+      "title": "API rejects unconfirmed deletion"
+    },
+    {
+      "file": "workspace-delete.spec.js",
+      "title": "accepted deletion survives a lost response"
+    },
+    {
+      "file": "workspace-delete.spec.js",
+      "title": "delete archived crawl preserve logs=false requires confirmation"
+    },
+    {
+      "file": "workspace-delete.spec.js",
+      "title": "delete archived crawl preserve logs=true requires confirmation"
+    },
+    {
+      "file": "workspace-delete.spec.js",
+      "title": "delete draft crawl preserve logs=false requires confirmation"
+    },
+    {
+      "file": "workspace-delete.spec.js",
+      "title": "delete draft crawl preserve logs=true requires confirmation"
+    },
+    {
+      "file": "workspace-delete.spec.js",
+      "title": "delete running crawl preserve logs=false requires confirmation"
+    },
+    {
+      "file": "workspace-delete.spec.js",
+      "title": "delete running crawl preserve logs=true requires confirmation"
+    },
+    {
+      "file": "workspace-expert.spec.js",
+      "title": "expert conversion retains operational http secrets"
+    },
+    {
+      "file": "workspace-expert.spec.js",
+      "title": "expert conversion retains operational socks5 secrets"
+    },
+    {
+      "file": "workspace-expert.spec.js",
+      "title": "expert finite completion rejects recurring sources without losing edits"
+    },
+    {
+      "file": "workspace-expert.spec.js",
+      "title": "expert request budget rejects a pipeline without a frontier"
+    },
+    {
+      "file": "workspace-expert.spec.js",
+      "title": "expert syntax errors retain text and recovery preserves opaque integer parameters"
+    },
+    {
+      "file": "workspace-expert.spec.js",
+      "title": "initialization failure is visible and a corrected pipeline starts independently"
+    },
+    {
+      "file": "workspace-expert.spec.js",
+      "title": "two editors reject stale saves while preserving both entered text and winning draft"
+    },
+    {
+      "file": "workspace-graph.spec.js",
+      "title": "graph open_web depth=1 hops=1"
+    },
+    {
+      "file": "workspace-graph.spec.js",
+      "title": "graph open_web depth=1 hops=2"
+    },
+    {
+      "file": "workspace-graph.spec.js",
+      "title": "graph open_web depth=2 hops=1"
+    },
+    {
+      "file": "workspace-graph.spec.js",
+      "title": "graph open_web depth=2 hops=2"
+    },
+    {
+      "file": "workspace-graph.spec.js",
+      "title": "graph same_domain depth=1 hops=1"
+    },
+    {
+      "file": "workspace-graph.spec.js",
+      "title": "graph same_domain depth=1 hops=2"
+    },
+    {
+      "file": "workspace-graph.spec.js",
+      "title": "graph same_domain depth=2 hops=1"
+    },
+    {
+      "file": "workspace-graph.spec.js",
+      "title": "graph same_domain depth=2 hops=2"
+    },
+    {
+      "file": "workspace-graph.spec.js",
+      "title": "graph same_origin depth=1 hops=1"
+    },
+    {
+      "file": "workspace-graph.spec.js",
+      "title": "graph same_origin depth=1 hops=2"
+    },
+    {
+      "file": "workspace-graph.spec.js",
+      "title": "graph same_origin depth=2 hops=1"
+    },
+    {
+      "file": "workspace-graph.spec.js",
+      "title": "graph same_origin depth=2 hops=2"
+    },
+    {
+      "file": "workspace-lifecycle.spec.js",
+      "title": "archiving one live crawl preserves another and restore does not start it"
+    },
+    {
+      "file": "workspace-lifecycle.spec.js",
+      "title": "proxy changes preserve secrets within a mode and clear them on direct"
+    },
+    {
+      "file": "workspace-lifecycle.spec.js",
+      "title": "saving a draft leaves a live run unchanged and history stays isolated"
+    },
+    {
+      "file": "workspace-matrix.spec.js",
+      "title": "interaction feed-monitor-failed-retention"
+    },
+    {
+      "file": "workspace-matrix.spec.js",
+      "title": "interaction feed-proxy-restriction"
+    },
+    {
+      "file": "workspace-matrix.spec.js",
+      "title": "interaction http-drain-permanent-details"
+    },
+    {
+      "file": "workspace-matrix.spec.js",
+      "title": "interaction limits-false-false"
+    },
+    {
+      "file": "workspace-matrix.spec.js",
+      "title": "interaction limits-false-true"
+    },
+    {
+      "file": "workspace-matrix.spec.js",
+      "title": "interaction limits-true-false"
+    },
+    {
+      "file": "workspace-matrix.spec.js",
+      "title": "interaction limits-true-true"
+    },
+    {
+      "file": "workspace-matrix.spec.js",
+      "title": "interaction mixed-sources-isolated-proxy"
+    },
+    {
+      "file": "workspace-matrix.spec.js",
+      "title": "interaction traversal-adaptive-adaptive"
+    },
+    {
+      "file": "workspace-matrix.spec.js",
+      "title": "interaction traversal-adaptive-breadth_first"
+    },
+    {
+      "file": "workspace-matrix.spec.js",
+      "title": "interaction traversal-adaptive-depth_first"
+    },
+    {
+      "file": "workspace-matrix.spec.js",
+      "title": "interaction traversal-adaptive-host_diverse"
+    },
+    {
+      "file": "workspace-matrix.spec.js",
+      "title": "interaction traversal-fixed-adaptive"
+    },
+    {
+      "file": "workspace-matrix.spec.js",
+      "title": "interaction traversal-fixed-breadth_first"
+    },
+    {
+      "file": "workspace-matrix.spec.js",
+      "title": "interaction traversal-fixed-depth_first"
+    },
+    {
+      "file": "workspace-matrix.spec.js",
+      "title": "interaction traversal-fixed-host_diverse"
+    },
+    {
+      "file": "workspace-migration.spec.js",
+      "title": "legacy workspace limits and adaptive controls migrate into editable UI settings"
+    },
+    {
+      "file": "workspace-monitoring.spec.js",
+      "title": "actual failed queue records can be paged and retried"
+    },
+    {
+      "file": "workspace-monitoring.spec.js",
+      "title": "bad feed reports source health until bounded run stops"
+    },
+    {
+      "file": "workspace-monitoring.spec.js",
+      "title": "paused wall time does not consume active duration budget"
+    },
+    {
+      "file": "workspace-monitoring.spec.js",
+      "title": "termination request=false duration=false"
+    },
+    {
+      "file": "workspace-monitoring.spec.js",
+      "title": "termination request=false duration=true"
+    },
+    {
+      "file": "workspace-monitoring.spec.js",
+      "title": "termination request=true duration=false"
+    },
+    {
+      "file": "workspace-monitoring.spec.js",
+      "title": "termination request=true duration=true"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "SOCKS labels survive resume and rotate for a new run"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "automatic session labels do not overwrite proxy authentication"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "generic networking require=false restrict=false sessions=false"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "generic networking require=false restrict=false sessions=true"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "generic networking require=false restrict=true sessions=false"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "generic networking require=false restrict=true sessions=true"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "generic networking require=true restrict=false sessions=false"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "generic networking require=true restrict=false sessions=true"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "generic networking require=true restrict=true sessions=false"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "generic networking require=true restrict=true sessions=true"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "hostname restrictions also block robots redirects"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "network validation Initial retry delay -1s"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "network validation Initial retry delay 0s"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "network validation Maximum retry delay 1ms"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "network validation Request timeout 0s"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "network validation Request timeout tomorrow"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "network validation Retries per request -1"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "network validation Retries per request 1.5"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "network validation Retries per request 11"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "request timeout changes take effect for slow destinations"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "required proxy and restricted host validation cannot silently fall back"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "retry count and backoff execute with 0 retries"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "retry count and backoff execute with 2 retries"
+    },
+    {
+      "file": "workspace-network.spec.js",
+      "title": "stopping cancels a long-timeout connection without waiting for its deadline"
+    },
+    {
+      "file": "workspace-recovery.spec.js",
+      "title": "workspace reconnects without hiding failed form validation"
+    },
+    {
+      "file": "workspace-robots.spec.js",
+      "title": "robots respect=false over direct applies to pages and feeds"
+    },
+    {
+      "file": "workspace-robots.spec.js",
+      "title": "robots respect=false over http applies to pages and feeds"
+    },
+    {
+      "file": "workspace-robots.spec.js",
+      "title": "robots respect=false over socks5 applies to pages and feeds"
+    },
+    {
+      "file": "workspace-robots.spec.js",
+      "title": "robots respect=true over direct applies to pages and feeds"
+    },
+    {
+      "file": "workspace-robots.spec.js",
+      "title": "robots respect=true over http applies to pages and feeds"
+    },
+    {
+      "file": "workspace-robots.spec.js",
+      "title": "robots respect=true over socks5 applies to pages and feeds"
+    },
+    {
+      "file": "workspace-settings.spec.js",
+      "title": "combined adaptive proxy workflow recovers in the same run and survives application restart"
+    },
+    {
+      "file": "workspace-settings.spec.js",
+      "title": "double stop and deletion during a pending command do not overlap"
+    },
+    {
+      "file": "workspace-settings.spec.js",
+      "title": "lowered shared host limits apply to queued requests across crawls"
+    },
+    {
+      "file": "workspace-settings.spec.js",
+      "title": "paused monitoring displays backend counters and capacity"
+    },
+    {
+      "file": "workspace-settings.spec.js",
+      "title": "shared limit input types reject invalid values"
+    },
+    {
+      "file": "workspace-settings.spec.js",
+      "title": "two workspace editors retain losing input and report a revision conflict"
+    },
+    {
+      "file": "workspace-settings.spec.js",
+      "title": "workspace limits update running crawls without changing local configuration"
+    },
+    {
+      "file": "workspace-throughput-mobile.spec.js",
+      "title": "mobile throughput adaptive settings and monitoring remain accessible"
+    },
+    {
+      "file": "workspace-throughput-mobile.spec.js",
+      "title": "mobile throughput fixed settings and monitoring remain accessible"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "UI pressure recovery adaptive replaces blocked run without losing history"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "UI pressure recovery fixed replaces blocked run without losing history"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "all fetch controls accept nondefault values adaptive inherit=false"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "all fetch controls accept nondefault values adaptive inherit=true"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "all fetch controls accept nondefault values fixed inherit=false"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "all fetch controls accept nondefault values fixed inherit=true"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "expert throughput adaptive legacy=false applies explicitly and preserves opaque numbers"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "expert throughput adaptive legacy=true applies explicitly and preserves opaque numbers"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "expert throughput fixed legacy=false applies explicitly and preserves opaque numbers"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "expert throughput fixed legacy=true applies explicitly and preserves opaque numbers"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "runtime throughput adaptive direct robots=false inherited=false retries=0"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "runtime throughput adaptive direct robots=true inherited=true retries=1"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "runtime throughput adaptive http robots=false inherited=false retries=0"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "runtime throughput adaptive http robots=true inherited=true retries=1"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "runtime throughput adaptive socks5 robots=false inherited=false retries=0"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "runtime throughput adaptive socks5 robots=true inherited=true retries=1"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "runtime throughput fixed direct robots=false inherited=false retries=0"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "runtime throughput fixed direct robots=true inherited=true retries=1"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "runtime throughput fixed http robots=false inherited=false retries=0"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "runtime throughput fixed http robots=true inherited=true retries=1"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "runtime throughput fixed socks5 robots=false inherited=false retries=0"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "runtime throughput fixed socks5 robots=true inherited=true retries=1"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "throughput adaptive invalid numeric and duration boundaries block saving"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "throughput catalogue stays synchronized with server defaults and rejects omitted controls"
+    },
+    {
+      "file": "workspace-throughput.spec.js",
+      "title": "throughput fixed invalid numeric and duration boundaries block saving"
+    },
+    {
+      "file": "workspace-tls.spec.js",
+      "title": "verified TLS network path direct"
+    },
+    {
+      "file": "workspace-tls.spec.js",
+      "title": "verified TLS network path http"
+    },
+    {
+      "file": "workspace-tls.spec.js",
+      "title": "verified TLS network path https-proxy"
+    },
+    {
+      "file": "workspace-tls.spec.js",
+      "title": "verified TLS network path socks5"
+    },
+    {
+      "file": "workspace.spec.js",
+      "title": "create a guided proxied crawl, finish, retain secrets, and edit without JSON"
+    },
+    {
+      "file": "workspace.spec.js",
+      "title": "monitoring crawls remain independent and the editor works on mobile"
+    }
+  ]
+}

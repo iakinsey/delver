@@ -21,12 +21,30 @@ type gateEntry struct {
 // OriginGate is shared by all HTTP clients belonging to one runtime or workspace.
 // Idle entries are evicted only after their reserved cooldown has elapsed.
 type OriginGate struct {
-	mu      sync.Mutex
-	entries map[string]*gateEntry
-	idle    list.List
+	mu         sync.Mutex
+	entries    map[string]*gateEntry
+	idle       list.List
+	configured bool
+	ceiling    int
+	delay      time.Duration
 }
 
 func NewOriginGate() *OriginGate { return &OriginGate{entries: map[string]*gateEntry{}} }
+
+// SetLimits changes workspace-wide limits, including requests already waiting.
+// Existing permits remain valid; waiting acquisitions recheck the new ceiling.
+func (g *OriginGate) SetLimits(count int, delay time.Duration) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.configured = true
+	g.ceiling = count
+	g.delay = delay
+	for _, e := range g.entries {
+		e.limit = count
+		close(e.changed)
+		e.changed = make(chan struct{})
+	}
+}
 func (g *OriginGate) Acquire(ctx context.Context, key string, count int, delay time.Duration) (func(), error) {
 	if count < 1 {
 		count = 1
@@ -66,6 +84,10 @@ func (g *OriginGate) Acquire(ctx context.Context, key string, count int, delay t
 
 	g.mu.Lock()
 	e.limit = count
+	if g.configured {
+		e.limit = g.ceiling
+		delay = g.delay
+	}
 	close(e.changed)
 	e.changed = make(chan struct{})
 	for e.active >= e.limit {
@@ -78,6 +100,9 @@ func (g *OriginGate) Acquire(ctx context.Context, key string, count int, delay t
 			return nil, ctx.Err()
 		}
 		g.mu.Lock()
+	}
+	if g.configured {
+		delay = g.delay
 	}
 	e.active++
 	g.mu.Unlock()

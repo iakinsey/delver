@@ -99,7 +99,7 @@ func crawlLogEndpoints(r *CrawlRecord) ([][]string, error) {
 				return nil, err
 			}
 			if !run.LogsScoped {
-				return nil, fmt.Errorf("older Elasticsearch logs have no crawl identity; enable Preserve crawl logs to delete this crawl safely")
+				return nil, fmt.Errorf("unattributed Elasticsearch logs prevent log deletion; preserve_logs=true required")
 			}
 			for _, name := range p.Enabled {
 				if name != "composite" && name != "metric" {
@@ -117,7 +117,7 @@ func crawlLogEndpoints(r *CrawlRecord) ([][]string, error) {
 }
 func (w *Workspace) acceptDeletion(r *CrawlRecord, slot *crawlSlot, revision uint64, id string, confirm bool, preserve *bool) (interface{}, error) {
 	if !confirm {
-		return nil, errs.NewRequestError("confirm crawl deletion")
+		return nil, errs.NewRequestError("deletion confirmation required")
 	}
 	keep := preserve == nil || *preserve
 	w.mu.Lock()
@@ -139,10 +139,10 @@ func (w *Workspace) acceptDeletion(r *CrawlRecord, slot *crawlSlot, revision uin
 		return copy, nil
 	}
 	if activeWorkflow(r) {
-		return nil, errs.NewRequestError("wait for the active crawl operation")
+		return nil, errs.NewRequestError("crawl operation in progress")
 	}
 	if revision != r.Revision {
-		return nil, errs.NewRequestError("this crawl changed; reload before deleting")
+		return nil, errs.NewRequestError("crawl revision conflict")
 	}
 	paths, err := w.deletionPaths(r)
 	if err != nil {

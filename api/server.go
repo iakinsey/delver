@@ -5,13 +5,10 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
+	"strings"
 	"time"
 
-	"github.com/iakinsey/delver/api/controller"
 	"github.com/iakinsey/delver/config"
-	"github.com/iakinsey/delver/gateway"
 	"github.com/iakinsey/delver/types/errs"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -58,14 +55,14 @@ func NewServerWithOperations(conf config.APIConfig, operations Operations) (*htt
 	if !conf.Enabled {
 		return nil, func() {}, nil
 	}
-	if err := os.MkdirAll(filepath.Dir(conf.DashDBPath), 0700); err != nil {
-		return nil, nil, err
+	routes := map[string]Controller{}
+	if workspace, ok := operations.(interface {
+		HandleWorkspace(context.Context, string, json.RawMessage) (interface{}, error)
+	}); ok {
+		routes["/workspace/settings"] = func(ctx context.Context, raw json.RawMessage) (interface{}, error) {
+			return workspace.HandleWorkspace(ctx, "settings", raw)
+		}
 	}
-	dash, err := gateway.OpenDashboardGateway(conf.DashDBPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	routes := routesWithDashboard(dash)
 
 	if operations != nil {
 		if multi, ok := operations.(interface {
@@ -78,16 +75,14 @@ func NewServerWithOperations(conf config.APIConfig, operations Operations) (*htt
 				}
 			}
 		}
-		for _, name := range []string{"status", "draft", "validate", "command", "operations", "failed", "log"} {
-			action := name
-			routes["/crawler/"+action] = func(ctx context.Context, raw json.RawMessage) (interface{}, error) {
 
-				return operations.Handle(ctx, action, raw)
-			}
-		}
 	}
 	handler := http.NewServeMux()
 	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/crawler/") || strings.HasPrefix(r.URL.Path, "/dashboard/") {
+			http.NotFound(w, r)
+			return
+		}
 		if conf.StaticFiles != nil && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
 			if _, known := routes[r.URL.Path]; !known {
 				ServeUI(conf.StaticFiles, w, r)
@@ -97,22 +92,9 @@ func NewServerWithOperations(conf config.APIConfig, operations Operations) (*htt
 		h := requestHandler{conf: conf, routes: routes, req: r, resp: w}
 		h.Perform()
 	})
-	cleanup := func() {
-		if closer, ok := dash.(io.Closer); ok {
-			closer.Close()
-		}
-	}
-	if err := dash.EnsureDefault(); err != nil {
-		cleanup()
-		return nil, nil, err
-	}
+	cleanup := func() {}
 
 	return &http.Server{Addr: conf.Address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second}, cleanup, nil
-}
-
-func routesWithDashboard(dashboard gateway.DashboardGateway) map[string]Controller {
-	dash := controller.NewDashboardController(dashboard)
-	return map[string]Controller{"/dashboard/save": dash.Save, "/dashboard/load": dash.Load, "/dashboard/delete": dash.Delete, "/dashboard/list": dash.List}
 }
 
 type requestHandler struct {
@@ -142,7 +124,7 @@ func (s *requestHandler) handle() (interface{}, error) {
 
 	ctx := s.req.Context()
 
-	if len(s.req.URL.Path) >= 9 && s.req.URL.Path[:9] == "/crawler/" && s.req.Method != http.MethodPost {
+	if (strings.HasPrefix(s.req.URL.Path, "/crawls/") || strings.HasPrefix(s.req.URL.Path, "/workspace/")) && s.req.Method != http.MethodPost {
 		return nil, errs.NewRequestError("POST required")
 	}
 	c, ok := s.routes[s.req.URL.Path]

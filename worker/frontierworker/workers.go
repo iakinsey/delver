@@ -260,6 +260,9 @@ func (w *Worker) publish(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if w.Flow != nil {
+		w.Flow.ReportRunnable(len(candidates) > 0)
+	}
 	var scores map[string]float64
 	if w.Strategy == "adaptive" {
 		scores, err = w.Store.Scores(candidates)

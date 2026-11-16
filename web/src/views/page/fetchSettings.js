@@ -19,7 +19,7 @@ export function FetchSettings({ value, onChange, onError, disabled = false }) {
             }
           }}
         >
-          Configure fetch throughput
+          Configure
         </button>
       </section>
     );
@@ -107,10 +107,8 @@ export function FetchSettings({ value, onChange, onError, disabled = false }) {
         </details>
       ))}
       <small>
-        The strictest process ceiling among running crawls applies to all of
-        them. Shared host limits use their lowest concurrency and longest delay.
-        Phase timeouts set to “inherit” or “0s” use the overall request timeout.
-        Limits and watermarks are validated before saving.
+        Shared limits: lowest concurrency, longest host delay. Phase timeout 0s
+        inherits the request timeout.
       </small>
     </section>
   );
@@ -158,7 +156,7 @@ export function ExpertFetchSettings({ pipeline, onApply, onError, onBusy }) {
             }
           }}
         >
-          Apply fetch settings and worker count
+          Apply
         </button>
       )}
     </div>

@@ -8,7 +8,6 @@ import (
 	"github.com/iakinsey/delver/api"
 	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/flow"
-	"github.com/iakinsey/delver/gateway"
 	"github.com/iakinsey/delver/instrument"
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/types"
@@ -28,20 +27,27 @@ type WorkerFactory func(json.RawMessage, map[string]interface{}) (worker.Worker,
 
 var runToken = make(chan struct{}, 1)
 var registryMutex sync.RWMutex
-var resourceFactories = map[string]ResourceFactory{}
-var workerFactories = map[string]WorkerFactory{}
+var resourceFactories = map[string]RuntimeResourceFactory{}
+var workerFactories = map[string]RuntimeWorkerFactory{}
 
+// Legacy factory signatures are adapted once, at registration.
 func RegisterResource(name string, factory ResourceFactory) {
-	registryMutex.Lock()
-	defer registryMutex.Unlock()
-	delete(runtimeResourceFactories, name)
-	resourceFactories[name] = factory
+	if factory == nil {
+		RegisterResourceWithRuntime(name, nil)
+		return
+	}
+	RegisterResourceWithRuntime(name, func(_ context.Context, raw json.RawMessage, _ RuntimeDependencies) (interface{}, error) {
+		return factory(raw)
+	})
 }
 func RegisterWorker(name string, factory WorkerFactory) {
-	registryMutex.Lock()
-	defer registryMutex.Unlock()
-	delete(runtimeWorkerFactories, name)
-	workerFactories[name] = factory
+	if factory == nil {
+		RegisterWorkerWithRuntime(name, nil)
+		return
+	}
+	RegisterWorkerWithRuntime(name, func(_ context.Context, raw json.RawMessage, resources map[string]interface{}, _ RuntimeDependencies) (worker.Worker, error) {
+		return factory(raw, resources)
+	})
 }
 func Load(path string) (config.Application, error) {
 	f, err := os.Open(path)
@@ -125,6 +131,9 @@ func normalizeDurations(value interface{}) error {
 	return nil
 }
 func Validate(app config.Application) error {
+	if app.Config.Streamer.Enabled {
+		return fmt.Errorf("legacy streaming output retired")
+	}
 	resources := map[string]config.Resource{}
 	workers := map[string]bool{}
 	knownResources := map[string]bool{"file_queue": true, "channel_queue": true, "timer": true, "bloom_filter": true, "rolling_bloom_filter": true, "persistent_map": true, "multi_host_map": true, "filesystem_object_store": true, "crawl_queue": true}
@@ -229,9 +238,6 @@ func Run(ctx context.Context, app config.Application) (err error) {
 		instrument.Stop()
 		defer instrument.Stop()
 		config.Apply(app.Config)
-	}
-	if ctx.Value(runtimeKey{}) == nil {
-		gateway.ResetClientStreamer()
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -367,18 +373,17 @@ func Run(ctx context.Context, app config.Application) (err error) {
 		go func() { serviceErrors <- server.Serve(listener) }()
 		defer server.Close()
 	}
-	streamer := gateway.NewClientStreamer()
-	if app.Config.Streamer.Enabled && !supervised {
-		go func() { serviceErrors <- streamer.Start() }()
-		defer func() {
-			if c, ok := streamer.(io.Closer); ok {
-				c.Close()
-			}
-		}()
-	}
 	used := map[string]bool{}
 	for _, w := range app.Workers {
 		used[w.Inbox] = true
+	}
+	if control, ok := ctx.Value(runtimeKey{}).(*runtimeControl); ok && control.initialPaused {
+		for _, q := range durableDispatch(prepared) {
+			q.PauseDispatch(true)
+		}
+		for _, manager := range prepared.workers {
+			manager.(interface{ Pause(bool) }).Pause(true)
+		}
 	}
 	started := []queue.Queue{}
 	for name, r := range prepared.resources {
@@ -401,11 +406,6 @@ func Run(ctx context.Context, app config.Application) (err error) {
 					}
 				}()
 			}
-		}
-	}
-	if control, ok := ctx.Value(runtimeKey{}).(*runtimeControl); ok && control.initialPaused {
-		for _, manager := range prepared.workers {
-			manager.(interface{ Pause(bool) }).Pause(true)
 		}
 	}
 	if app.Config.Workers.Enabled {
@@ -481,9 +481,6 @@ func Run(ctx context.Context, app config.Application) (err error) {
 		}
 		if server != nil {
 			shutdownErrors.run("api", func() error { return server.Shutdown(shutdownCtx) })
-		}
-		if closer, ok := streamer.(io.Closer); ok && !supervised {
-			shutdownErrors.run("streamer", closer.Close)
 		}
 		close(done)
 	}()

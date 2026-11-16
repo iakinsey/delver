@@ -9,6 +9,7 @@ import (
 
 // Options configures application-level storage and listeners without a pipeline file.
 type Options struct {
+	initial       *config.Application
 	DataDirectory string
 	ImportPath    string
 	Address       string

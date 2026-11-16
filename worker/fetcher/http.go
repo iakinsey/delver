@@ -118,7 +118,7 @@ func (s *httpFetcher) OnMessageContext(ctx context.Context, msg types.Message) (
 	if s.flow != nil && request.QueuedAt > 0 {
 		s.flow.Measure("queue_wait", time.Since(time.Unix(0, request.QueuedAt)))
 	}
-	s.doHttpRequestWithRetry(ctx, request, &response)
+	s.doHttpRequestWithRetry(flow.FetchAttempt(ctx), request, &response)
 	classifyResponse(&response)
 	if s.flow != nil {
 		s.flow.Record(response.HTTPCode, response.Success && response.HTTPCode >= 200 && response.HTTPCode < 400, strings.Contains(strings.ToLower(http.Header(response.Header).Get("Content-Type")), "text/html"), response.FailureClass, time.Duration(response.ElapsedTimeMs)*time.Millisecond, response.BytesReceived, response.BytesStored)

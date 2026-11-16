@@ -58,3 +58,7 @@ Delivery remains at least once, JSONL may contain duplicates, and transient chan
 Final validation on 2026-11-14 passed the complete Go race suite with live Elasticsearch enabled, `go vet`, all 16 frontend unit tests, the production build, and all 9 browser tests with live Elasticsearch and Node 22.23.5. The application/queue/map stress run also passed three consecutive executions under the race detector. The frontend build retains its pre-existing bundle-size advisory. Responsive screenshots for the crawler workflow are generated in `web/test-results/crawler-{375,768,1440}.png`.
 
 The account system has been removed from production code. Direct dashboard/crawler access is covered by `TestUnrestrictedDashboardAndCrawler`; schema preservation and rollback by `TestDashboardMigrationPreservesAllLayoutsAndRemovesOwnership` and `TestDashboardMigrationFailureRollsBackAndRetries`; configuration/state upgrades by `TestObsoleteAccountSettingsAreRemovedDuringUpgrade` and `TestPersistedStateUpgradeRemovesAccountFields`. All browser workflows now begin without stored credentials.
+
+## Current runtime surfaces
+
+The historical audit above predates workspace ownership consolidation. Dashboard CRUD, singleton crawler routes, and streaming listeners have been removed. Removal assertions live in `api/server_test.go`; original test mappings are recorded in `tests/inventory.json`. Workspace preparation retains custom registration, Elasticsearch output, extraction, and supported sinks.

@@ -38,23 +38,16 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 func (d Duration) Value() time.Duration { return time.Duration(d) }
 
 type Policy struct {
+	AdjustmentInterval    Duration `json:"adjustment_interval"`
 	MetricsSaveInterval   Duration `json:"metrics_save_interval"`
-	ProcessOriginLimit    int      `json:"process_origin_limit"`
-	ProcessOriginDelay    Duration `json:"process_origin_delay"`
 	Mode                  string   `json:"mode"`
 	Concurrency           int      `json:"concurrency"`
 	Minimum               int      `json:"minimum"`
 	Maximum               int      `json:"maximum"`
-	ProcessLimit          int      `json:"process_limit"`
 	SampleInterval        Duration `json:"sample_interval"`
-	EvaluationWindow      Duration `json:"evaluation_window"`
 	MinSamples            int      `json:"min_samples"`
-	AdjustmentCooldown    Duration `json:"adjustment_cooldown"`
 	IncreaseStep          int      `json:"increase_step"`
 	DecreaseFactor        float64  `json:"decrease_factor"`
-	EWMAAlpha             float64  `json:"ewma_alpha"`
-	LatencyInflation      float64  `json:"latency_inflation"`
-	MinimumGain           float64  `json:"minimum_gain"`
 	OverloadFailureRatio  float64  `json:"overload_failure_ratio"`
 	MemoryHighMB          int      `json:"memory_high_mb"`
 	MemoryLowMB           int      `json:"memory_low_mb"`
@@ -91,13 +84,13 @@ type Option struct {
 
 func Options() []Option {
 	return []Option{
+		{"adjustment_interval", "Adjustment interval", "Adaptive control", "duration", .01, 86400},
 		{"metrics_save_interval", "Metrics save interval", "Metrics", "duration", .01, 3600},
-		{"process_origin_limit", "Shared requests per host", "Execution", "integer", 1, 8192},
-		{"process_origin_delay", "Shared delay per host", "Execution", "duration", 0, 86400},
-		{"concurrency", "Concurrent requests overall", "Execution", "integer", 1, 8192}, {"process_limit", "Process-wide request ceiling", "Execution", "integer", 1, 8192},
+
+		{"concurrency", "Concurrent requests overall", "Execution", "integer", 1, 8192},
 		{"minimum", "Minimum concurrency", "Adaptive limits", "integer", 1, 8192}, {"maximum", "Maximum concurrency", "Adaptive limits", "integer", 1, 8192},
-		{"sample_interval", "Pressure sampling interval", "Adaptive control", "duration", .01, 3600}, {"evaluation_window", "Evaluation window", "Adaptive control", "duration", .01, 86400}, {"min_samples", "Minimum completed samples", "Adaptive control", "integer", 1, 1000000}, {"adjustment_cooldown", "Adjustment cooldown", "Adaptive control", "duration", .01, 86400},
-		{"increase_step", "Concurrency increase step", "Adaptive control", "integer", 1, 8192}, {"decrease_factor", "Concurrency decrease multiplier", "Adaptive control", "number", .01, .99}, {"ewma_alpha", "Latency smoothing weight", "Adaptive control", "number", .01, 1}, {"latency_inflation", "Allowed latency inflation", "Adaptive control", "number", 1, 100}, {"minimum_gain", "Minimum throughput gain", "Adaptive control", "number", 0, 1}, {"overload_failure_ratio", "Proxy/local overload failure ratio", "Adaptive control", "number", .01, 1},
+		{"sample_interval", "Pressure sampling interval", "Adaptive control", "duration", .01, 3600}, {"min_samples", "Minimum completed samples", "Adaptive control", "integer", 1, 1000000},
+		{"increase_step", "Concurrency increase step", "Adaptive control", "integer", 1, 8192}, {"decrease_factor", "Concurrency decrease multiplier", "Adaptive control", "number", .01, .99}, {"overload_failure_ratio", "Proxy/local overload failure ratio", "Adaptive control", "number", .01, 1},
 		{"memory_high_mb", "Memory high watermark (MiB)", "Resource limits", "integer", 1, 1048576}, {"memory_low_mb", "Memory resume watermark (MiB)", "Resource limits", "integer", 0, 1048576}, {"cpu_high_percent", "CPU high watermark (%)", "Resource limits", "number", 1, 100}, {"cpu_low_percent", "CPU resume watermark (%)", "Resource limits", "number", 0, 99}, {"min_free_disk_mb", "Minimum free disk space (MiB)", "Resource limits", "integer", 1, 1048576},
 		{"queue_low_multiplier", "Fetch refill low watermark multiplier", "Dispatch and backpressure", "number", .1, 100}, {"queue_target_multiplier", "Fetch queue target multiplier", "Dispatch and backpressure", "number", .1, 100}, {"queue_hard_limit", "Fetch queue hard ceiling", "Dispatch and backpressure", "integer", 1, 1000000}, {"refill_batch", "Maximum refill batch", "Dispatch and backpressure", "integer", 1, 100000}, {"candidate_window", "Candidate selection window", "Dispatch and backpressure", "integer", 1, 1000000}, {"downstream_high", "Downstream queue high watermark", "Dispatch and backpressure", "integer", 1, 1000000}, {"downstream_low", "Downstream queue resume watermark", "Dispatch and backpressure", "integer", 0, 1000000},
 		{"failure_threshold", "Failures before host cooldown", "Retries and recovery", "integer", 1, 1000}, {"host_cooldown", "Initial host cooldown", "Retries and recovery", "duration", .01, 604800}, {"host_cooldown_max", "Maximum host cooldown", "Retries and recovery", "duration", .01, 31536000}, {"recovery_probe_interval", "Recovery probe spacing", "Retries and recovery", "duration", .01, 604800}, {"retry_share", "Retry scheduling share", "Retries and recovery", "number", .01, 1},
@@ -108,7 +101,7 @@ func Options() []Option {
 func Default() Policy {
 	n := runtime.NumCPU()
 	memory := defaultMemoryMB()
-	return Policy{MetricsSaveInterval: Duration(10 * time.Second), ProcessOriginLimit: 2, ProcessOriginDelay: Duration(100 * time.Millisecond), Mode: "fixed", Concurrency: n * 4, Minimum: 1, Maximum: n * 16, ProcessLimit: n * 16, SampleInterval: Duration(time.Second), EvaluationWindow: Duration(30 * time.Second), MinSamples: 20, AdjustmentCooldown: Duration(30 * time.Second), IncreaseStep: 1, DecreaseFactor: .8, EWMAAlpha: .2, LatencyInflation: 1.5, MinimumGain: .02, OverloadFailureRatio: .2, MemoryHighMB: memory, MemoryLowMB: memory * 3 / 4, CPUHighPercent: 90, CPULowPercent: 70, MinFreeDiskMB: 64, QueueLowMultiplier: 1, QueueTargetMultiplier: 2, QueueHardLimit: 4096, RefillBatch: 256, CandidateWindow: 4096, DownstreamHigh: 128, DownstreamLow: 64, FailureThreshold: 3, HostCooldown: Duration(30 * time.Second), HostCooldownMax: Duration(30 * time.Minute), RecoveryProbeInterval: Duration(30 * time.Second), RetryShare: .2, MetricsWindow: Duration(time.Minute), MetricsSamples: 1024}
+	return Policy{MetricsSaveInterval: Duration(10 * time.Second), AdjustmentInterval: Duration(30 * time.Second), Mode: "fixed", Concurrency: n * 4, Minimum: 1, Maximum: n * 16, SampleInterval: Duration(time.Second), MinSamples: 20, IncreaseStep: n, DecreaseFactor: .8, OverloadFailureRatio: .2, MemoryHighMB: memory, MemoryLowMB: memory * 3 / 4, CPUHighPercent: 90, CPULowPercent: 70, MinFreeDiskMB: 64, QueueLowMultiplier: 1, QueueTargetMultiplier: 2, QueueHardLimit: 4096, RefillBatch: 256, CandidateWindow: 4096, DownstreamHigh: 128, DownstreamLow: 64, FailureThreshold: 3, HostCooldown: Duration(30 * time.Second), HostCooldownMax: Duration(30 * time.Minute), RecoveryProbeInterval: Duration(30 * time.Second), RetryShare: .2, MetricsWindow: Duration(time.Minute), MetricsSamples: 1024}
 }
 func Legacy() Policy { p := Default(); p.Concurrency = 4; p.Maximum = 4; return p }
 func (p Policy) Validate() error {
@@ -155,13 +148,38 @@ func (p Policy) Validate() error {
 	if p.DownstreamLow >= p.DownstreamHigh || p.MemoryLowMB >= p.MemoryHighMB || p.CPULowPercent >= p.CPUHighPercent {
 		return fmt.Errorf("resume watermarks must be below high watermarks")
 	}
-	if p.HostCooldownMax < p.HostCooldown || p.EvaluationWindow < p.SampleInterval {
+	if p.HostCooldownMax < p.HostCooldown || p.AdjustmentInterval < p.SampleInterval {
 		return fmt.Errorf("maximum cooldown and evaluation window must cover their initial intervals")
 	}
 	return nil
 }
 func (p *Policy) UnmarshalJSON(b []byte) error {
 	type alias Policy
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(b, &document); err != nil {
+		return err
+	}
+	if _, ok := document["adjustment_interval"]; !ok {
+		interval := Duration(30 * time.Second)
+		legacy := false
+		for _, key := range []string{"evaluation_window", "adjustment_cooldown"} {
+			if raw, ok := document[key]; ok {
+				var v Duration
+				if err := json.Unmarshal(raw, &v); err != nil {
+					return err
+				}
+				if !legacy || v > interval {
+					interval = v
+				}
+				legacy = true
+			}
+		}
+		document["adjustment_interval"], _ = json.Marshal(interval)
+	}
+	for _, key := range []string{"evaluation_window", "adjustment_cooldown", "ewma_alpha", "latency_inflation", "minimum_gain", "process_limit", "process_origin_limit", "process_origin_delay"} {
+		delete(document, key)
+	}
+	b, _ = json.Marshal(document)
 	var a alias
 	d := json.NewDecoder(bytes.NewReader(b))
 	d.DisallowUnknownFields()

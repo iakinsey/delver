@@ -1,0 +1,38 @@
+[
+  {
+    "clean_name": "battalion oil",
+    "exchange": "amex",
+    "formal_name": "Battalion Oil Corporation",
+    "identifier": "AMEX:BATL",
+    "industry": "Oil & Gas Production",
+    "sector": "Energy",
+    "ticker": "BATL"
+  },
+  {
+    "clean_name": "nxp semiconductors nv",
+    "exchange": "nasdaq",
+    "formal_name": "NXP Semiconductors N.V.",
+    "identifier": "NASDAQ:NXPI",
+    "industry": "Semiconductors",
+    "sector": "Technology",
+    "ticker": "NXPI"
+  },
+  {
+    "clean_name": "first trust mlp and energy income fund",
+    "exchange": "nyse",
+    "formal_name": "First Trust MLP and Energy Income Fund",
+    "identifier": "NYSE:FEI",
+    "industry": "n/a",
+    "sector": "n/a",
+    "ticker": "FEI"
+  },
+  {
+    "clean_name": "maximus",
+    "exchange": "nyse",
+    "formal_name": "Maximus, Inc.",
+    "identifier": "NYSE:MMS",
+    "industry": "Business Services",
+    "sector": "Miscellaneous",
+    "ticker": "MMS"
+  }
+]

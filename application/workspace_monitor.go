@@ -2,6 +2,7 @@ package application
 
 import (
 	"github.com/iakinsey/delver/resource/maps"
+	"github.com/iakinsey/delver/worker"
 	"time"
 )
 
@@ -100,7 +101,7 @@ func (w *Workspace) checkRun(id string, slot *crawlSlot) {
 		if control.prepared != nil {
 			for _, d := range control.prepared.app.Workers {
 				if d.Manager == "job" && d.Type != "frontier_cleanup" {
-					control.prepared.workers[d.Name].(interface{ Pause(bool) }).Pause(true)
+					control.prepared.workers[d.Name].(worker.Pausable).Pause(true)
 				}
 			}
 		}

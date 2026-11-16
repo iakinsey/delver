@@ -1,0 +1,1376 @@
+[
+  {
+    "original": "api/server_test.go",
+    "tests": [
+      "TestUnrestrictedDashboardAndCrawler"
+    ],
+    "status": "replaced by retained-interface or legacy-removal assertions",
+    "coverage": "api/server_test.go",
+    "current_tests": [
+      "TestRetiredDashboardAndSingleCrawlRoutesAreUnavailable"
+    ]
+  },
+  {
+    "original": "api/static_test.go",
+    "tests": [
+      "TestServeUIRoutesAndMissingAssets"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "api/static_test.go",
+    "current_tests": [
+      "TestServeUIRoutesAndMissingAssets"
+    ]
+  },
+  {
+    "original": "application/application_test.go",
+    "tests": [
+      "TestLocalCrawl",
+      "TestStrictConfiguration"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "application/application_test.go",
+    "current_tests": [
+      "TestLocalCrawl",
+      "TestStrictConfiguration"
+    ]
+  },
+  {
+    "original": "application/crawl_log_test.go",
+    "tests": [
+      "TestCrawlLogRecordsSuccessFailuresAndBounds"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "application/crawl_log_test.go",
+    "current_tests": [
+      "TestCrawlLogRecordsSuccessFailuresAndBounds"
+    ]
+  },
+  {
+    "original": "application/defaults_test.go",
+    "tests": [
+      "TestDefaultApplicationRequiresNoScenario"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "application/defaults_test.go",
+    "current_tests": [
+      "TestDefaultApplicationRequiresNoScenario"
+    ]
+  },
+  {
+    "original": "application/examples_test.go",
+    "tests": [
+      "TestDocumentedExamples"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "application/examples_test.go",
+    "current_tests": [
+      "TestDocumentedExamples"
+    ]
+  },
+  {
+    "original": "application/frontier_test.go",
+    "tests": [
+      "TestFrontierExamples",
+      "TestFrontierSupervisedTraversal"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "application/frontier_test.go",
+    "current_tests": [
+      "TestFrontierExamples",
+      "TestFrontierSupervisedTraversal"
+    ]
+  },
+  {
+    "original": "application/network_settings_test.go",
+    "tests": [
+      "TestExpertNetworkDurationStrings",
+      "TestGenericNetworkSettingsCompileAndLegacyDefaults",
+      "TestGenericNetworkValidation",
+      "TestRobotsSettingDefaultsAndExplicitChoice"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "application/network_settings_test.go",
+    "current_tests": [
+      "TestExpertNetworkDurationStrings",
+      "TestGenericNetworkSettingsCompileAndLegacyDefaults",
+      "TestGenericNetworkValidation",
+      "TestRobotsSettingDefaultsAndExplicitChoice"
+    ]
+  },
+  {
+    "original": "application/secrets_test.go",
+    "tests": [
+      "TestConfigurationProxyIsVisibleAndOtherSecretsRoundTrip",
+      "TestConfigurationAcceptsDurationStringsAndRejectsServiceChanges"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "application/secrets_test.go",
+    "current_tests": [
+      "TestConfigurationProxyIsVisibleAndOtherSecretsRoundTrip",
+      "TestConfigurationAcceptsDurationStringsAndRejectsServiceChanges"
+    ]
+  },
+  {
+    "original": "application/soak_test.go",
+    "tests": [
+      "TestWorkspaceSoak"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "application/soak_test.go",
+    "current_tests": [
+      "TestWorkspaceSoak"
+    ]
+  },
+  {
+    "original": "application/supervisor_crawl_test.go",
+    "tests": [
+      "TestSupervisedCrawlPauseRecrawlAndRestart"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "application/supervisor_crawl_test.go",
+    "current_tests": [
+      "TestSupervisedCrawlPauseRecrawlAndRestart"
+    ]
+  },
+  {
+    "original": "application/supervisor_failure_test.go",
+    "tests": [
+      "TestDraftSaveFailureDoesNotChangeConfiguration",
+      "TestFailedActivationRestoresRunningConfiguration",
+      "TestStatusRemainsAvailableDuringStartupAndShutdown",
+      "TestConcurrentCommandIDsAreIdempotent",
+      "TestShutdownTimeoutRetainsOwnershipUntilCleanup",
+      "TestCloseDuringCommandWaitsForConstructionCleanup",
+      "TestRollbackFailureRemainsObservableAndDoesNotClaimCompletion",
+      "TestResourceCloseFailureIsReported",
+      "TestServiceRemainsAvailableAfterCrawlerStartupFailure",
+      "TestCorruptedOperationsStateFailsWithoutStarting",
+      "TestStatusPollingDuringRepeatedRuntimeReplacement"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "application/supervisor_failure_test.go",
+    "current_tests": [
+      "TestDraftSaveFailureDoesNotChangeConfiguration",
+      "TestFailedActivationRestoresRunningConfiguration",
+      "TestStatusRemainsAvailableDuringStartupAndShutdown",
+      "TestConcurrentCommandIDsAreIdempotent",
+      "TestShutdownTimeoutRetainsOwnershipUntilCleanup",
+      "TestCloseDuringCommandWaitsForConstructionCleanup",
+      "TestRollbackFailureRemainsObservableAndDoesNotClaimCompletion",
+      "TestResourceCloseFailureIsReported",
+      "TestServiceRemainsAvailableAfterCrawlerStartupFailure",
+      "TestCorruptedOperationsStateFailsWithoutStarting",
+      "TestStatusPollingDuringRepeatedRuntimeReplacement"
+    ]
+  },
+  {
+    "original": "application/supervisor_test.go",
+    "tests": [
+      "TestSupervisorLifecycleAndPersistence",
+      "TestSupervisorDraftValidation",
+      "TestPausedStateRestoresWithoutConsumingWork",
+      "TestConfigurationPreservesIntegerPrecision",
+      "TestSupervisorShutdownRejectsCommands",
+      "TestInterruptedOperationIsNotRepeated",
+      "TestOperationsStateHasExclusiveOwner",
+      "TestDecodeRejectsTrailingAndOversizedInput",
+      "TestCustomParametersKeepTheirOwnDurationSemantics",
+      "TestTimerOutputAndInvalidProxyFailPreflight",
+      "TestObsoleteAccountSettingsAreRemovedDuringUpgrade",
+      "TestPersistedStateUpgradeRemovesAccountFields"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "application/supervisor_test.go",
+    "current_tests": [
+      "TestSupervisorLifecycleAndPersistence",
+      "TestSupervisorDraftValidation",
+      "TestPausedStateRestoresWithoutConsumingWork",
+      "TestConfigurationPreservesIntegerPrecision",
+      "TestSupervisorShutdownRejectsCommands",
+      "TestInterruptedOperationIsNotRepeated",
+      "TestOperationsStateHasExclusiveOwner",
+      "TestDecodeRejectsTrailingAndOversizedInput",
+      "TestCustomParametersKeepTheirOwnDurationSemantics",
+      "TestTimerOutputAndInvalidProxyFailPreflight",
+      "TestObsoleteAccountSettingsAreRemovedDuringUpgrade",
+      "TestPersistedStateUpgradeRemovesAccountFields"
+    ]
+  },
+  {
+    "original": "application/throughput_test.go",
+    "tests": [
+      "TestWorkspaceDurableRetryCompletesOnceWithoutInlineMultiplication",
+      "TestExpertFetchPatchPreservesOpaqueNumbersAndUpdatesRetryPolicy",
+      "TestDurableRetryRoutingAndQueueValidation",
+      "TestDiskPressureChecksFutureOutputParents",
+      "TestCompiledCleanupUsesConfiguredRetentionCadence",
+      "TestConfiguredFastRetentionActuallyExpiresCrawlHistory",
+      "TestPressureSamplingDoesNotReadMutableHTTPClient",
+      "TestStoppedRunSummaryIncludesFinishingAttempts"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "application/throughput_test.go",
+    "current_tests": [
+      "TestWorkspaceDurableRetryCompletesOnceWithoutInlineMultiplication",
+      "TestExpertFetchPatchPreservesOpaqueNumbersAndUpdatesRetryPolicy",
+      "TestDurableRetryRoutingAndQueueValidation",
+      "TestDiskPressureChecksFutureOutputParents",
+      "TestCompiledCleanupUsesConfiguredRetentionCadence",
+      "TestConfiguredFastRetentionActuallyExpiresCrawlHistory",
+      "TestPressureSamplingDoesNotReadMutableHTTPClient",
+      "TestStoppedRunSummaryIncludesFinishingAttempts"
+    ]
+  },
+  {
+    "original": "application/workspace_delete_test.go",
+    "tests": [
+      "TestDeleteCrawlRequiresConfirmationRemovesAllLocalHistoryAndSurvivesRestart",
+      "TestDeleteCrawlScopesElasticsearchAndPreservesOnRequest",
+      "TestDeleteCrawlRejectsSharedStorageAndUnattributedLogs",
+      "TestDeleteStopsRunningCrawlAndDoesNotResurrectIt",
+      "TestFailedElasticsearchDeleteRetainsCrawlAndCanRetry"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "application/workspace_delete_test.go",
+    "current_tests": [
+      "TestDeleteCrawlRequiresConfirmationRemovesAllLocalHistoryAndSurvivesRestart",
+      "TestDeleteCrawlScopesElasticsearchAndPreservesOnRequest",
+      "TestDeleteCrawlRejectsSharedStorageAndUnattributedLogs",
+      "TestDeleteStopsRunningCrawlAndDoesNotResurrectIt",
+      "TestFailedElasticsearchDeleteRetainsCrawlAndCanRetry"
+    ]
+  },
+  {
+    "original": "application/workspace_draft_retry_test.go",
+    "tests": [
+      "TestWorkspaceDraftRetryPreservesVersionAcrossRestartAndLaterMutations"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "application/workspace_draft_retry_test.go",
+    "current_tests": [
+      "TestWorkspaceDraftRetryPreservesVersionAcrossRestartAndLaterMutations"
+    ]
+  },
+  {
+    "original": "application/workspace_health_test.go",
+    "tests": [
+      "TestWorkspaceFiniteFeedHealthRecoversAndDrains"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "application/workspace_health_test.go",
+    "current_tests": [
+      "TestWorkspaceFiniteFeedHealthRecoversAndDrains"
+    ]
+  },
+  {
+    "original": "application/workspace_test.go",
+    "tests": [
+      "TestWorkspaceConcurrentCrawlsAndIndependentLifecycle",
+      "TestWorkspaceDrainCompletionBudgetsAndRestart",
+      "TestWorkspaceDraftConflictsAndProxySecrets",
+      "TestWorkspaceHTTPProxyAppliesToFeedsRobotsAndRedirects",
+      "TestWorkspaceExpertConversionPreservesSecretsAndCustomFields",
+      "TestWorkspaceWorkflowIdempotency",
+      "TestWorkspaceActiveClockExcludesPausedTime",
+      "TestWorkspaceExpertTextPreservesLargeNumericParameters",
+      "TestWorkspaceCreationIdempotencyAndPersistenceFailure",
+      "TestWorkspaceLegacyImportPreservesSavedPipelineAndPausedState",
+      "TestWorkspaceContinuesPreservedDiscoveriesAfterRequestLimit",
+      "TestSupervisorOwnsConfigurationSlices"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "application/workspace_test.go",
+    "current_tests": [
+      "TestWorkspaceConcurrentCrawlsAndIndependentLifecycle",
+      "TestWorkspaceDrainCompletionBudgetsAndRestart",
+      "TestWorkspaceDraftConflictsAndProxySecrets",
+      "TestWorkspaceHTTPProxyAppliesToFeedsRobotsAndRedirects",
+      "TestWorkspaceExpertConversionPreservesSecretsAndCustomFields",
+      "TestWorkspaceWorkflowIdempotency",
+      "TestWorkspaceActiveClockExcludesPausedTime",
+      "TestWorkspaceExpertTextPreservesLargeNumericParameters",
+      "TestWorkspaceCreationIdempotencyAndPersistenceFailure",
+      "TestWorkspaceLegacyImportPreservesSavedPipelineAndPausedState",
+      "TestWorkspaceContinuesPreservedDiscoveriesAfterRequestLimit",
+      "TestSupervisorOwnsConfigurationSlices"
+    ]
+  },
+  {
+    "original": "extractors/adversarial_test.go",
+    "tests": [
+      "TestAdversarialExtractorIsEnumeration",
+      "TestAdversarialExtractorIsSubdomainExplosion",
+      "TestAdversarialExtractorNotAdversarial"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "extractors/adversarial_test.go",
+    "current_tests": [
+      "TestAdversarialExtractorIsEnumeration",
+      "TestAdversarialExtractorIsSubdomainExplosion",
+      "TestAdversarialExtractorNotAdversarial"
+    ]
+  },
+  {
+    "original": "extractors/company_name_test.go",
+    "tests": [
+      "TestCompanyNameExtractors"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "extractors/company_name_test.go",
+    "current_tests": [
+      "TestCompanyNameExtractors"
+    ]
+  },
+  {
+    "original": "extractors/context_test.go",
+    "tests": [
+      "TestBuiltInExtractorsCancelDuringWork"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "extractors/context_test.go",
+    "current_tests": [
+      "TestBuiltInExtractorsCancelDuringWork"
+    ]
+  },
+  {
+    "original": "extractors/country_test.go",
+    "tests": [
+      "TestCountryExtractor"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "extractors/country_test.go",
+    "current_tests": [
+      "TestCountryExtractor"
+    ]
+  },
+  {
+    "original": "extractors/language_test.go",
+    "tests": [
+      "TestLanguageExtractor"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "extractors/language_test.go",
+    "current_tests": [
+      "TestLanguageExtractor"
+    ]
+  },
+  {
+    "original": "extractors/ngram_test.go",
+    "tests": [
+      "TestNgramExtractor"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "extractors/ngram_test.go",
+    "current_tests": [
+      "TestNgramExtractor"
+    ]
+  },
+  {
+    "original": "extractors/regression_test.go",
+    "tests": [
+      "TestRegressionUnicodeNgrams",
+      "TestRegressionRepeatedSubdomain",
+      "TestRegressionHTMLLinkForms"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "extractors/regression_test.go",
+    "current_tests": [
+      "TestRegressionUnicodeNgrams",
+      "TestRegressionRepeatedSubdomain",
+      "TestRegressionHTMLLinkForms"
+    ]
+  },
+  {
+    "original": "extractors/sentiment_test.go",
+    "tests": [
+      "TestSentimentExtractor"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "extractors/sentiment_test.go",
+    "current_tests": [
+      "TestSentimentExtractor"
+    ]
+  },
+  {
+    "original": "extractors/text_test.go",
+    "tests": [
+      "TestTextExtractor"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "extractors/text_test.go",
+    "current_tests": [
+      "TestTextExtractor"
+    ]
+  },
+  {
+    "original": "extractors/url_test.go",
+    "tests": [
+      "TestUrlExtractor"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "extractors/url_test.go",
+    "current_tests": [
+      "TestUrlExtractor"
+    ]
+  },
+  {
+    "original": "filter/regression_test.go",
+    "tests": [
+      "TestRegressionMetricStream",
+      "TestRegressionCompositeCountry",
+      "TestRegressionCompositeDefaultFields",
+      "TestRegressionCompositeSearchFieldPaths",
+      "TestRegressionQuotedSearchInput",
+      "TestRegressionMetricIntervalSeconds"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "filter/regression_test.go",
+    "current_tests": [
+      "TestRegressionMetricStream",
+      "TestRegressionCompositeCountry",
+      "TestRegressionCompositeDefaultFields",
+      "TestRegressionCompositeSearchFieldPaths",
+      "TestRegressionQuotedSearchInput",
+      "TestRegressionMetricIntervalSeconds"
+    ]
+  },
+  {
+    "original": "flow/controller_test.go",
+    "tests": [
+      "TestExecutionCapsFairnessAndCancellation",
+      "TestPressureHysteresisAndRecovery",
+      "TestAdaptiveLimitsAndDestinationFailures",
+      "TestAllOptionBoundsAndStrictSchema",
+      "TestMetricsBoundedAndAccurateRates",
+      "TestZeroFreeDiskAndInitialHealthBlockBeforeFirstLease",
+      "TestControllerCloseDropsIdleProcessAccounting",
+      "TestP95IncludesTailInSmallSamples",
+      "TestPolicyRejectsInconsistentLimitsAndNonFiniteThresholds"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "flow/controller_test.go",
+    "current_tests": [
+      "TestExecutionCapsFairnessAndCancellation",
+      "TestPressureHysteresisAndRecovery",
+      "TestAdaptiveLimitsAndDestinationFailures",
+      "TestAllOptionBoundsAndStrictSchema",
+      "TestMetricsBoundedAndAccurateRates",
+      "TestZeroFreeDiskAndInitialHealthBlockBeforeFirstLease",
+      "TestControllerCloseDropsIdleProcessAccounting",
+      "TestP95IncludesTailInSmallSamples",
+      "TestPolicyRejectsInconsistentLimitsAndNonFiniteThresholds"
+    ]
+  },
+  {
+    "original": "flow/persistence_test.go",
+    "tests": [
+      "TestMetricsPersistAcrossRestartWithBoundedRestore",
+      "TestOrderlyCloseCheckpointsAttemptsFinishingAfterParentCancellation"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "flow/persistence_test.go",
+    "current_tests": [
+      "TestMetricsPersistAcrossRestartWithBoundedRestore",
+      "TestOrderlyCloseCheckpointsAttemptsFinishingAfterParentCancellation"
+    ]
+  },
+  {
+    "original": "frontier/batch_test.go",
+    "tests": [
+      "TestOversizedRetryAndCleanupBatchesRemainAtomicAndBounded"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "frontier/batch_test.go",
+    "current_tests": [
+      "TestOversizedRetryAndCleanupBatchesRemainAtomicAndBounded"
+    ]
+  },
+  {
+    "original": "frontier/discovery_test.go",
+    "tests": [
+      "TestDiscoveryBackpressureRestartAndReplay",
+      "TestDiscoveryChunksReplayAndBudgetRejection"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "frontier/discovery_test.go",
+    "current_tests": [
+      "TestDiscoveryBackpressureRestartAndReplay",
+      "TestDiscoveryChunksReplayAndBudgetRejection"
+    ]
+  },
+  {
+    "original": "frontier/graph_benchmark_test.go",
+    "tests": [
+      "TestGraphCoverageAndBudgets"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "frontier/graph_benchmark_test.go",
+    "current_tests": [
+      "BenchmarkTraversalGraphs",
+      "TestGraphCoverageAndBudgets"
+    ]
+  },
+  {
+    "original": "frontier/million_test.go",
+    "tests": [
+      "TestFrontierMillionURLs",
+      "TestFrontierMillionRestartHelper"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "frontier/million_test.go",
+    "current_tests": [
+      "TestFrontierMillionURLs",
+      "TestFrontierMillionRestartHelper"
+    ]
+  },
+  {
+    "original": "frontier/retention_test.go",
+    "tests": [
+      "TestRetention"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "frontier/retention_test.go",
+    "current_tests": [
+      "TestRetention"
+    ]
+  },
+  {
+    "original": "frontier/retry_test.go",
+    "tests": [
+      "TestRetrySurvivesRestartRetentionAndOutcomeReplay",
+      "TestHostCooldownAdmitsSingleRecoveryProbe",
+      "TestPolicyFailuresDoNotRetryAndRetryAfterIsRespected",
+      "TestReadyRetriesRemainVisibleBehindLargeFreshFrontier",
+      "TestFreshWorkCannotBeHiddenByLargeRetryBacklogAndIndexesUpgrade"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "frontier/retry_test.go",
+    "current_tests": [
+      "TestRetrySurvivesRestartRetentionAndOutcomeReplay",
+      "TestHostCooldownAdmitsSingleRecoveryProbe",
+      "TestPolicyFailuresDoNotRetryAndRetryAfterIsRespected",
+      "TestReadyRetriesRemainVisibleBehindLargeFreshFrontier",
+      "TestFreshWorkCannotBeHiddenByLargeRetryBacklogAndIndexesUpgrade"
+    ]
+  },
+  {
+    "original": "frontier/robotstxt_test.go",
+    "tests": [
+      "TestMemoryRobots",
+      "TestRobotsExpiration",
+      "TestRobotsRetrievalErrorDenied",
+      "TestRobotsCanceledCacheWait",
+      "TestRobotsMetadataIgnoresPagePatternAndCancelsNetwork"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "frontier/robotstxt_test.go",
+    "current_tests": [
+      "TestMemoryRobots",
+      "TestRobotsExpiration",
+      "TestRobotsRetrievalErrorDenied",
+      "TestRobotsCanceledCacheWait",
+      "TestRobotsMetadataIgnoresPagePatternAndCancelsNetwork"
+    ]
+  },
+  {
+    "original": "frontier/scale_test.go",
+    "tests": [
+      "TestFrontierScale"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "frontier/scale_test.go",
+    "current_tests": [
+      "TestFrontierScale"
+    ]
+  },
+  {
+    "original": "frontier/storage_benchmark_test.go",
+    "tests": [],
+    "status": "restored; updated for current behavior",
+    "coverage": "frontier/storage_benchmark_test.go",
+    "current_tests": [
+      "BenchmarkStorageTransitions"
+    ]
+  },
+  {
+    "original": "frontier/store_test.go",
+    "tests": [
+      "TestStoreRetentionSeekingRecovery",
+      "TestNormalize",
+      "TestNeverExpiresAndBudgets",
+      "TestIndexedTraversalAndCooldown",
+      "TestDiskHeadroomAndCapacity",
+      "TestBetterHopPathProtectsReopenedRecord"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "frontier/store_test.go",
+    "current_tests": [
+      "TestStoreRetentionSeekingRecovery",
+      "TestNormalize",
+      "TestNeverExpiresAndBudgets",
+      "TestIndexedTraversalAndCooldown",
+      "TestDiskHeadroomAndCapacity",
+      "TestBetterHopPathProtectsReopenedRecord"
+    ]
+  },
+  {
+    "original": "frontier/strategy_test.go",
+    "tests": [
+      "TestStrategies"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "frontier/strategy_test.go",
+    "current_tests": [
+      "TestStrategies"
+    ]
+  },
+  {
+    "original": "frontier/traversal_benchmark_test.go",
+    "tests": [],
+    "status": "restored; updated for current behavior",
+    "coverage": "frontier/traversal_benchmark_test.go",
+    "current_tests": [
+      "BenchmarkFrontierSeek"
+    ]
+  },
+  {
+    "original": "frontier/workload_benchmark_test.go",
+    "tests": [],
+    "status": "restored; updated for current behavior",
+    "coverage": "frontier/workload_benchmark_test.go",
+    "current_tests": [
+      "BenchmarkStorageWorkload"
+    ]
+  },
+  {
+    "original": "gateway/crawl_delete_test.go",
+    "tests": [
+      "TestLiveCrawlLogDeletionIsolation"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "gateway/crawl_delete_test.go",
+    "current_tests": [
+      "TestLiveCrawlLogDeletionIsolation"
+    ]
+  },
+  {
+    "original": "gateway/crawl_log_migration_test.go",
+    "tests": [
+      "TestExistingDefaultHeadlinesBecomeCrawlLog"
+    ],
+    "status": "replaced by retained-interface or legacy-removal assertions",
+    "coverage": "api/server_test.go",
+    "current_tests": [
+      "TestRetiredDashboardAndSingleCrawlRoutesAreUnavailable"
+    ]
+  },
+  {
+    "original": "gateway/dashboard_migration_test.go",
+    "tests": [
+      "TestDashboardMigrationPreservesAllLayoutsAndRemovesOwnership",
+      "TestDashboardMigrationFailureRollsBackAndRetries"
+    ],
+    "status": "replaced by retained-interface or legacy-removal assertions",
+    "coverage": "api/server_test.go",
+    "current_tests": [
+      "TestRetiredDashboardAndSingleCrawlRoutesAreUnavailable"
+    ]
+  },
+  {
+    "original": "gateway/dashboard_test.go",
+    "tests": [
+      "TestCreateAndGetDash",
+      "TestGetNoDashExists",
+      "TestListDash",
+      "TestDeleteDash",
+      "TestDeleteDashNoDashExists"
+    ],
+    "status": "replaced by retained-interface or legacy-removal assertions",
+    "coverage": "api/server_test.go",
+    "current_tests": [
+      "TestRetiredDashboardAndSingleCrawlRoutesAreUnavailable"
+    ]
+  },
+  {
+    "original": "gateway/default_dashboard_test.go",
+    "tests": [
+      "TestDefaultDashboardOnce",
+      "TestDefaultFailureRetry"
+    ],
+    "status": "replaced by retained-interface or legacy-removal assertions",
+    "coverage": "api/server_test.go",
+    "current_tests": [
+      "TestRetiredDashboardAndSingleCrawlRoutesAreUnavailable"
+    ]
+  },
+  {
+    "original": "gateway/index_context_test.go",
+    "tests": [
+      "TestIndexCancellation"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "gateway/index_context_test.go",
+    "current_tests": [
+      "TestIndexCancellation"
+    ]
+  },
+  {
+    "original": "gateway/live_es_test.go",
+    "tests": [
+      "TestLiveElasticsearch"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "gateway/live_es_test.go",
+    "current_tests": [
+      "TestLiveElasticsearch"
+    ]
+  },
+  {
+    "original": "gateway/search_regression_test.go",
+    "tests": [
+      "TestIndexManyReportsItemFailure",
+      "TestAggregateCardinalityError"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "gateway/search_regression_test.go",
+    "current_tests": [
+      "TestIndexManyReportsItemFailure",
+      "TestAggregateCardinalityError"
+    ]
+  },
+  {
+    "original": "gateway/session_delivery_test.go",
+    "tests": [
+      "TestSessionPublicationWaitsForPreload",
+      "TestPreloadFailureDoesNotBreakOtherSubscriptions",
+      "TestSessionsWithIdenticalWidgetIDsHaveIndependentAggregation"
+    ],
+    "status": "replaced by retained-interface or legacy-removal assertions",
+    "coverage": "api/server_test.go",
+    "current_tests": [
+      "TestRetiredDashboardAndSingleCrawlRoutesAreUnavailable"
+    ]
+  },
+  {
+    "original": "gateway/session_test.go",
+    "tests": [
+      "TestStreamOrigins",
+      "TestSubscriptionLimit",
+      "TestDirectStreamingRejectsMalformedAndOversizedCommands"
+    ],
+    "status": "replaced by retained-interface or legacy-removal assertions",
+    "coverage": "api/server_test.go",
+    "current_tests": [
+      "TestRetiredDashboardAndSingleCrawlRoutesAreUnavailable"
+    ]
+  },
+  {
+    "original": "gateway/stream_regression_test.go",
+    "tests": [
+      "TestMetricLiveSubscription",
+      "TestEmptyCompositeFilterAccepted"
+    ],
+    "status": "replaced by retained-interface or legacy-removal assertions",
+    "coverage": "api/server_test.go",
+    "current_tests": [
+      "TestRetiredDashboardAndSingleCrawlRoutesAreUnavailable"
+    ]
+  },
+  {
+    "original": "instrument/metrics_test.go",
+    "tests": [
+      "TestIdleMetricsAreExported"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "instrument/metrics_test.go",
+    "current_tests": [
+      "TestIdleMetricsAreExported"
+    ]
+  },
+  {
+    "original": "main_test.go",
+    "tests": [
+      "TestInvalidConfiguration"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "main_test.go",
+    "current_tests": [
+      "TestInvalidConfiguration"
+    ]
+  },
+  {
+    "original": "queue/admission_test.go",
+    "tests": [
+      "TestAdmissionPrecedesLeaseAndReleasesOnAck",
+      "TestChannelStopCancelsAdmission",
+      "TestEmptyFileFetchQueueDoesNotRequestCapacity"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "queue/admission_test.go",
+    "current_tests": [
+      "TestAdmissionPrecedesLeaseAndReleasesOnAck",
+      "TestChannelStopCancelsAdmission",
+      "TestEmptyFileFetchQueueDoesNotRequestCapacity"
+    ]
+  },
+  {
+    "original": "queue/close_status_test.go",
+    "tests": [
+      "TestCrawlStatusAfterClose",
+      "TestCrawlCloseWaitsForDatabaseReaders",
+      "TestCrawlMonitoringConcurrentWithClose"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "queue/close_status_test.go",
+    "current_tests": [
+      "TestCrawlStatusAfterClose",
+      "TestCrawlCloseWaitsForDatabaseReaders",
+      "TestCrawlMonitoringConcurrentWithClose"
+    ]
+  },
+  {
+    "original": "queue/contention_test.go",
+    "tests": [
+      "TestConcurrentCrawlProducersDispatchAndAcksStayHealthy"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "queue/contention_test.go",
+    "current_tests": [
+      "TestConcurrentCrawlProducersDispatchAndAcksStayHealthy"
+    ]
+  },
+  {
+    "original": "queue/crawl_benchmark_test.go",
+    "tests": [],
+    "status": "restored; updated for current behavior",
+    "coverage": "queue/crawl_benchmark_test.go",
+    "current_tests": [
+      "BenchmarkCrawlDispatch"
+    ]
+  },
+  {
+    "original": "queue/crawl_test.go",
+    "tests": [
+      "TestCrawlQueueExactRecovery",
+      "TestCrawlQueueFailureLimitAndCancellation",
+      "TestShallowerDiscoveryReopensCompletedURL"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "queue/crawl_test.go",
+    "current_tests": [
+      "TestCrawlQueueExactRecovery",
+      "TestCrawlQueueFailureLimitAndCancellation",
+      "TestShallowerDiscoveryReopensCompletedURL"
+    ]
+  },
+  {
+    "original": "queue/dispatch_mode_benchmark_test.go",
+    "tests": [],
+    "status": "restored; updated for current behavior",
+    "coverage": "queue/dispatch_mode_benchmark_test.go",
+    "current_tests": [
+      "BenchmarkCrawlDispatchModes"
+    ]
+  },
+  {
+    "original": "queue/frontier_generation_test.go",
+    "tests": [
+      "TestFrontierGeneration",
+      "TestLegacyCrawlIndexesAndCounts"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "queue/frontier_generation_test.go",
+    "current_tests": [
+      "TestFrontierGeneration",
+      "TestLegacyCrawlIndexesAndCounts"
+    ]
+  },
+  {
+    "original": "queue/recovery_test.go",
+    "tests": [
+      "TestCrawlRecoveryPreservesOutputs",
+      "TestFileRecoveryKeepsStagedBatchAndRejectsTraversal",
+      "TestFileReplayRestoresEveryInterruptedPhase",
+      "TestConcurrentFileRecoveryDoesNotDuplicateRecord",
+      "TestRecoveryStorageFailurePreservesIntent",
+      "TestCorruptDeadLetterCanBeInspectedButNotReplayed",
+      "TestConcurrentCrawlRecoveryAndStaleAcknowledgment"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "queue/recovery_test.go",
+    "current_tests": [
+      "TestCrawlRecoveryPreservesOutputs",
+      "TestFileRecoveryKeepsStagedBatchAndRejectsTraversal",
+      "TestFileReplayRestoresEveryInterruptedPhase",
+      "TestConcurrentFileRecoveryDoesNotDuplicateRecord",
+      "TestRecoveryStorageFailurePreservesIntent",
+      "TestCorruptDeadLetterCanBeInspectedButNotReplayed",
+      "TestConcurrentCrawlRecoveryAndStaleAcknowledgment"
+    ]
+  },
+  {
+    "original": "queue/regression_test.go",
+    "tests": [
+      "TestConcurrentPublication",
+      "TestRecoveryAndStop",
+      "TestStopWithoutConsumer",
+      "TestNumericPriority",
+      "TestCorruptRecordQuarantined",
+      "TestDeadLettersRetainBodyReferences"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "queue/regression_test.go",
+    "current_tests": [
+      "TestConcurrentPublication",
+      "TestRecoveryAndStop",
+      "TestStopWithoutConsumer",
+      "TestNumericPriority",
+      "TestCorruptRecordQuarantined",
+      "TestDeadLettersRetainBodyReferences"
+    ]
+  },
+  {
+    "original": "resource/bloom/bloom_test.go",
+    "tests": [
+      "TestBloomFilter",
+      "TestBloomOverflowError",
+      "TestBloomPersist"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "resource/bloom/bloom_test.go",
+    "current_tests": [
+      "TestBloomFilter",
+      "TestBloomOverflowError",
+      "TestBloomPersist"
+    ]
+  },
+  {
+    "original": "resource/bloom/regression_test.go",
+    "tests": [
+      "TestRegressionWrappedOverflow",
+      "TestRegressionRollingSaturation",
+      "TestRegressionRollingCloseMemory",
+      "TestRegressionRollingRetainsGenerations",
+      "TestRegressionBloomReloadCapacity"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "resource/bloom/regression_test.go",
+    "current_tests": [
+      "TestRegressionWrappedOverflow",
+      "TestRegressionRollingSaturation",
+      "TestRegressionRollingCloseMemory",
+      "TestRegressionRollingRetainsGenerations",
+      "TestRegressionBloomReloadCapacity"
+    ]
+  },
+  {
+    "original": "resource/bloom/rolling_bloom_test.go",
+    "tests": [
+      "TestCreateRollingBloomFileExists",
+      "TestCreateRollingBloomFileDoesntExist",
+      "TestRollingBloomSetAndGet",
+      "TestRollingBloomSetManyAndGet",
+      "TestRollingBloomClose"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "resource/bloom/rolling_bloom_test.go",
+    "current_tests": [
+      "TestCreateRollingBloomFileExists",
+      "TestCreateRollingBloomFileDoesntExist",
+      "TestRollingBloomSetAndGet",
+      "TestRollingBloomSetManyAndGet",
+      "TestRollingBloomClose"
+    ]
+  },
+  {
+    "original": "resource/maps/consume_test.go",
+    "tests": [
+      "TestConsumeHostRetainsFailedBatchAndSerializesWriters"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "resource/maps/consume_test.go",
+    "current_tests": [
+      "TestConsumeHostRetainsFailedBatchAndSerializesWriters"
+    ]
+  },
+  {
+    "original": "resource/maps/multi_domain_test.go",
+    "tests": [
+      "TestMultiMapHostGetAndSet",
+      "TestMultiMapHostSetMany"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "resource/maps/multi_domain_test.go",
+    "current_tests": [
+      "TestMultiMapHostGetAndSet",
+      "TestMultiMapHostSetMany"
+    ]
+  },
+  {
+    "original": "resource/maps/persistent_test.go",
+    "tests": [
+      "TestPersistentMapGetAndSet",
+      "TestPersistentMapGetNoValue",
+      "TestPersistentMapSetManyAndIter"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "resource/maps/persistent_test.go",
+    "current_tests": [
+      "TestPersistentMapGetAndSet",
+      "TestPersistentMapGetNoValue",
+      "TestPersistentMapSetManyAndIter"
+    ]
+  },
+  {
+    "original": "resource/maps/regression_test.go",
+    "tests": [
+      "TestRegressionCloseAfterGCExits"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "resource/maps/regression_test.go",
+    "current_tests": [
+      "TestRegressionCloseAfterGCExits"
+    ]
+  },
+  {
+    "original": "resource/objectstore/filesystem_test.go",
+    "tests": [
+      "TestAtomicBodyWriteAndReconciliation"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "resource/objectstore/filesystem_test.go",
+    "current_tests": [
+      "TestAtomicBodyWriteAndReconciliation"
+    ]
+  },
+  {
+    "original": "util/fsm/document_reader_test.go",
+    "tests": [
+      "TestDocumentReader"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "util/fsm/document_reader_test.go",
+    "current_tests": [
+      "TestDocumentReader"
+    ]
+  },
+  {
+    "original": "util/http_test.go",
+    "tests": [
+      "TestHTTPRetryAndCancellation",
+      "TestHTTPRedirectPolicy",
+      "TestHTTPDefaults",
+      "TestManagedPacingDoesNotConsumeNetworkTimeout"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "util/http_test.go",
+    "current_tests": [
+      "TestHTTPRetryAndCancellation",
+      "TestHTTPRedirectPolicy",
+      "TestHTTPDefaults",
+      "TestManagedPacingDoesNotConsumeNetworkTimeout"
+    ]
+  },
+  {
+    "original": "util/network_policy_test.go",
+    "tests": [
+      "TestHostnameSuffixLabelBoundariesWithoutResolution",
+      "TestRequiredProxyAndProxyFailuresNeverFallBack",
+      "TestHostnameRestrictionIsAppliedToRedirects",
+      "TestRetryBackoffAndCancellationAreConfigurable"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "util/network_policy_test.go",
+    "current_tests": [
+      "TestHostnameSuffixLabelBoundariesWithoutResolution",
+      "TestRequiredProxyAndProxyFailuresNeverFallBack",
+      "TestHostnameRestrictionIsAppliedToRedirects",
+      "TestRetryBackoffAndCancellationAreConfigurable"
+    ]
+  },
+  {
+    "original": "util/origin_gate_test.go",
+    "tests": [
+      "TestSharedOriginGateAndCancellation",
+      "TestScopeBoundaries",
+      "TestOriginGateLimitChangesWhileBusy"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "util/origin_gate_test.go",
+    "current_tests": [
+      "TestSharedOriginGateAndCancellation",
+      "TestScopeBoundaries",
+      "TestOriginGateLimitChangesWhileBusy",
+      "TestConfiguredOriginLimitAppliesToExistingWaiters"
+    ]
+  },
+  {
+    "original": "util/phase_timeout_test.go",
+    "tests": [
+      "TestHeaderAndBodyPhaseTimeouts",
+      "TestConnectTimeoutIncludesSOCKSHandshake",
+      "TestOverallBudgetSharedAcrossRedirects",
+      "TestTLSHandshakeTimeout"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "util/phase_timeout_test.go",
+    "current_tests": [
+      "TestHeaderAndBodyPhaseTimeouts",
+      "TestConnectTimeoutIncludesSOCKSHandshake",
+      "TestOverallBudgetSharedAcrossRedirects",
+      "TestTLSHandshakeTimeout"
+    ]
+  },
+  {
+    "original": "util/proxy_test.go",
+    "tests": [
+      "TestAuthenticatedSOCKSProxy",
+      "TestSOCKSProxyValidation"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "util/proxy_test.go",
+    "current_tests": [
+      "TestAuthenticatedSOCKSProxy",
+      "TestSOCKSProxyValidation"
+    ]
+  },
+  {
+    "original": "util/regression_test.go",
+    "tests": [
+      "TestRegressionWindowAggregation",
+      "TestRegressionFlattenMetric"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "util/regression_test.go",
+    "current_tests": [
+      "TestRegressionWindowAggregation",
+      "TestRegressionFlattenMetric"
+    ]
+  },
+  {
+    "original": "util/throughput_benchmark_test.go",
+    "tests": [],
+    "status": "restored; updated for current behavior",
+    "coverage": "util/throughput_benchmark_test.go",
+    "current_tests": [
+      "BenchmarkFetchCapacity"
+    ]
+  },
+  {
+    "original": "worker/accumulator/dfs_basic_test.go",
+    "tests": [
+      "TestDfsBasic",
+      "TestDfsBasicMaxDepthExceeded"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "worker/accumulator/dfs_basic_test.go",
+    "current_tests": [
+      "TestDfsBasic",
+      "TestDfsBasicMaxDepthExceeded"
+    ]
+  },
+  {
+    "original": "worker/accumulator/failure_test.go",
+    "tests": [
+      "TestDFSStorageFailurePreventsAcknowledgment",
+      "TestNewsPublicationCancellationAndStableIdentity"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "worker/accumulator/failure_test.go",
+    "current_tests": [
+      "TestDFSStorageFailurePreventsAcknowledgment",
+      "TestNewsPublicationCancellationAndStableIdentity"
+    ]
+  },
+  {
+    "original": "worker/accumulator/news_test.go",
+    "tests": [
+      "TestNewsAccumulator"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "worker/accumulator/news_test.go",
+    "current_tests": [
+      "TestNewsAccumulator"
+    ]
+  },
+  {
+    "original": "worker/backpressure_test.go",
+    "tests": [
+      "TestFullOutboxRetainsStagedInputForRecovery"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "worker/backpressure_test.go",
+    "current_tests": [
+      "TestFullOutboxRetainsStagedInputForRecovery"
+    ]
+  },
+  {
+    "original": "worker/extractor/composite_test.go",
+    "tests": [
+      "TestCompositeExtractionAndCommit",
+      "TestMissingDependencies",
+      "TestFailedFetchDoesNotDeleteStore"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "worker/extractor/composite_test.go",
+    "current_tests": [
+      "TestCompositeExtractionAndCommit",
+      "TestMissingDependencies",
+      "TestFailedFetchDoesNotDeleteStore"
+    ]
+  },
+  {
+    "original": "worker/extractor/regression_test.go",
+    "tests": [
+      "TestRegressionExtractorErrorPropagation",
+      "TestRegressionMissingDependency",
+      "TestRaceRegressionExtractorMap",
+      "TestRegressionFailedFetchPreservesStore"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "worker/extractor/regression_test.go",
+    "current_tests": [
+      "TestRegressionExtractorErrorPropagation",
+      "TestRegressionMissingDependency",
+      "TestRaceRegressionExtractorMap",
+      "TestRegressionFailedFetchPreservesStore"
+    ]
+  },
+  {
+    "original": "worker/extractor/timeout_test.go",
+    "tests": [
+      "TestExtractorTimeoutRetainsLegacyExecution",
+      "TestExtractorPanicBecomesAnError"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "worker/extractor/timeout_test.go",
+    "current_tests": [
+      "TestExtractorTimeoutRetainsLegacyExecution",
+      "TestExtractorPanicBecomesAnError"
+    ]
+  },
+  {
+    "original": "worker/fetcher/classification_test.go",
+    "tests": [
+      "TestProxyEndpointFailureSeparatedFromDestinationFailure"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "worker/fetcher/classification_test.go",
+    "current_tests": [
+      "TestProxyEndpointFailureSeparatedFromDestinationFailure"
+    ]
+  },
+  {
+    "original": "worker/fetcher/http_test.go",
+    "tests": [
+      "TestFetcher"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "worker/fetcher/http_test.go",
+    "current_tests": [
+      "TestFetcher"
+    ]
+  },
+  {
+    "original": "worker/frontierworker/retry_share_test.go",
+    "tests": [
+      "TestRetrySchedulingHonorsConfiguredFractions"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "worker/frontierworker/retry_share_test.go",
+    "current_tests": [
+      "TestRetrySchedulingHonorsConfiguredFractions"
+    ]
+  },
+  {
+    "original": "worker/frontierworker/workers_test.go",
+    "tests": [
+      "TestWorkers",
+      "TestPublicationReplay",
+      "TestScopeDepthHopAndPatternPolicies"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "worker/frontierworker/workers_test.go",
+    "current_tests": [
+      "TestWorkers",
+      "TestPublicationReplay",
+      "TestScopeDepthHopAndPatternPolicies"
+    ]
+  },
+  {
+    "original": "worker/manager_lifecycle_test.go",
+    "tests": [
+      "TestManagerWaitsForPool",
+      "TestPersistentOutputReplay",
+      "TestChannelPublicationCancellation"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "worker/manager_lifecycle_test.go",
+    "current_tests": [
+      "TestManagerWaitsForPool",
+      "TestPersistentOutputReplay",
+      "TestChannelPublicationCancellation"
+    ]
+  },
+  {
+    "original": "worker/publisher/dfs_basic_test.go",
+    "tests": [
+      "TestDfsBasic"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "worker/publisher/dfs_basic_test.go",
+    "current_tests": [
+      "TestDfsBasic"
+    ]
+  },
+  {
+    "original": "worker/publisher/regression_test.go",
+    "tests": [
+      "TestRegressionPublisherLockOnError",
+      "TestRegressionPublisherPartialFailurePreservesURLs"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "worker/publisher/regression_test.go",
+    "current_tests": [
+      "TestRegressionPublisherLockOnError",
+      "TestRegressionPublisherPartialFailurePreservesURLs"
+    ]
+  },
+  {
+    "original": "worker/publisher/rss_context_test.go",
+    "tests": [
+      "TestRSSCancellation",
+      "TestRSSPartialFailureHealthAndConcurrency",
+      "TestRSSBodyLimit"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "worker/publisher/rss_context_test.go",
+    "current_tests": [
+      "TestRSSCancellation",
+      "TestRSSPartialFailureHealthAndConcurrency",
+      "TestRSSBodyLimit"
+    ]
+  },
+  {
+    "original": "worker/regression_test.go",
+    "tests": [
+      "TestRegressionPublishFailureAcknowledgment"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "worker/regression_test.go",
+    "current_tests": [
+      "TestRegressionPublishFailureAcknowledgment"
+    ]
+  },
+  {
+    "original": "worker/transformer/scope_test.go",
+    "tests": [
+      "TestIndexedLogsCarryCrawlAndRunOwnership"
+    ],
+    "status": "restored; updated for current behavior",
+    "coverage": "worker/transformer/scope_test.go",
+    "current_tests": [
+      "TestIndexedLogsCarryCrawlAndRunOwnership"
+    ]
+  }
+]

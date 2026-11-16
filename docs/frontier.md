@@ -1,6 +1,6 @@
 # Frontier workers
 
-The frontier is opt-in. Existing publishers, accumulators, and crawl queues keep their defaults. Start from `examples/frontier-site.json`, `frontier-web.json`, `frontier-adaptive.json`, or `frontier-permanent.json`. Run `go run ./examples/site` for the localhost fixture, then `go run . examples/frontier-site.json`. Open-web examples retain the localhost HTTP allowlist for safe local experimentation; change both seed URLs and the HTTP allowlist for a real crawl.
+The guided workspace configures frontier workers without a scenario file. Synthetic pipeline examples are in `application/testdata/examples`. Run `go run ./examples/site`, start `go run .`, and create a crawl using `http://localhost:8088/`. Scope and hostname rules apply to seeds, discoveries, feeds, and redirects.
 
 ## Pipeline
 

@@ -38,6 +38,12 @@ type Totals struct {
 	Overload  int64 `json:"overload"`
 }
 type Snapshot struct {
+	ObservationAttempts int64     `json:"observation_attempts"`
+	ObservationOverload int64     `json:"observation_overload"`
+	NextAdjustment      time.Time `json:"next_adjustment"`
+	Runnable            bool      `json:"runnable_demand"`
+	NetworkActive       int       `json:"network_active"`
+
 	Counters       map[string]int64     `json:"counters"`
 	QueueGrowth    map[string]float64   `json:"queue_growth_per_second"`
 	Mode           string               `json:"mode"`
@@ -56,33 +62,43 @@ type Snapshot struct {
 	Pressure       Pressure             `json:"pressure"`
 }
 type Controller struct {
-	finalSave                         sync.Once
-	cancel                            context.CancelFunc
-	done                              chan struct{}
-	statePath                         string
-	lastSave                          time.Time
-	counters                          map[string]int64
-	frontierPrevious                  map[string]int64
-	frontierBuckets                   map[int64]map[string]int64
-	queueHistory                      []queuePoint
-	mu                                sync.Mutex
-	policy                            Policy
-	ctx                               context.Context
-	key                               string
-	effective                         int
-	blocked                           bool
-	reason, adjustment                string
-	pressure                          Pressure
-	pressureFn                        func() Pressure
-	started, lastEval, lastAdjustment time.Time
-	totals, previous                  Totals
-	errors                            map[string]int64
-	statuses                          map[int]int64
-	samples                           map[string][]float64
-	sampleAt                          map[string]int
-	counts                            map[string]int64
-	buckets                           map[int64]Totals
-	smooth, baseline, lastRate        float64
+	broker                      *broker
+	queueBlocked, memoryBlocked bool
+	runnable                    bool
+	runnableAt                  time.Time
+	saturated                   bool
+	networkActive, networkPeak  int
+	networkObserved             bool
+	observationAttempts         int64
+	observationOverload         int64
+	nextAdjustment              time.Time
+
+	finalSave          sync.Once
+	cancel             context.CancelFunc
+	done               chan struct{}
+	statePath          string
+	lastSave           time.Time
+	counters           map[string]int64
+	frontierPrevious   map[string]int64
+	frontierBuckets    map[int64]map[string]int64
+	queueHistory       []queuePoint
+	mu                 sync.Mutex
+	policy             Policy
+	ctx                context.Context
+	key                string
+	effective          int
+	blocked            bool
+	reason, adjustment string
+	pressure           Pressure
+	pressureFn         func() Pressure
+	started, lastEval  time.Time
+	totals, previous   Totals
+	errors             map[string]int64
+	statuses           map[int]int64
+	samples            map[string][]float64
+	sampleAt           map[string]int
+	counts             map[string]int64
+	buckets            map[int64]Totals
 }
 type waiter struct {
 	c       *Controller
@@ -90,6 +106,7 @@ type waiter struct {
 	granted bool
 }
 type broker struct {
+	limits     ExecutionLimits
 	mu         sync.Mutex
 	registered map[string]*Controller
 	active     map[string]int
@@ -97,20 +114,9 @@ type broker struct {
 	waiters    []*waiter
 }
 
-var global = broker{registered: map[string]*Controller{}, active: map[string]int{}}
+var global = *NewBroker(DefaultExecutionLimits())
 
-func (b *broker) limit() int {
-	limit := math.MaxInt
-	for _, c := range b.registered {
-		if c.policy.ProcessLimit < limit {
-			limit = c.policy.ProcessLimit
-		}
-	}
-	if limit == math.MaxInt {
-		return 0
-	}
-	return limit
-}
+func (b *broker) limit() int { return b.limits.Concurrency }
 func (b *broker) dispatch() {
 	for b.used < b.limit() {
 		at := -1
@@ -137,6 +143,11 @@ func (b *broker) dispatch() {
 		b.used++
 		b.active[w.c.key]++
 		w.granted = true
+		w.c.mu.Lock()
+		if b.active[w.c.key] >= w.c.effective {
+			w.c.saturated = true
+		}
+		w.c.mu.Unlock()
 		close(w.ready)
 	}
 }
@@ -144,17 +155,20 @@ func New(ctx context.Context, key string, p Policy, pressure func() Pressure, st
 	if err := p.Validate(); err != nil {
 		return nil, err
 	}
+	if err := brokerFrom(ctx).Limits().Validate(); err != nil {
+		return nil, err
+	}
 	child, cancel := context.WithCancel(ctx)
-	c := &Controller{ctx: child, cancel: cancel, done: make(chan struct{}), lastSave: time.Now(), key: key, policy: p, effective: p.Concurrency, started: time.Now(), lastEval: time.Now(), pressureFn: pressure, counters: map[string]int64{}, frontierPrevious: map[string]int64{}, frontierBuckets: map[int64]map[string]int64{}, errors: map[string]int64{}, statuses: map[int]int64{}, samples: map[string][]float64{}, sampleAt: map[string]int{}, counts: map[string]int64{}, buckets: map[int64]Totals{}, reason: "capacity available"}
-	global.mu.Lock()
-	if _, exists := global.registered[key]; exists {
-		global.mu.Unlock()
+	c := &Controller{broker: brokerFrom(ctx), ctx: child, cancel: cancel, done: make(chan struct{}), lastSave: time.Now(), key: key, policy: p, effective: p.Concurrency, started: time.Now(), lastEval: time.Now(), pressureFn: pressure, counters: map[string]int64{}, frontierPrevious: map[string]int64{}, frontierBuckets: map[int64]map[string]int64{}, errors: map[string]int64{}, statuses: map[int]int64{}, samples: map[string][]float64{}, sampleAt: map[string]int{}, counts: map[string]int64{}, buckets: map[int64]Totals{}, reason: "capacity available"}
+	c.broker.mu.Lock()
+	if _, exists := c.broker.registered[key]; exists {
+		c.broker.mu.Unlock()
 		cancel()
 		return nil, fmt.Errorf("execution controller already registered")
 	}
-	global.registered[key] = c
-	global.dispatch()
-	global.mu.Unlock()
+	c.broker.registered[key] = c
+	c.broker.dispatch()
+	c.broker.mu.Unlock()
 	if len(statePath) > 0 {
 		c.statePath = statePath[0]
 		c.restore()
@@ -173,13 +187,13 @@ func (c *Controller) run() {
 	for {
 		select {
 		case <-c.ctx.Done():
-			global.mu.Lock()
-			delete(global.registered, c.key)
-			if global.active[c.key] == 0 {
-				delete(global.active, c.key)
+			c.broker.mu.Lock()
+			delete(c.broker.registered, c.key)
+			if c.broker.active[c.key] == 0 {
+				delete(c.broker.active, c.key)
 			}
-			global.dispatch()
-			global.mu.Unlock()
+			c.broker.dispatch()
+			c.broker.mu.Unlock()
 			return
 		case <-ticker.C:
 			var p Pressure
@@ -197,26 +211,26 @@ func (c *Controller) run() {
 func (c *Controller) Acquire(ctx context.Context) (func(), error) {
 	start := time.Now()
 	w := &waiter{c: c, ready: make(chan struct{})}
-	global.mu.Lock()
-	global.waiters = append(global.waiters, w)
-	global.dispatch()
-	global.mu.Unlock()
+	c.broker.mu.Lock()
+	c.broker.waiters = append(c.broker.waiters, w)
+	c.broker.dispatch()
+	c.broker.mu.Unlock()
 	select {
 	case <-w.ready:
 	case <-ctx.Done():
 	case <-c.ctx.Done():
 	}
-	global.mu.Lock()
+	c.broker.mu.Lock()
 	granted := w.granted
 	if !granted {
-		for i, v := range global.waiters {
+		for i, v := range c.broker.waiters {
 			if v == w {
-				global.waiters = append(global.waiters[:i], global.waiters[i+1:]...)
+				c.broker.waiters = append(c.broker.waiters[:i], c.broker.waiters[i+1:]...)
 				break
 			}
 		}
 	}
-	global.mu.Unlock()
+	c.broker.mu.Unlock()
 	if !granted {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -226,14 +240,14 @@ func (c *Controller) Acquire(ctx context.Context) (func(), error) {
 	var once sync.Once
 	release := func() {
 		once.Do(func() {
-			global.mu.Lock()
-			global.active[c.key]--
-			global.used--
-			if global.active[c.key] == 0 && global.registered[c.key] == nil {
-				delete(global.active, c.key)
+			c.broker.mu.Lock()
+			c.broker.active[c.key]--
+			c.broker.used--
+			if c.broker.active[c.key] == 0 && c.broker.registered[c.key] == nil {
+				delete(c.broker.active, c.key)
 			}
-			global.dispatch()
-			global.mu.Unlock()
+			c.broker.dispatch()
+			c.broker.mu.Unlock()
 		})
 	}
 	if ctx.Err() != nil || c.ctx.Err() != nil {
@@ -338,32 +352,21 @@ func (c *Controller) Record(status int, success, html bool, kind string, elapsed
 			delete(c.buckets, k)
 		}
 	}
-	if success {
-		ms := float64(elapsed) / float64(time.Millisecond)
-		if c.smooth == 0 {
-			c.smooth = ms
-			c.baseline = ms
-		} else {
-			c.smooth = c.policy.EWMAAlpha*ms + (1-c.policy.EWMAAlpha)*c.smooth
-			if c.smooth < c.baseline {
-				c.baseline = c.smooth
-			}
-		}
-	}
 }
 
 // Evaluate uses only proxy/local failures for global overload; unreachable hosts
 // are handled by the frontier's host cooldown policy.
 func (c *Controller) Evaluate(now time.Time, p Pressure) {
-	global.mu.Lock()
+	c.broker.mu.Lock()
+	processFull := c.broker.used >= c.broker.limit()
 	waiting := false
-	for _, w := range global.waiters {
+	for _, w := range c.broker.waiters {
 		if w.c == c {
 			waiting = true
 			break
 		}
 	}
-	global.mu.Unlock()
+	c.broker.mu.Unlock()
 	c.mu.Lock()
 	p = copyPressure(p)
 	c.pressure = p
@@ -391,70 +394,93 @@ func (c *Controller) Evaluate(now time.Time, p Pressure) {
 	for len(c.queueHistory) > 1 && (len(c.queueHistory) > c.policy.MetricsSamples || now.Sub(c.queueHistory[0].at) > c.policy.MetricsWindow.Value()) {
 		c.queueHistory = c.queueHistory[1:]
 	}
-	reason := ""
-	if p.Health != "" {
-		reason = "storage/queue health: " + p.Health
-	} else if (p.DiskKnown || p.DiskFreeMB > 0) && p.DiskFreeMB < float64(c.policy.MinFreeDiskMB) {
-		reason = "disk space below configured minimum"
-	} else if p.MemoryMB >= float64(c.policy.MemoryHighMB) || c.blocked && c.reason == "memory high watermark" && p.MemoryMB > float64(c.policy.MemoryLowMB) {
-		reason = "memory high watermark"
-	} else {
-		for _, n := range p.Queues {
-			if n >= int64(c.policy.DownstreamHigh) || c.blocked && c.reason == "downstream queue high watermark" && n > int64(c.policy.DownstreamLow) {
-				reason = "downstream queue high watermark"
-				break
-			}
+	// Track each hysteresis gate independently; an overlapping gate cannot erase it.
+	c.memoryBlocked = p.MemoryMB >= float64(c.policy.MemoryHighMB) || c.memoryBlocked && p.MemoryMB > float64(c.policy.MemoryLowMB)
+	queueBlocked := false
+	for _, n := range p.Queues {
+		if n >= int64(c.policy.DownstreamHigh) || c.queueBlocked && n > int64(c.policy.DownstreamLow) {
+			queueBlocked = true
 		}
+	}
+	c.queueBlocked = queueBlocked
+	reason := ""
+	switch {
+	case p.Health != "":
+		reason = "storage_health: " + p.Health
+	case (p.DiskKnown || p.DiskFreeMB > 0) && p.DiskFreeMB < float64(c.policy.MinFreeDiskMB):
+		reason = "disk_low"
+	case c.memoryBlocked:
+		reason = "memory_high"
+	case c.queueBlocked:
+		reason = "downstream_high"
 	}
 	c.blocked = reason != ""
-	if reason != "" {
-		c.reason = reason
-	} else {
+	c.reason = reason
+	if !c.blocked {
 		c.reason = "capacity available"
 	}
-	if c.policy.Mode == "adaptive" && now.Sub(c.lastEval) >= c.policy.EvaluationWindow.Value() && now.Sub(c.lastAdjustment) >= c.policy.AdjustmentCooldown.Value() {
-		completed := c.totals.Attempts - c.previous.Attempts
-		if completed >= int64(c.policy.MinSamples) {
-			seconds := now.Sub(c.lastEval).Seconds()
-			rate := float64(c.totals.Successes-c.previous.Successes) / seconds
-			overload := float64(c.totals.Overload-c.previous.Overload) / float64(completed)
-			cpu := p.CPUPercent >= c.policy.CPUHighPercent
-			inflated := c.baseline > 0 && c.smooth > c.baseline*c.policy.LatencyInflation
-			next := c.effective
-			why := ""
-			if c.blocked || cpu || overload >= c.policy.OverloadFailureRatio || inflated {
-				next = int(math.Floor(float64(next) * c.policy.DecreaseFactor))
-				why = "reduce: configured pressure, proxy/local errors or latency inflation"
-			} else if (p.FetchPending > 0 || waiting) && p.CPUPercent <= c.policy.CPULowPercent && (c.lastRate == 0 || rate >= c.lastRate*(1+c.policy.MinimumGain)) {
-				next += c.policy.IncreaseStep
-				why = "increase: healthy pressure and useful throughput"
-			} else {
-				why = "hold: throughput gain below configured threshold"
-			}
-			if next < c.policy.Minimum {
-				next = c.policy.Minimum
-			}
-			if next > c.policy.Maximum {
-				next = c.policy.Maximum
-			}
-			if next != c.effective {
-				c.lastAdjustment = now
-			}
-			c.effective = next
-			c.adjustment = why
-			c.lastRate = rate
-			c.previous = c.totals
-			c.lastEval = now
-		}
+	c.nextAdjustment = c.lastEval.Add(c.policy.AdjustmentInterval.Value())
+	if now.Before(c.nextAdjustment) {
+		c.mu.Unlock()
+		c.broker.mu.Lock()
+		c.broker.dispatch()
+		c.broker.mu.Unlock()
+		return
 	}
+	completed := c.totals.Attempts - c.previous.Attempts
+	overloadCount := c.totals.Overload - c.previous.Overload
+	c.observationAttempts = completed
+	c.observationOverload = overloadCount
+	// Advance even without completions, so old errors and idle windows expire.
+	c.previous = c.totals
+	c.lastEval = now
+	c.nextAdjustment = now.Add(c.policy.AdjustmentInterval.Value())
+	runnable := p.FetchPending > 0 || waiting || c.runnable && now.Sub(c.runnableAt) <= 2*c.policy.SampleInterval.Value()
+	saturated := c.networkPeak >= c.effective || !c.networkObserved && c.saturated
+	next := c.effective
+	if c.policy.Mode == "adaptive" {
+		switch {
+		case c.blocked:
+			c.adjustment = "hold: " + reason
+		case p.CPUPercent >= c.policy.CPUHighPercent:
+			next = int(math.Floor(float64(next) * c.policy.DecreaseFactor))
+			c.adjustment = "reduce: cpu_high"
+		case completed >= int64(c.policy.MinSamples) && float64(overloadCount)/float64(completed) >= c.policy.OverloadFailureRatio:
+			next = int(math.Floor(float64(next) * c.policy.DecreaseFactor))
+			c.adjustment = "reduce: local_overload"
+		case !runnable:
+			c.adjustment = "hold: no_runnable_work"
+		case !saturated:
+			c.adjustment = "hold: execution_not_saturated"
+		case processFull:
+			c.adjustment = "hold: process_limit"
+		case p.CPUPercent > c.policy.CPULowPercent:
+			c.adjustment = "hold: cpu_above_resume"
+		default:
+			next += c.policy.IncreaseStep
+			c.adjustment = "increase: runnable_demand"
+		}
+		if next < c.policy.Minimum {
+			next = c.policy.Minimum
+		}
+		if next > c.policy.Maximum {
+			next = c.policy.Maximum
+		}
+		if next == c.effective && next == c.policy.Maximum && !c.blocked {
+			c.adjustment = "hold: maximum_concurrency"
+		}
+		c.effective = next
+	}
+	c.saturated = false
+	c.networkPeak = c.networkActive
 	c.mu.Unlock()
-	global.mu.Lock()
-	global.dispatch()
-	global.mu.Unlock()
+	c.broker.mu.Lock()
+	c.broker.dispatch()
+	c.broker.mu.Unlock()
 }
 func (c *Controller) Snapshot() Snapshot {
 	c.mu.Lock()
-	s := Snapshot{Mode: c.policy.Mode, Configured: c.policy.Concurrency, Effective: c.effective, Reason: c.reason, LastAdjustment: c.adjustment, Totals: c.totals, Pressure: copyPressure(c.pressure), Rates: map[string]float64{}, Errors: map[string]int64{}, HTTPStatuses: map[int]int64{}, Latencies: map[string]Histogram{}, Counters: map[string]int64{}, QueueGrowth: map[string]float64{}}
+	s := Snapshot{ObservationAttempts: c.observationAttempts, ObservationOverload: c.observationOverload, NextAdjustment: c.nextAdjustment, Runnable: c.pressure.FetchPending > 0 || c.runnable && time.Since(c.runnableAt) <= 2*c.policy.SampleInterval.Value(), NetworkActive: c.networkActive, Mode: c.policy.Mode, Configured: c.policy.Concurrency, Effective: c.effective, Reason: c.reason, LastAdjustment: c.adjustment, Totals: c.totals, Pressure: copyPressure(c.pressure), Rates: map[string]float64{}, Errors: map[string]int64{}, HTTPStatuses: map[int]int64{}, Latencies: map[string]Histogram{}, Counters: map[string]int64{}, QueueGrowth: map[string]float64{}}
 	for k, v := range c.counters {
 		s.Counters[k] = v
 	}
@@ -512,14 +538,20 @@ func (c *Controller) Snapshot() Snapshot {
 		}
 	}
 	c.mu.Unlock()
-	global.mu.Lock()
-	s.Active = global.active[c.key]
-	s.ProcessActive = global.used
-	s.ProcessLimit = global.limit()
+	c.broker.mu.Lock()
+	s.Active = c.broker.active[c.key]
+	s.ProcessActive = c.broker.used
+	s.ProcessLimit = c.broker.limit()
+	for _, waiter := range c.broker.waiters {
+		if waiter.c == c {
+			s.Runnable = true
+			break
+		}
+	}
 	if s.Reason == "capacity available" && s.ProcessActive >= s.ProcessLimit {
 		s.Reason = "process-wide request ceiling"
 	}
-	global.mu.Unlock()
+	c.broker.mu.Unlock()
 	return s
 }
 func HeapMB() float64 {
@@ -561,24 +593,40 @@ func copyPressure(p Pressure) Pressure {
 	return q
 }
 
-// SharedOriginLimits is also used by legacy clients in this process.
+// ReportRunnable reuses the publisher's bounded candidate pass.
+func (c *Controller) ReportRunnable(value bool) {
+	c.mu.Lock()
+	c.runnable = value
+	c.runnableAt = time.Now()
+	c.mu.Unlock()
+}
+func (c *Controller) SharedOriginLimits() (int, time.Duration) {
+	v := c.broker.Limits()
+	return v.HostConcurrency, v.HostDelay.Value()
+}
 func SharedOriginLimits() (int, time.Duration) {
-	global.mu.Lock()
-	defer global.mu.Unlock()
-	if len(global.registered) == 0 {
-		return 2, 100 * time.Millisecond
+	v := global.Limits()
+	return v.HostConcurrency, v.HostDelay.Value()
+}
+
+type fetchAttemptKey struct{}
+
+func FetchAttempt(ctx context.Context) context.Context {
+	return context.WithValue(ctx, fetchAttemptKey{}, true)
+}
+func (c *Controller) BeginNetwork(ctx context.Context) func() {
+	if ctx.Value(fetchAttemptKey{}) != true {
+		return func() {}
 	}
-	limit := math.MaxInt
-	delay := time.Duration(0)
-	for _, c := range global.registered {
-		if c.policy.ProcessOriginLimit < limit {
-			limit = c.policy.ProcessOriginLimit
-		}
-		if c.policy.ProcessOriginDelay.Value() > delay {
-			delay = c.policy.ProcessOriginDelay.Value()
-		}
+	c.mu.Lock()
+	c.networkObserved = true
+	c.networkActive++
+	if c.networkActive > c.networkPeak {
+		c.networkPeak = c.networkActive
 	}
-	return limit, delay
+	c.mu.Unlock()
+	var once sync.Once
+	return func() { once.Do(func() { c.mu.Lock(); c.networkActive--; c.mu.Unlock() }) }
 }
 
 func (c *Controller) Close() { c.cancel(); <-c.done; c.finalSave.Do(c.save) }

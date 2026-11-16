@@ -1,0 +1,1 @@
+<?xml version="1.0"?><rss version="2.0"><channel><title>Local news</title><link>http://localhost:8088/</link><description>Delver news example</description><item><title>Example headline</title><link>http://localhost:8088/article/a-long-example-news-headline/</link><guid>local-example-1</guid></item></channel></rss>

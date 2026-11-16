@@ -32,7 +32,7 @@ At-least-once output can duplicate JSONL lines or custom external side effects a
 | Cannot open storage | Another process may own the directory; check path permissions and parent directories |
 | Missing dependent feature | Enabled dependency list and `extractor_errors` in the analysis |
 | Sentiment absent | It requires title and language; only English titles are classified |
-| Results missing from dashboard | Matching index addresses, API/stream ports, subscription filters, browser endpoint configuration |
+| Results missing | Selected run, configured sink, queue health, and Elasticsearch indexing errors |
 | Crawl stops discovering early with Bloom mode | Capacity/probability and false positives; prefer exact crawl queues |
 
 ## Metrics and indexing

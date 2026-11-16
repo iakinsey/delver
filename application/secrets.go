@@ -162,11 +162,5 @@ func sanitizeText(text string, applications ...config.Application) string {
 }
 func (s *Supervisor) safeError(text string) string {
 	apps := []config.Application{s.state.Active}
-	if s.state.Draft != nil {
-		apps = append(apps, *s.state.Draft)
-	}
-	if s.state.Previous != nil {
-		apps = append(apps, *s.state.Previous)
-	}
 	return sanitizeText(text, apps...)
 }

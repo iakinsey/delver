@@ -12,7 +12,7 @@ function Choice({ group, value, selected, title, children, onChange }) {
         onChange={() => onChange(value)}
       />
       <strong>{title}</strong>
-      <span>{children}</span>
+      {children && <span>{children}</span>}
     </label>
   );
 }
@@ -36,13 +36,13 @@ function Lifetime({ label, value, onChange }) {
         <label className="crawl-check">
           <input
             type="checkbox"
-            aria-label={`${label}: keep forever`}
+            aria-label={`${label}: no expiry`}
             checked={value === "never"}
             onChange={(e) =>
               onChange(e.target.checked ? "never" : previous.current)
             }
           />
-          Keep forever
+          No expiry
         </label>
       </div>
     </div>
@@ -126,12 +126,12 @@ export function CrawlEditor({
     >
       <section className="crawl-panel">
         <div className="crawl-heading">
-          <h2>{editor.record ? "Edit this crawl" : "Create a crawl"}</h2>
+          <h2>{editor.record ? "Edit crawl" : "Create crawl"}</h2>
           <button type="button" disabled={locked} onClick={onCancel}>
-            Discard changes
+            Cancel
           </button>
         </div>
-        <Field label="Crawl name">
+        <Field label="Name">
           <input
             required
             value={d.name}
@@ -140,10 +140,6 @@ export function CrawlEditor({
         </Field>
         {isExpert ? (
           <>
-            <p>
-              This custom worker pipeline is preserved as-is. Saving never
-              flattens it into guided settings.
-            </p>
             <Field label="Worker pipeline JSON">
               <textarea
                 rows={25}
@@ -168,24 +164,21 @@ export function CrawlEditor({
                 group="expert-completion"
                 value="monitor"
                 selected={d.termination.when_drained ? "drain" : "monitor"}
-                title="Keep running"
+                title="Continuous"
                 onChange={() => terms({ when_drained: false })}
-              >
-                Let the pipeline continue until stopped or a limit is reached.
-              </Choice>
+              ></Choice>
               <Choice
                 group="expert-completion"
                 value="drain"
                 selected={d.termination.when_drained ? "drain" : "monitor"}
-                title="Finish when the queue drains"
+                title="Drain"
                 onChange={() => terms({ when_drained: true })}
               >
-                Source jobs must declare once:true; future frontier revisits are
-                disabled.
+                Requires once:true source jobs. Disables scheduled revisits.
               </Choice>
             </fieldset>
             <div className="crawl-pair">
-              <Field label="Maximum page fetches">
+              <Field label="Fetch limit">
                 <input
                   type="number"
                   min="0"
@@ -196,29 +189,25 @@ export function CrawlEditor({
                   }
                 />
               </Field>
-              <Field label="Running-time limit">
+              <Field label="Time limit">
                 <input
                   value={d.termination.duration}
-                  placeholder="No limit, or 6h"
+                  placeholder="e.g. 6h"
                   onChange={(e) => terms({ duration: e.target.value })}
                 />
               </Field>
             </div>
             <p>
               <small>
-                Request budgets require one frontier store, with source requests
-                admitted through the frontier. Custom sinks and worker settings
-                remain intact.
+                Fetch limits require a single frontier store and
+                frontier-admitted sources.
               </small>
             </p>
           </>
         ) : (
           <>
-            <h3>Start here</h3>
-            <p>
-              Paste the websites or pages you want to explore, one per line.
-            </p>
-            <Field label="Starting URLs">
+            <h3>Sources</h3>
+            <Field label="Seed URLs">
               <textarea
                 rows={4}
                 value={seeds}
@@ -230,7 +219,7 @@ export function CrawlEditor({
               />
             </Field>
             <details>
-              <summary>Add RSS or Atom feeds</summary>
+              <summary>RSS / Atom feeds</summary>
               <Field label="Feed URLs">
                 <textarea
                   rows={3}
@@ -241,29 +230,14 @@ export function CrawlEditor({
                   }}
                 />
               </Field>
-              <p>
-                Feed articles become starting pages for the selected boundaries.
-              </p>
             </details>
-            <h3>How far should it explore?</h3>
+            <h3>Crawl scope</h3>
             <fieldset className="crawl-choices">
               <legend className="sr-only">Crawl boundaries</legend>
               {[
-                [
-                  "same_origin",
-                  "Stay on these hosts",
-                  "Follow pages on each starting host. Keep subdomains separate.",
-                ],
-                [
-                  "same_domain",
-                  "Explore each website",
-                  "Include related subdomains within each starting website.",
-                ],
-                [
-                  "open_web",
-                  "Follow the wider web",
-                  "Follow links to new websites, within your hop and request limits.",
-                ],
+                ["same_origin", "Same host", ""],
+                ["same_domain", "Same domain", "Includes subdomains."],
+                ["open_web", "Open web", ""],
               ].map(([value, title, text]) => (
                 <Choice
                   key={value}
@@ -278,22 +252,22 @@ export function CrawlEditor({
               ))}
             </fieldset>
             <details>
-              <summary>Preview boundaries and exclude URLs</summary>
-              <Field label="Only include matching URLs">
+              <summary>URL filters</summary>
+              <Field label="Allow pattern">
                 <input
                   value={d.allow_pattern}
                   placeholder="Optional regular expression"
                   onChange={(e) => set({ allow_pattern: e.target.value })}
                 />
               </Field>
-              <Field label="Exclude matching URLs">
+              <Field label="Deny pattern">
                 <input
                   value={d.deny_pattern}
                   placeholder="/logout|/calendar/"
                   onChange={(e) => set({ deny_pattern: e.target.value })}
                 />
               </Field>
-              <Field label="Try a URL against these rules">
+              <Field label="Test URL">
                 <input
                   value={url}
                   onChange={(e) => {
@@ -326,10 +300,7 @@ export function CrawlEditor({
               {preview && (
                 <p role="status">
                   {preview.reason ||
-                    (preview.allowed
-                      ? "Included by these boundaries and URL rules."
-                      : "Excluded by these boundaries or URL rules.")}{" "}
-                  Depth and robots rules are checked during the crawl.
+                    (preview.allowed ? "Allowed" : "Excluded")}{" "}
                 </p>
               )}
               <label className="crawl-check">
@@ -338,7 +309,7 @@ export function CrawlEditor({
                   checked={network.restrict_hosts}
                   onChange={(e) => net({ restrict_hosts: e.target.checked })}
                 />
-                Restrict destination hostnames
+                Restrict hostnames
               </label>
               {network.restrict_hosts && (
                 <>
@@ -359,14 +330,14 @@ export function CrawlEditor({
                   </Field>
                   <p>
                     <small>
-                      Allow these hostnames and their subdomains. Applies to
-                      pages, feeds, robots files, and redirects.
+                      Includes subdomains. Applies to all requests and
+                      redirects.
                     </small>
                   </p>
                 </>
               )}
               <div className="crawl-pair">
-                <Field label="Levels within a website">
+                <Field label="Maximum depth">
                   <input
                     type="number"
                     min="1"
@@ -374,7 +345,7 @@ export function CrawlEditor({
                     onChange={(e) => set({ max_depth: Number(e.target.value) })}
                   />
                 </Field>
-                <Field label="Hops between websites">
+                <Field label="Maximum host hops">
                   <input
                     type="number"
                     min="1"
@@ -384,30 +355,14 @@ export function CrawlEditor({
                 </Field>
               </div>
             </details>
-            <h3>What should it prioritize?</h3>
+            <h3>Traversal strategy</h3>
             <fieldset className="crawl-choices">
               <legend className="sr-only">Traversal strategy</legend>
               {[
-                [
-                  "host_diverse",
-                  "Balanced coverage",
-                  "Rotate websites so a large site does not dominate.",
-                ],
-                [
-                  "breadth_first",
-                  "Cover the surface",
-                  "Visit nearby pages before moving deeper.",
-                ],
-                [
-                  "depth_first",
-                  "Follow a trail",
-                  "Explore deeper paths before returning to other branches.",
-                ],
-                [
-                  "adaptive",
-                  "Learn from results",
-                  "Favor sites yielding unique HTML while continuing to explore.",
-                ],
+                ["host_diverse", "Host-diverse", "Rotate hosts."],
+                ["breadth_first", "Breadth-first", ""],
+                ["depth_first", "Depth-first", ""],
+                ["adaptive", "Adaptive", "Prioritize unique HTML yield."],
               ].map(([value, title, text]) => (
                 <Choice
                   key={value}
@@ -421,31 +376,30 @@ export function CrawlEditor({
                 </Choice>
               ))}
             </fieldset>
-            <h3>Keep watching, or finish?</h3>
+            <h3>Run completion</h3>
             <fieldset className="crawl-choices">
               <legend className="sr-only">Run behavior</legend>
               <Choice
                 group="completion"
                 value="monitor"
                 selected={d.termination.when_drained ? "drain" : "monitor"}
-                title="Keep monitoring"
+                title="Monitor"
                 onChange={() => terms({ when_drained: false })}
               >
-                An empty queue means caught up. Revisit pages on your cadence.
+                Scheduled revisits.
               </Choice>
               <Choice
                 group="completion"
                 value="drain"
                 selected={d.termination.when_drained ? "drain" : "monitor"}
-                title="Finish when the queue drains"
+                title="Drain"
                 onChange={() => terms({ when_drained: true })}
               >
-                Read sources once, explore their links, and finish after
-                processing settles.
+                Read sources once; complete after queues drain.
               </Choice>
             </fieldset>
             {!d.termination.when_drained && (
-              <Field label="Revisit pages every">
+              <Field label="Revisit interval">
                 <input
                   value={d.revisit}
                   onChange={(e) => set({ revisit: e.target.value })}
@@ -453,13 +407,9 @@ export function CrawlEditor({
               </Field>
             )}
             <details>
-              <summary>Set a request or running-time limit</summary>
-              <p>
-                After the limit, dispatched work finishes and remaining
-                discoveries are preserved.
-              </p>
+              <summary>Run limits</summary>
               <div className="crawl-pair">
-                <Field label="Maximum page fetches">
+                <Field label="Fetch limit">
                   <input
                     type="number"
                     min="0"
@@ -470,9 +420,9 @@ export function CrawlEditor({
                     }
                   />
                 </Field>
-                <Field label="Running-time limit">
+                <Field label="Time limit">
                   <input
-                    placeholder="No limit, or e.g. 6h"
+                    placeholder="e.g. 6h"
                     value={d.termination.duration}
                     onChange={(e) => terms({ duration: e.target.value })}
                   />
@@ -483,17 +433,9 @@ export function CrawlEditor({
             <fieldset className="crawl-choices">
               <legend className="sr-only">Proxy connection</legend>
               {[
-                ["direct", "Direct", "Connect without a proxy."],
-                [
-                  "http",
-                  "HTTP / HTTPS proxy",
-                  "Proxy page requests, feeds, robots checks, and redirects.",
-                ],
-                [
-                  "socks5",
-                  "SOCKS5 proxy",
-                  "Route this crawl through a SOCKS5 server.",
-                ],
+                ["direct", "Direct", ""],
+                ["http", "HTTP / HTTPS", ""],
+                ["socks5", "SOCKS5", ""],
               ].map(([value, title, text]) => (
                 <Choice
                   key={value}
@@ -540,16 +482,8 @@ export function CrawlEditor({
                 checked={network.require_proxy}
                 onChange={(e) => net({ require_proxy: e.target.checked })}
               />
-              Require a proxy connection
+              Require proxy
             </label>
-            {network.require_proxy && (
-              <p>
-                <small>
-                  A proxy must be configured. Requests stop if it is
-                  unavailable; they never fall back to direct access.
-                </small>
-              </p>
-            )}
             {d.proxy?.mode === "socks5" && (
               <>
                 <label className="crawl-check">
@@ -560,16 +494,13 @@ export function CrawlEditor({
                       net({ isolate_proxy_sessions: e.target.checked })
                     }
                   />
-                  Separate proxy sessions for each run
+                  Isolate proxy sessions
                 </label>
                 {network.isolate_proxy_sessions && (
                   <p>
                     <small>
-                      Use a proxy that accepts generated SOCKS credentials as
-                      session labels, and enter its address without login
-                      credentials. Pages, feeds, and robots checks share one
-                      label per run. The proxy decides how sessions are
-                      separated.
+                      Generates SOCKS credentials per run. Requires proxy
+                      support and a URL without credentials.
                     </small>
                   </p>
                 )}
@@ -584,11 +515,11 @@ export function CrawlEditor({
               Respect robots.txt
             </label>
             <details>
-              <summary>Request timeouts and retries</summary>
+              <summary>Requests</summary>
               <div className="crawl-pair">
                 <Field label="Request timeout">
                   <input
-                    placeholder="10s (default)"
+                    placeholder="10s"
                     value={network.request_timeout}
                     onChange={(e) => net({ request_timeout: e.target.value })}
                   />
@@ -606,14 +537,14 @@ export function CrawlEditor({
                 </Field>
                 <Field label="Initial retry delay">
                   <input
-                    placeholder="100ms (default)"
+                    placeholder="100ms"
                     value={network.retry_delay}
                     onChange={(e) => net({ retry_delay: e.target.value })}
                   />
                 </Field>
                 <Field label="Maximum retry delay">
                   <input
-                    placeholder="5s (default)"
+                    placeholder="5s"
                     value={network.retry_max_delay}
                     onChange={(e) => net({ retry_max_delay: e.target.value })}
                   />
@@ -621,16 +552,14 @@ export function CrawlEditor({
               </div>
               <Field label="User-Agent">
                 <input
-                  placeholder="Default crawler User-Agent"
+                  placeholder="User-Agent"
                   value={network.user_agent}
                   onChange={(e) => net({ user_agent: e.target.value })}
                 />
               </Field>
               <p>
                 <small>
-                  The timeout covers each network request after pacing waits.
-                  Retry delays increase up to your maximum; server Retry-After
-                  instructions take precedence.
+                  Timeout excludes pacing. Retry-After overrides retry delay.
                 </small>
               </p>
             </details>
@@ -642,17 +571,16 @@ export function CrawlEditor({
             <details>
               <summary>Request pacing</summary>
               <p>
-                All crawls share a per-site request budget. Each crawl can
-                choose stricter pacing.
+                Per-host limits are shared across crawls; the strictest applies.
               </p>
               <div className="crawl-pair">
-                <Field label="Delay between requests">
+                <Field label="Request delay">
                   <input
                     value={d.request_delay}
                     onChange={(e) => set({ request_delay: e.target.value })}
                   />
                 </Field>
-                <Field label="Parallel requests per site">
+                <Field label="Per-host concurrency">
                   <input
                     type="number"
                     min="1"
@@ -665,37 +593,29 @@ export function CrawlEditor({
                 </Field>
               </div>
             </details>
-            <h3>How long should it remember?</h3>
-            <p>
-              Detailed history can expire while URL identities remain
-              remembered. Accepted work is protected.
-            </p>
+            <h3>Retention</h3>
             <Lifetime
-              label="Completed page details"
+              label="Completed records"
               value={d.retention.completed_for}
               onChange={(v) => retention("completed_for", v)}
             />
             <Lifetime
-              label="Failed page details"
+              label="Failed records"
               value={d.retention.failed_for}
               onChange={(v) => retention("failed_for", v)}
             />
             <Lifetime
-              label="Remember visited URLs"
+              label="URL deduplication"
               value={d.retention.dedup_for}
               onChange={(v) => retention("dedup_for", v)}
             />
             <small>
-              Remembered URLs must outlast detailed records. Monitoring revisits
-              are independent of retention.
+              Deduplication retention must equal or exceed record retention.
             </small>
             {editor.record && (
               <details>
-                <summary>Expert worker pipeline</summary>
-                <p>
-                  This saves your guided draft, then opens its compiled
-                  pipeline. Custom pipelines stay in expert mode after saving.
-                </p>
+                <summary>Worker pipeline</summary>
+                <p>Saves the draft and switches to pipeline JSON.</p>
                 <button
                   type="button"
                   onClick={async () => {
@@ -720,7 +640,7 @@ export function CrawlEditor({
                     }
                   }}
                 >
-                  Save draft and open expert editor
+                  Edit pipeline JSON
                 </button>
               </details>
             )}
@@ -730,50 +650,43 @@ export function CrawlEditor({
       <aside className="crawl-review crawl-panel">
         <h2>{d.name || "Untitled crawl"}</h2>
         {isExpert ? (
-          <p>
-            The custom pipeline controls sources, traversal, networking, and
-            output destinations.
-          </p>
+          <p>Custom pipeline</p>
         ) : (
           <>
             {" "}
             <p>
-              Start from <strong>{d.seeds.length + d.feeds.length}</strong>{" "}
-              sources.
+              Sources: <strong>{d.seeds.length + d.feeds.length}</strong>
             </p>
             <p>
               {d.scope === "open_web"
-                ? `Follow the wider web, up to ${d.max_hops} site hops.`
+                ? `Scope: Open web · Host hops: ${d.max_hops}`
                 : d.scope === "same_origin"
-                  ? "Stay on each starting host."
-                  : "Explore each starting website and its subdomains."}
+                  ? "Scope: Same host"
+                  : "Scope: Same domain"}
             </p>
             <p>
-              {strategyTitle(d.strategy)} traversal, up to {d.max_depth} site
-              levels.
+              {strategyTitle(d.strategy)} · Depth: {d.max_depth}
             </p>
           </>
         )}
         <p>
           {d.termination.when_drained
-            ? "Finish when sources and discovered work drain."
+            ? "Completion: Drain"
             : isExpert
-              ? "Keep the custom pipeline running until stopped or a limit is reached."
-              : `Keep monitoring; revisit every ${d.revisit}.`}
+              ? "Completion: Continuous"
+              : `Revisit interval: ${d.revisit}`}
         </p>
         {d.termination.max_requests > 0 && (
-          <p>Stop scheduling after {d.termination.max_requests} requests.</p>
+          <p>Fetch limit: {d.termination.max_requests}</p>
         )}
-        {d.termination.duration && (
-          <p>Stop after {d.termination.duration} of running time.</p>
-        )}
+        {d.termination.duration && <p>Time limit: {d.termination.duration}</p>}
         {!isExpert && (
           <>
             {" "}
             <p>
               {d.proxy?.mode && d.proxy.mode !== "direct"
-                ? `${d.proxy.mode.toUpperCase()} proxy applies to this crawl only.`
-                : "Direct connection."}
+                ? `Proxy: ${d.proxy.mode.toUpperCase()}`
+                : "Proxy: Direct"}
             </p>
           </>
         )}
@@ -784,19 +697,11 @@ export function CrawlEditor({
           disabled={locked}
           onClick={() => onSave(true)}
         >
-          {editor.record
-            ? "Save and start replacement run"
-            : "Create and start crawl"}
+          {editor.record ? "Save and restart" : "Create and start"}
         </button>
         <button type="submit" disabled={locked}>
-          {editor.record ? "Save draft" : "Save crawl without starting"}
+          {editor.record ? "Save draft" : "Create"}
         </button>
-        {editor.record && (
-          <small>
-            Drafts leave the current run unchanged. Replacement runs preserve
-            previous history.
-          </small>
-        )}
       </aside>
     </form>
   );

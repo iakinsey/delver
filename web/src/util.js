@@ -37,7 +37,7 @@ export async function request(url, data, options = {}) {
   } catch (error) {
     return {
       success: false,
-      error: "Unable to reach the server. Please retry.",
+      error: "Server unavailable",
     };
   } finally {
     clearTimeout(timeout);

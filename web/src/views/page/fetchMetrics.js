@@ -4,24 +4,27 @@ const number = (value) =>
 export function FetchMetrics({ data, frontier }) {
   if (!data) return null;
   return (
-    <section className="crawl-panel" aria-label="Fetch performance">
-      <h2>Fetch performance</h2>
+    <section className="crawl-panel" aria-label="Fetch metrics">
+      <h2>Fetch metrics</h2>
       <div className="crawl-flow">
         {[
-          ["Attempts / second", data.rates?.attempts],
-          ["Successful responses / second", data.rates?.successes],
-          ["HTML responses / second", data.rates?.html],
-          ["Unique HTML / second", data.rates?.unique_html],
-          ["Discovered URLs / second", data.rates?.admitted],
-          ["Finalized requests / second", data.rates?.terminal_outcomes],
-          ["Bytes / second", data.rates?.bytes],
+          ["Attempts/s", data.rates?.attempts],
+          ["Successes/s", data.rates?.successes],
+          ["HTML/s", data.rates?.html],
+          ["Unique HTML/s", data.rates?.unique_html],
+          ["Admissions/s", data.rates?.admitted],
+          ["Terminal outcomes/s", data.rates?.terminal_outcomes],
+          ["Bytes/s", data.rates?.bytes],
           ["Active requests", data.active],
-          ["Allowed requests", data.effective],
+          ["Network active", data.network_active],
+          ["Observation attempts", data.observation_attempts],
+          ["Local overload samples", data.observation_overload],
+          ["Effective concurrency", data.effective],
           ["Process active requests", data.process_active],
-          ["Process request ceiling", data.process_limit],
+          ["Process concurrency limit", data.process_limit],
           ["Scheduled retries", frontier?.retries_scheduled],
-          ["Waiting retries", frontier?.retry_pending],
-          ["Host cooldown events", frontier?.host_cooldowns],
+          ["Pending retries", frontier?.retry_pending],
+          ["Host cooldowns", frontier?.host_cooldowns],
         ].map(([label, value]) => (
           <div key={label}>
             <strong>{number(value)}</strong>
@@ -33,8 +36,15 @@ export function FetchMetrics({ data, frontier }) {
         {data.reason}
         {data.last_adjustment ? ` · ${data.last_adjustment}` : ""}
       </p>
+      <p>
+        Runnable demand: {data.runnable_demand ? "Yes" : "No"} · Next
+        adjustment:{" "}
+        {data.next_adjustment
+          ? new Date(data.next_adjustment).toLocaleTimeString()
+          : "—"}
+      </p>
       <details>
-        <summary>Network and execution metrics</summary>
+        <summary>Details</summary>
         <div
           className="crawl-table-scroll"
           tabIndex={0}

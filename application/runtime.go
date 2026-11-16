@@ -42,12 +42,12 @@ func (c *runtimeControl) snapshot() RuntimeSnapshot {
 		result.Fetch = &snapshot
 	}
 	for name, manager := range c.prepared.workers {
-		if source, ok := manager.(interface{ Health() string }); ok {
+		if source, ok := manager.(worker.HealthSource); ok {
 			if health := source.Health(); health != "" {
 				result.Health[name] = health
 			}
 		}
-		if m, ok := manager.(interface{ Activity() worker.Activity }); ok {
+		if m, ok := manager.(worker.ActivitySource); ok {
 			result.Workers[name] = m.Activity()
 		}
 	}
@@ -67,7 +67,7 @@ func (c *runtimeControl) snapshot() RuntimeSnapshot {
 				}
 			}
 		}
-		if health, ok := resource.(interface{ Health() string }); ok {
+		if health, ok := resource.(worker.HealthSource); ok {
 			if err := health.Health(); err != "" {
 				result.Health[name] = err
 			}
@@ -78,6 +78,26 @@ func (c *runtimeControl) snapshot() RuntimeSnapshot {
 	}
 	return result
 }
+
+// durableDispatch returns nil for pipelines that require channel consumers to
+// remain available while producers drain.
+func durableDispatch(prepared *preparedApplication) []queue.PausableDispatch {
+	var queues []queue.PausableDispatch
+	seen := map[string]bool{}
+	for _, definition := range prepared.app.Workers {
+		if definition.Manager == "job" || seen[definition.Inbox] {
+			continue
+		}
+		q, ok := prepared.resources[definition.Inbox].(queue.PausableDispatch)
+		if !ok {
+			return nil
+		}
+		queues = append(queues, q)
+		seen[definition.Inbox] = true
+	}
+	return queues
+}
+
 func (c *runtimeControl) pause(ctx context.Context, paused bool) error {
 	c.mu.Lock()
 	if c.prepared == nil {
@@ -85,10 +105,16 @@ func (c *runtimeControl) pause(ctx context.Context, paused bool) error {
 		return fmt.Errorf("runtime is not ready")
 	}
 	prepared := c.prepared
+	dispatch := durableDispatch(prepared)
 	for _, definition := range prepared.app.Workers {
 		if !paused || definition.Manager == "job" {
-			prepared.workers[definition.Name].(interface{ Pause(bool) }).Pause(paused)
+			prepared.workers[definition.Name].(worker.Pausable).Pause(paused)
 		}
+	}
+	// Resume consumers before queue dispatch. On pause, jobs stop publishing
+	// and durable queues stop granting new deliveries; existing deliveries finish.
+	for _, q := range dispatch {
+		q.PauseDispatch(paused)
 	}
 	c.mu.Unlock()
 	if !paused {
@@ -110,8 +136,11 @@ func (c *runtimeControl) pause(ctx context.Context, paused bool) error {
 		for _, activity := range snapshot.Workers {
 			busy = busy || activity.Active > 0
 		}
+		for _, q := range dispatch {
+			busy = busy || q.DispatchActive() != 0
+		}
 		for _, definition := range prepared.app.Workers {
-			if definition.Manager != "job" {
+			if dispatch == nil && definition.Manager != "job" {
 				if count, ok := snapshot.Queues[definition.Inbox]; ok {
 					busy = busy || count != 0
 				}
@@ -134,7 +163,7 @@ func (c *runtimeControl) pause(ctx context.Context, paused bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for _, manager := range prepared.workers {
-		manager.(interface{ Pause(bool) }).Pause(true)
+		manager.(worker.Pausable).Pause(true)
 	}
 	return nil
 }

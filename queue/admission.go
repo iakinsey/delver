@@ -9,9 +9,12 @@ import (
 // Admission is optional queue execution admission. A token precedes a durable
 // lease and remains owned by the delivery until its transaction ends.
 type admission struct {
-	mu   sync.Mutex
-	gate func(context.Context) (func(), error)
-	held map[string]func()
+	mu       sync.Mutex
+	gate     func(context.Context) (func(), error)
+	held     map[string]func()
+	paused   bool
+	changed  chan struct{}
+	inflight int
 }
 
 func (a *admission) SetDispatchGate(g func(context.Context) (func(), error)) {
@@ -22,14 +25,75 @@ func (a *admission) SetDispatchGate(g func(context.Context) (func(), error)) {
 		a.held = map[string]func(){}
 	}
 }
-func (a *admission) begin(ctx context.Context) (func(), error) {
+
+// PausableDispatch stops new durable leases without consuming the saved backlog.
+// DispatchActive includes deliveries offered to workers but not yet acknowledged.
+type PausableDispatch interface {
+	PauseDispatch(bool)
+	DispatchActive() int
+}
+
+func (a *admission) pauseDispatch(paused bool) {
 	a.mu.Lock()
-	g := a.gate
-	a.mu.Unlock()
-	if g == nil {
-		return func() {}, nil
+	defer a.mu.Unlock()
+	a.paused = paused
+	if a.changed != nil {
+		close(a.changed)
 	}
-	return g(ctx)
+	a.changed = make(chan struct{})
+}
+func (a *admission) dispatchActive() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.inflight
+}
+func (a *admission) begin(ctx context.Context) (func(), error) {
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		a.mu.Lock()
+		if a.paused {
+			if a.changed == nil {
+				a.changed = make(chan struct{})
+			}
+			changed := a.changed
+			a.mu.Unlock()
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-changed:
+				continue
+			}
+		}
+		g := a.gate
+		a.mu.Unlock()
+		release := func() {}
+		if g != nil {
+			var err error
+			release, err = g(ctx)
+			if err != nil {
+				return nil, err
+			}
+		}
+		a.mu.Lock()
+		if a.paused {
+			a.mu.Unlock()
+			release()
+			continue
+		}
+		a.inflight++
+		a.mu.Unlock()
+		var once sync.Once
+		return func() {
+			once.Do(func() {
+				release()
+				a.mu.Lock()
+				a.inflight--
+				a.mu.Unlock()
+			})
+		}, nil
+	}
 }
 func deliveryKey(m types.Message) string {
 	if m.DeliveryID != "" {

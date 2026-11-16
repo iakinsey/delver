@@ -1,0 +1,176 @@
+{
+  "config": {
+    "workers": {
+      "worker_counts": 4
+    },
+    "api": {
+      "enabled": true,
+      "address": "127.0.0.1:8080",
+      "dash_db_path": "run-data/frontier-site/dash.db",
+      "operations_path": "run-data/frontier-site/state.json"
+    },
+    "metrics": {
+      "enabled": false
+    },
+    "http_client": {
+      "allowed_domains": [
+        "localhost"
+      ],
+      "request_delay": "100ms"
+    },
+    "shutdown_timeout": "30s"
+  },
+  "resources": [
+    {
+      "name": "requests",
+      "type": "crawl_queue",
+      "parameters": {
+        "path": "run-data/frontier-site/crawl",
+        "crawl_id": "minimal",
+        "max_attempts": 3,
+        "notify_dispatch": true,
+        "accept_frontier_generations": true
+      }
+    },
+    {
+      "name": "fetched",
+      "type": "file_queue",
+      "parameters": {
+        "name": "fetched",
+        "path": "run-data/frontier-site/fetched",
+        "dlq_path": "run-data/frontier-site/fetched-dlq",
+        "max_poll_delay_ms": 20,
+        "max_attempts": 3,
+        "reset": true
+      }
+    },
+    {
+      "name": "analyzed",
+      "type": "file_queue",
+      "parameters": {
+        "name": "analyzed",
+        "path": "run-data/frontier-site/analyzed",
+        "dlq_path": "run-data/frontier-site/analyzed-dlq",
+        "max_poll_delay_ms": 20,
+        "max_attempts": 3,
+        "reset": true
+      }
+    },
+    {
+      "name": "results",
+      "type": "file_queue",
+      "parameters": {
+        "name": "results",
+        "path": "run-data/frontier-site/results",
+        "dlq_path": "run-data/frontier-site/results-dlq",
+        "max_poll_delay_ms": 20,
+        "max_attempts": 3,
+        "reset": true
+      }
+    },
+    {
+      "name": "objects",
+      "type": "filesystem_object_store",
+      "parameters": {
+        "path": "run-data/frontier-site/objects"
+      }
+    },
+    {
+      "name": "frontier",
+      "type": "frontier_store",
+      "parameters": {
+        "path": "run-data/frontier-site/frontier",
+        "retention": {
+          "completed_for": "7d",
+          "failed_for": "30d",
+          "dedup_for": "90d",
+          "cleanup_interval": "5m",
+          "cleanup_batch_size": 1000
+        },
+        "max_pending": 100000,
+        "max_pending_per_origin": 10000,
+        "cache_budget_mb": 64
+      }
+    }
+  ],
+  "workers": [
+    {
+      "name": "seeds",
+      "type": "fixed_seed_publisher",
+      "manager": "job",
+      "interval": "1h",
+      "outbox": "requests",
+      "parameters": {
+        "uris": [
+          "http://localhost:8088/"
+        ]
+      }
+    },
+    {
+      "name": "fetch",
+      "type": "http_fetcher",
+      "inbox": "requests",
+      "outbox": "fetched",
+      "parameters": {
+        "object_store": "objects"
+      }
+    },
+    {
+      "name": "extract",
+      "type": "composite_extractor",
+      "inbox": "fetched",
+      "outbox": "analyzed",
+      "parameters": {
+        "object_store": "objects",
+        "transformer_queue": "results",
+        "enabled": [
+          "url",
+          "text",
+          "title"
+        ]
+      }
+    },
+    {
+      "name": "discover",
+      "type": "frontier_accumulator",
+      "inbox": "analyzed",
+      "parameters": {
+        "frontier_store": "frontier",
+        "scope": "same_domain",
+        "max_depth": 10,
+        "max_hops": 3
+      }
+    },
+    {
+      "name": "save",
+      "type": "jsonl_sink",
+      "inbox": "results",
+      "count": 1,
+      "parameters": {
+        "path": "run-data/frontier-site/results.jsonl"
+      }
+    },
+    {
+      "name": "frontier_publish",
+      "type": "frontier_publisher",
+      "manager": "job",
+      "interval": "100ms",
+      "parameters": {
+        "frontier_store": "frontier",
+        "output_queue": "requests",
+        "strategy": "breadth_first",
+        "batch_size": 32,
+        "low_water": 64
+      }
+    },
+    {
+      "name": "frontier_cleanup",
+      "type": "frontier_cleanup",
+      "manager": "job",
+      "interval": "1m",
+      "parameters": {
+        "frontier_store": "frontier"
+      }
+    }
+  ]
+}

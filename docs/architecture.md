@@ -2,23 +2,37 @@
 
 ## Application lifecycle
 
-`application.Decode` and `application.Load` apply defaults, parse durations, and validate configuration without starting a crawl. `application.Run(ctx, app)` constructs resources and workers, prepares consumed queues, starts workers and optional services, and waits for cancellation or a service error. A process has one active configuration; register custom factories before starting it.
+`application.Decode` and `application.Load` apply defaults, parse durations, and validate configuration without starting a crawl. `application.Run(ctx, app)` constructs resources and workers, prepares consumed queues, starts workers and optional services, and waits for cancellation or a service error. A workspace can execute multiple independent crawl pipelines. Register custom factories before starting it.
 
-The CLI registers SIGINT/SIGTERM cancellation before running. Shutdown stops worker pools and job timers, preserves unfinished queue records, closes queues and storage, and stops the API and streaming servers. `shutdown_timeout` bounds the wait. Shared injected resources belong to the application; worker completion must not close them.
+The CLI registers SIGINT/SIGTERM cancellation before running. Shutdown stops worker pools and job timers, preserves unfinished queue records, closes queues and storage, and stops the API server. `shutdown_timeout` bounds the wait. Shared injected resources belong to the application; worker completion must not close them.
 
-## Pipeline
+## Execution through the worker classes
+
+For a fresh message, each `workerManager` invokes the worker, stages and publishes its outputs, then acknowledges the input. A recovered delivery with a staged output batch replays that batch instead of invoking the worker again. `jobManager` uses the same manager around timer messages.
 
 ```mermaid
 flowchart LR
-    Seeds[Fixed or RSS publisher] --> Crawl[Exact crawl queue]
-    Crawl --> Fetch[HTTP fetcher]
-    Fetch --> Fetched[Persistent response queue]
-    Fetched --> Extract[Composite extractor]
-    Extract --> Analyze[Analysis queue]
-    Analyze --> Discover[DFS or news accumulator]
-    Discover --> Crawl
-    Extract --> Output[Output queue]
-    Output --> Sink[JSONL or Elasticsearch transformer]
+    Q["Queue"] -->|deliver message| M["workerManager.Start"]
+    M -->|invoke| W["Worker.OnMessageContext or OnMessage"]
+    W -->|return outputs| M
+    M -->|Put outputs| O["Outbox Queue"]
+    M -->|EndTransaction| Q
+```
+
+## Crawl execution path
+
+The guided crawl uses these concrete worker implementations. Queue handoffs between workers use the manager path above.
+
+```mermaid
+flowchart TB
+    P["frontierworker.Worker.publish"] -->|Candidates / Reserve| S["frontier.Store"]
+    P -->|Put request| Q["queue.crawlQueue"]
+    Q -->|workerManager dispatch| F["fetcher.httpFetcher"]
+    F -->|response to fetched queue| E["extractor.compositeExtractor"]
+    E -->|analysis to analyzed queue| D["frontierworker.Worker.discover"]
+    D -->|Outcome / StageDiscovery| S
+    S -->|next candidates| P
+    E -->|result to results queue| J["worker.jsonlWorker"]
 ```
 
 Workers consume message envelopes containing an ID, numeric `message_type`, JSON payload, and retry count. Fetch requests have a request ID, URI, origin, host, protocol, and depth. Fetch responses add effective URI, HTTP status, headers, elapsed time, error/success information, body key, and content hash. Analyses add a feature map and optional extractor errors.
@@ -45,6 +59,16 @@ HTML links use a tokenizer, resolve against the effective response URL and HTML 
 
 Plain text stripping and mention detection are general heuristics, not an article parser or named-entity model. Sentiment uses the English title and writes `binary_naive_bayes_title`. Other sentiment fields are not populated by the built-in extractor.
 
-## Supervised operations
+## Runtime ownership
 
-The CLI uses a supervisor when the API is enabled; API-disabled runs and `application.Run` retain the original lifecycle. The supervisor owns a locked operations-state file and serializes durable commands independently from dashboard persistence. Its optional worker pause/activity and queue recovery/status interfaces do not change the existing worker and queue contracts. Message envelopes may include `last_error` to explain failed delivery; replay clears that diagnostic and resets retry eligibility while retaining the message ID and staged outputs.
+Workspace owns saved definitions, desired state, revisions, settings, and operation records in its versioned registry. Mutations serialize per crawl; command IDs are idempotent and stale revisions fail. Accepted operations interrupted by a process restart are reported as failed. A run retains its immutable original configuration snapshot.
+
+Supervisor executes lifecycle commands and exposes runtime snapshots. It has no separate configuration editor or operation journal. Final metrics are captured after workers finish. Shutdown retains exclusive ownership until resources close; a close failure prevents replacement from opening the same data.
+
+Guided definitions and custom pipeline JSON use one preparation path. Contextual constructor registration adapts legacy factories and resolves dependencies. Named optional capabilities describe metrics, admission, pause, activity, and health. Custom worker/resource parameters and large JSON integers survive editor round trips.
+
+Execution limits belong to one workspace broker. Per-crawl controllers apply local bounds, host pacing, and admission gates. The broker enforces aggregate process and host ceilings without cancelling requests when limits are lowered. See [fetch throughput](fetch-throughput.md).
+
+Legacy singleton crawler routes, dashboard persistence, and the streaming listener are removed. The one-time importer retains supported pipeline storage and imports old operation records. Explicit unsupported streaming destinations fail migration.
+
+Pause stops job publication and new dispatch from durable inboxes, waits for admitted deliveries to finish, then pauses workers. Pending durable records do not need to drain. Resume starts consumers before dispatch. Pipelines containing channel or custom inboxes without dispatch control retain queue-draining pause behavior.
