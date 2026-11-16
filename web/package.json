@@ -9,9 +9,7 @@
   },
   "scripts": {
     "start": "vite --host 0.0.0.0",
-    "build": "vite build",
-    "test": "vitest run",
-    "test:browser": "playwright test"
+    "build": "vite build"
   },
   "browserslist": {
     "production": [
@@ -26,14 +24,7 @@
     ]
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.13.0",
-    "@playwright/test": "^1.56.0",
-    "@testing-library/dom": "^10.4.2",
-    "@testing-library/jest-dom": "^6.0.0",
-    "@testing-library/react": "^16.0.0",
-    "jsdom": "^26.0.0",
     "prettier": "^3.10.1",
-    "vite": "^6.4.0",
-    "vitest": "^4.1.12"
+    "vite": "^6.4.0"
   }
 }

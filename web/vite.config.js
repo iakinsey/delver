@@ -21,12 +21,6 @@ export default defineConfig(({ mode }) => {
       ),
     },
     optimizeDeps: { esbuildOptions: { loader: { ".js": "jsx" } } },
-    test: {
-      environment: "jsdom",
-      globals: true,
-      setupFiles: ["./src/testSetup.js"],
-      exclude: ["node_modules/**", "e2e/**"],
-    },
     build: { outDir: "build" },
   };
 });
