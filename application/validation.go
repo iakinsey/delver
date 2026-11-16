@@ -34,7 +34,15 @@ func decodeParameters(raw json.RawMessage, target interface{}) error {
 	return decoder.Decode(target)
 }
 func validateParameters(app config.Application, resources map[string]config.Resource) error {
+	if app.Config.Fetch != nil {
+		if err := app.Config.Fetch.Validate(); err != nil {
+			return err
+		}
+	}
 	http := app.Config.HTTPClient
+	if http.ConnectTimeout < 0 || http.TLSTimeout < 0 || http.HeaderTimeout < 0 || http.BodyTimeout < 0 {
+		return fmt.Errorf("network phase timeouts must be nonnegative; zero inherits the overall timeout")
+	}
 	if http.RequireProxy && http.Socks5Url == "" && http.HTTPProxyUrl == "" {
 		return fmt.Errorf("this crawl requires a proxy; choose and configure a proxy connection")
 	}

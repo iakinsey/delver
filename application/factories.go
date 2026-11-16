@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/armon/go-metrics"
+	"github.com/iakinsey/delver/flow"
 	"reflect"
+	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -26,11 +29,16 @@ import (
 var resourceKeyLookupError = errors.New("failed to find resource key")
 
 type preparedApplication struct {
-	metrics   metrics.MetricSink
-	ctx       context.Context
-	app       config.Application
-	resources map[string]interface{}
-	workers   map[string]worker.WorkerManager
+	pressurePaths []string
+	pressureMu    sync.Mutex
+	pressureTime  time.Time
+	pressureCPU   float64
+	flow          *flow.Controller
+	metrics       metrics.MetricSink
+	ctx           context.Context
+	app           config.Application
+	resources     map[string]interface{}
+	workers       map[string]worker.WorkerManager
 }
 
 func CreateWorker(wc config.Worker, preparedApp *preparedApplication) {
@@ -60,7 +68,11 @@ func CreateWorker(wc config.Worker, preparedApp *preparedApplication) {
 	case "http_fetcher":
 		hfp := fetcher.HttpFetcherParams{}
 		parseParamWithResources(wc.Parameters, &hfp, preparedApp.resources)
-		w = fetcher.NewHttpFetcherWithConfig(hfp, preparedApp.app.Config)
+		httpConfig := preparedApp.app.Config
+		if preparedApp.flow != nil && hasDurableRetries(preparedApp.app, wc.Inbox) {
+			httpConfig.HTTPClient.MaxRetries = 0
+		}
+		w = fetcher.NewHttpFetcherWithConfig(hfp, httpConfig)
 	case "dfs_basic_publisher":
 		dbp := publisher.DfsBasicPublisherParams{}
 		parseParamWithResources(wc.Parameters, &dbp, preparedApp.resources)
@@ -76,6 +88,7 @@ func CreateWorker(wc config.Worker, preparedApp *preparedApplication) {
 	case "transformer":
 		tfp := transformer.TransformerParams{}
 		parseParamWithResources(wc.Parameters, &tfp, preparedApp.resources)
+		tfp.CrawlID, tfp.RunID = preparedApp.app.Config.RuntimeCrawlID, preparedApp.app.Config.RuntimeRunID
 		w = transformer.NewTransformerWorkerContext(preparedApp.ctx, tfp)
 	default:
 		registryMutex.RLock()
@@ -108,9 +121,21 @@ func CreateWorker(wc config.Worker, preparedApp *preparedApplication) {
 			target.SetMetricSink(preparedApp.metrics)
 		}
 	}
+	if target, ok := w.(interface {
+		SetFlow(*flow.Controller, flow.Policy)
+	}); ok && preparedApp.flow != nil {
+		target.SetFlow(preparedApp.flow, *preparedApp.app.Config.Fetch)
+	}
 	m := GetWorkerManager(wc, preparedApp.resources, w)
 	if preparedApp.metrics != nil {
 		m.(interface{ SetMetricSink(metrics.MetricSink) }).SetMetricSink(preparedApp.metrics)
+	}
+	if wc.Type == "http_fetcher" && preparedApp.flow != nil {
+		if gate, ok := inboxGate(preparedApp.resources[wc.Inbox]); ok {
+			gate.SetDispatchGate(preparedApp.flow.Acquire)
+		} else {
+			panic("fetch execution limits require a queue supporting pre-lease admission")
+		}
 	}
 	preparedApp.workers[wc.Name] = m
 }
@@ -286,4 +311,41 @@ func getResourceName(data []byte, key string) (string, error) {
 	}
 
 	return res, nil
+}
+
+type dispatchGate interface {
+	SetDispatchGate(func(context.Context) (func(), error))
+}
+
+func inboxGate(resource interface{}) (dispatchGate, bool) {
+	g, ok := resource.(dispatchGate)
+	return g, ok
+}
+
+func hasDurableRetries(app config.Application, inbox string) bool {
+	stores := map[string]bool{}
+	for _, worker := range app.Workers {
+		if worker.Type != "frontier_publisher" {
+			continue
+		}
+		var refs struct {
+			Store  string `json:"frontier_store"`
+			Output string `json:"output_queue"`
+		}
+		if json.Unmarshal(worker.Parameters, &refs) == nil && refs.Output == inbox {
+			stores[refs.Store] = true
+		}
+	}
+	for _, resource := range app.Resources {
+		if resource.Type != "frontier_store" || !stores[resource.Name] {
+			continue
+		}
+		var p struct {
+			Retry json.RawMessage `json:"retry"`
+		}
+		if json.Unmarshal(resource.Parameters, &p) == nil && len(p.Retry) > 0 && string(p.Retry) != "null" {
+			return true
+		}
+	}
+	return false
 }

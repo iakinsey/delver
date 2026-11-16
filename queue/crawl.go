@@ -30,6 +30,7 @@ type crawlRecord struct {
 	Attempts int
 }
 type crawlQueue struct {
+	admission
 	db                             *badger.DB
 	params                         CrawlQueueParams
 	channel                        chan types.Message
@@ -38,6 +39,7 @@ type crawlQueue struct {
 	stopped                        chan struct{}
 	startOnce, stopOnce, closeOnce sync.Once
 	dbMu                           sync.RWMutex
+	writeMu                        sync.Mutex
 	closed                         bool
 	healthMu                       sync.Mutex
 	lastError                      string
@@ -151,6 +153,9 @@ func (s *crawlQueue) PutContext(ctx context.Context, msg types.Message, priority
 				return s.setRecord(txn, key, data)
 			}
 			newGeneration := s.params.AcceptFrontierGenerations && incoming.FrontierGeneration != "" && incoming.FrontierGeneration != existing.FrontierGeneration
+			if newGeneration && old.State == "leased" {
+				return fmt.Errorf("previous frontier generation is still leased")
+			}
 			if old.State != "completed" || (!newGeneration && (s.params.RecrawlAfter <= 0 || time.Since(time.Unix(0, old.Updated)) < s.params.RecrawlAfter)) {
 				return nil
 			}
@@ -242,6 +247,9 @@ func (s *crawlQueue) Start() error {
 }
 func (s *crawlQueue) perform() {
 	defer close(s.stopped)
+	defer s.releaseAll()
+	ctx, cancel := queueContext(s.done)
+	defer cancel()
 	ticker := time.NewTicker(20 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -250,6 +258,16 @@ func (s *crawlQueue) perform() {
 			return
 		case <-ticker.C:
 		case <-s.wake:
+		}
+		if s.admission.enabled() {
+			counts, e := s.Counts()
+			if e != nil || counts["pending"] == 0 {
+				continue
+			}
+		}
+		release, e := s.begin(ctx)
+		if e != nil {
+			return
 		}
 		var next *types.Message
 		err := s.dispatchUpdate(func(txn *badger.Txn) error {
@@ -279,7 +297,12 @@ func (s *crawlQueue) perform() {
 			}
 			return nil
 		})
+		if err == badger.ErrConflict {
+			release()
+			continue
+		}
 		if err != nil {
+			release()
 			log.Printf("crawl queue %s dispatch failed: %v", s.params.CrawlID, err)
 			s.healthMu.Lock()
 			s.lastError = err.Error()
@@ -289,7 +312,11 @@ func (s *crawlQueue) perform() {
 		s.healthMu.Lock()
 		s.lastError = ""
 		s.healthMu.Unlock()
+		if next == nil {
+			release()
+		}
 		if next != nil {
+			s.hold(*next, release)
 			if s.params.NotifyDispatch {
 				select {
 				case s.wake <- struct{}{}:
@@ -318,6 +345,7 @@ func (s *crawlQueue) Close() error {
 }
 func (s *crawlQueue) GetChannel() chan types.Message { return s.channel }
 func (s *crawlQueue) EndTransaction(msg types.Message, success bool) error {
+	defer s.finish(msg)
 	key, err := s.key(msg)
 	if err != nil {
 		return err
@@ -542,7 +570,7 @@ func (s *crawlQueue) update(ctx context.Context, fn func(*badger.Txn) error) err
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		err := s.db.Update(fn)
+		err := s.transaction(fn)
 		if err != badger.ErrConflict {
 			return err
 		}
@@ -561,7 +589,7 @@ func (s *crawlQueue) dispatchUpdate(fn func(*badger.Txn) error) error {
 	if s.closed {
 		return badger.ErrDBClosed
 	}
-	return s.db.Update(fn)
+	return s.transaction(fn)
 }
 
 func (s *crawlQueue) adjustCount(tx *badger.Txn, state string, delta int64) error {
@@ -581,4 +609,13 @@ func (s *crawlQueue) adjustCount(tx *badger.Txn, state string, delta int64) erro
 		return err
 	}
 	return tx.Set(key, data)
+}
+
+// Queue mutations share state counters, so competing optimistic writers cannot
+// commit concurrently. Serialize them to avoid conflict storms between the pump,
+// producers and acknowledgments while retaining concurrent snapshot reads.
+func (s *crawlQueue) transaction(fn func(*badger.Txn) error) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	return s.db.Update(fn)
 }

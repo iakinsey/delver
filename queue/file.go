@@ -33,6 +33,7 @@ const identifierRegex = `^\d+-\d+-\d+-` + nameRegex + "$"
 var errQueueEmpty = errors.New("queue is empty")
 
 type fileQueue struct {
+	admission
 	failures       chan error
 	healthMu       sync.Mutex
 	lastError      string
@@ -251,6 +252,7 @@ func (s *fileQueue) Prepare() error {
 }
 
 func (s *fileQueue) EndTransaction(message types.Message, success bool) error {
+	defer s.finish(message)
 	delivery := message.DeliveryID
 	if delivery == "" {
 		delivery = message.ID
@@ -311,6 +313,16 @@ func (s *fileQueue) Len() int64 {
 }
 
 func (s *fileQueue) perform() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		select {
+		case <-s.terminate:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	defer s.releaseAll()
 	defer close(s.failures)
 	defer close(s.terminated)
 	defer func() {
@@ -329,7 +341,22 @@ func (s *fileQueue) perform() {
 				return
 			}
 
+			if s.admission.enabled() {
+				counts, err := s.Counts()
+				if err == nil && counts["pending"] == 0 {
+					continue
+				}
+			}
+			release, e := s.begin(ctx)
+			if e != nil {
+				return
+			}
 			message, err := s.next()
+			if err != nil || message == nil {
+				release()
+			} else {
+				s.hold(*message, release)
+			}
 
 			if err == errQueueEmpty {
 				continue

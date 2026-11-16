@@ -42,6 +42,21 @@ func redactValue(value interface{}) interface{} {
 	switch v := value.(type) {
 	case map[string]interface{}:
 		for key, child := range v {
+			// Proxy addresses are editable configuration, including their login.
+			if key == "http_proxy_url" || key == "socks5_url" {
+				continue
+			}
+			if key == "proxy" {
+				if proxy, ok := child.(map[string]interface{}); ok {
+					address, present := proxy["url"]
+					delete(proxy, "url")
+					redactValue(proxy)
+					if present {
+						proxy["url"] = address
+					}
+					continue
+				}
+			}
 			if secretKey(key) && child != "" && child != nil {
 				v[key] = redacted
 			} else {

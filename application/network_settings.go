@@ -11,6 +11,7 @@ import (
 // NetworkSettings are protocol-independent controls for slow services, private
 // namespaces and session-aware SOCKS proxies. No network-specific client runs here.
 type NetworkSettings struct {
+	RespectRobots        *bool    `json:"respect_robots,omitempty"`
 	RequestTimeout       string   `json:"request_timeout"`
 	MaxRetries           *int     `json:"max_retries,omitempty"`
 	RetryDelay           string   `json:"retry_delay"`
@@ -24,7 +25,8 @@ type NetworkSettings struct {
 
 func DefaultNetworkSettings() NetworkSettings {
 	retries := 1
-	return NetworkSettings{RequestTimeout: "10s", MaxRetries: &retries, RetryDelay: "100ms", RetryMaxDelay: "5s", UserAgent: "delver pre-alpha", AllowedHostSuffixes: []string{}}
+	respect := true
+	return NetworkSettings{RespectRobots: &respect, RequestTimeout: "10s", MaxRetries: &retries, RetryDelay: "100ms", RetryMaxDelay: "5s", UserAgent: "delver pre-alpha", AllowedHostSuffixes: []string{}}
 }
 func applyNetworkSettings(c *config.HTTPClientConfig, n NetworkSettings) error {
 	defaults := DefaultNetworkSettings()
@@ -72,6 +74,7 @@ func applyNetworkSettings(c *config.HTTPClientConfig, n NetworkSettings) error {
 		}
 	}
 	c.Timeout, c.MaxRetries, c.RetryDelay, c.RetryMaxDelay, c.UserAgent = timeout, *n.MaxRetries, retry, maximum, n.UserAgent
+	c.RespectRobots = n.RespectRobots == nil || *n.RespectRobots
 	c.RequireProxy, c.IsolateProxySessions, c.AllowedHostSuffixes = n.RequireProxy, n.IsolateProxySessions, suffixes
 	return nil
 }

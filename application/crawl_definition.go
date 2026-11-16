@@ -3,6 +3,7 @@ package application
 import (
 	"encoding/json"
 	"github.com/iakinsey/delver/config"
+	"github.com/iakinsey/delver/flow"
 	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/types/errs"
 	"github.com/iakinsey/delver/util"
@@ -22,6 +23,7 @@ type ProxySettings struct {
 	URL  string `json:"url"`
 }
 type CrawlDefinition struct {
+	Fetch        *flow.Policy       `json:"fetch,omitempty"`
 	Network      NetworkSettings    `json:"network"`
 	Proxy        ProxySettings      `json:"proxy"`
 	Name         string             `json:"name"`
@@ -41,10 +43,12 @@ type CrawlDefinition struct {
 }
 
 func DefaultCrawlDefinition() CrawlDefinition {
-	return CrawlDefinition{Network: DefaultNetworkSettings(), Name: "Untitled crawl", Seeds: []string{}, Feeds: []string{}, Scope: "same_domain", Strategy: "host_diverse", MaxDepth: 10, MaxHops: 3, RequestDelay: "100ms", Concurrency: 2, Revisit: "24h", Retention: frontier.DefaultRetention()}
+	p := flow.Default()
+	return CrawlDefinition{Fetch: &p, Network: DefaultNetworkSettings(), Name: "Untitled crawl", Seeds: []string{}, Feeds: []string{}, Scope: "same_domain", Strategy: "host_diverse", MaxDepth: 10, MaxHops: 3, RequestDelay: "100ms", Concurrency: 2, Revisit: "24h", Retention: frontier.DefaultRetention()}
 }
 func decodeDefinition(raw json.RawMessage) (CrawlDefinition, error) {
 	d := DefaultCrawlDefinition()
+	d.Fetch = nil // Omitted settings preserve existing four-worker definitions.
 	if err := decodeParameters(raw, &d); err != nil {
 		return d, errs.NewRequestError(err.Error())
 	}
@@ -88,6 +92,14 @@ func CompileCrawl(root, runID string, d CrawlDefinition) (config.Application, er
 		return a, err
 	}
 	c := &a.Config
+	policy := flow.Legacy()
+	if d.Fetch != nil {
+		policy = *d.Fetch
+	}
+	if err := policy.Validate(); err != nil {
+		return a, err
+	}
+	c.Fetch = &policy
 	c.API.Enabled = false
 	c.Streamer.Enabled = false
 	c.Metrics.Enabled = false
@@ -126,6 +138,9 @@ func CompileCrawl(root, runID string, d CrawlDefinition) (config.Application, er
 	worker := func(name, kind, in, out string, p interface{}, job bool, interval time.Duration, once bool) {
 		b, _ := json.Marshal(p)
 		count := 4
+		if kind == "http_fetcher" {
+			count = policy.PoolSize()
+		}
 		if job || kind == "jsonl_sink" {
 			count = 1
 		}
@@ -141,7 +156,7 @@ func CompileCrawl(root, runID string, d CrawlDefinition) (config.Application, er
 	}
 	resource("objects", "filesystem_object_store", map[string]string{"path": filepath.Join(root, "objects")})
 	resource("source_progress", "persistent_map", map[string]string{"path": filepath.Join(root, "source_progress")})
-	fp := frontier.StoreParams{Path: filepath.Join(root, "frontier"), Retention: d.Retention, MaxDispatches: d.Termination.MaxRequests, CacheBudgetMB: 64}
+	fp := frontier.StoreParams{OriginDelay: frontier.Lifetime(delay), Retry: &frontier.RetryPolicy{Share: policy.RetryShare, Limit: c.HTTPClient.MaxRetries, Base: flow.Duration(c.HTTPClient.RetryDelay), Maximum: flow.Duration(c.HTTPClient.RetryMaxDelay), FailureThreshold: policy.FailureThreshold, HostCooldown: policy.HostCooldown, HostCooldownMax: policy.HostCooldownMax, ProbeInterval: policy.RecoveryProbeInterval}, Path: filepath.Join(root, "frontier"), Retention: d.Retention, MaxDispatches: d.Termination.MaxRequests, CacheBudgetMB: 64}
 	if !d.Termination.WhenDrained {
 		fp.RevisitAfter = frontier.Lifetime(revisit)
 	}
@@ -162,7 +177,7 @@ func CompileCrawl(root, runID string, d CrawlDefinition) (config.Application, er
 	worker("discover", "frontier_accumulator", "analyzed", "", map[string]interface{}{"frontier_store": "frontier", "scope": d.Scope, "allowed_host_suffixes": c.HTTPClient.AllowedHostSuffixes, "max_depth": d.MaxDepth, "max_hops": d.MaxHops, "allow_pattern": d.AllowPattern, "deny_pattern": d.DenyPattern}, false, 0, false)
 	worker("save", "jsonl_sink", "results", "", map[string]string{"path": filepath.Join(root, "results.jsonl")}, false, 0, false)
 	worker("publish", "frontier_publisher", "", "", map[string]interface{}{"frontier_store": "frontier", "output_queue": "requests", "strategy": d.Strategy}, true, 100*time.Millisecond, false)
-	worker("cleanup", "frontier_cleanup", "", "", map[string]string{"frontier_store": "frontier"}, true, time.Minute, false)
+	worker("cleanup", "frontier_cleanup", "", "", map[string]string{"frontier_store": "frontier"}, true, time.Duration(d.Retention.CleanupInterval), false)
 	if err := Validate(a); err != nil {
 		return a, errs.NewRequestError(err.Error())
 	}

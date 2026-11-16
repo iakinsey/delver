@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -23,6 +24,7 @@ var ErrCapacity = errors.New("frontier capacity reached")
 var ErrCooling = errors.New("origin cooling")
 
 type StoreParams struct {
+	Retry               *RetryPolicy   `json:"retry,omitempty"`
 	RevisitAfter        Lifetime       `json:"revisit_after"`
 	MaxDispatches       int64          `json:"max_dispatches"`
 	CacheBudgetMB       int            `json:"cache_budget_mb"`
@@ -37,11 +39,13 @@ type StoreParams struct {
 	MaxPending          int            `json:"max_pending"`
 }
 type Candidate struct {
-	Discovered int64                  `json:"discovered"`
-	Request    message.FetcherRequest `json:"request"`
-	State      string                 `json:"state"`
-	Sequence   int64                  `json:"sequence"`
-	Terminal   int64                  `json:"terminal,omitempty"`
+	NextAttempt int64                  `json:"next_attempt,omitempty"`
+	LastFailure string                 `json:"last_failure,omitempty"`
+	Discovered  int64                  `json:"discovered"`
+	Request     message.FetcherRequest `json:"request"`
+	State       string                 `json:"state"`
+	Sequence    int64                  `json:"sequence"`
+	Terminal    int64                  `json:"terminal,omitempty"`
 }
 type RewardPolicy interface {
 	Reward(message.FetcherResponse, bool) float64
@@ -60,6 +64,7 @@ func (HTMLReward) Reward(r message.FetcherResponse, unique bool) float64 {
 }
 
 type Store struct {
+	controller   atomic.Value
 	RewardPolicy RewardPolicy
 	patterns     map[string]*regexp.Regexp
 	db           *badger.DB
@@ -99,6 +104,11 @@ func Normalize(raw, base string) (string, error) {
 	return u.String(), nil
 }
 func OpenStore(p StoreParams) (*Store, error) {
+	if p.Retry != nil {
+		if err := p.Retry.Validate(); err != nil {
+			return nil, err
+		}
+	}
 	for pattern, limit := range p.PatternBudgets {
 		if _, err := regexp.Compile(pattern); err != nil {
 			return nil, err
@@ -119,7 +129,7 @@ func OpenStore(p StoreParams) (*Store, error) {
 	if err := p.Retention.Validate(); err != nil {
 		return nil, err
 	}
-	if p.OriginDelay == 0 {
+	if p.OriginDelay == 0 && p.Retry == nil {
 		p.OriginDelay = Lifetime(100 * time.Millisecond)
 	}
 	if p.MaxPendingPerOrigin == 0 {
@@ -148,7 +158,12 @@ func OpenStore(p StoreParams) (*Store, error) {
 	for pattern := range p.PatternBudgets {
 		patterns[pattern] = regexp.MustCompile(pattern)
 	}
-	return &Store{db: db, params: p, patterns: patterns, RewardPolicy: HTMLReward{}}, nil
+	store := &Store{db: db, params: p, patterns: patterns, RewardPolicy: HTMLReward{}}
+	if err := store.ensureFreshIndexes(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return store, nil
 }
 func (s *Store) Close() error { s.mu.Lock(); defer s.mu.Unlock(); return s.db.Close() }
 func read(tx *badger.Txn, key string, v interface{}) error {
@@ -183,11 +198,18 @@ func (s *Store) Admit(ctx context.Context, r message.FetcherRequest) error {
 	if err := s.checkDisk(); err != nil {
 		return err
 	}
-	return s.db.Update(func(tx *badger.Txn) error {
+	return s.update(func(tx *badger.Txn) error {
 		var existing Candidate
 		if e := read(tx, "u/"+uri, &existing); e == nil {
 			if !r.BetterTraversalThan(existing.Request) || existing.State == "dedup" || existing.State == "failed" {
 				return nil
+			}
+			if existing.State == "retry_wait" {
+				existing.Request.Depth = r.Depth
+				existing.Request.Hops = r.Hops
+				existing.Request.ScopeRoot = r.ScopeRoot
+				existing.Request.Origin = r.Origin
+				return write(tx, "u/"+uri, existing)
 			}
 			if existing.State == "reserved" {
 				if err := tx.Delete([]byte(fmt.Sprintf("reserved/%020d/%s", existing.Sequence, existing.Request.URI))); err != nil {
@@ -314,7 +336,7 @@ func (s *Store) Admit(ctx context.Context, r message.FetcherRequest) error {
 func (s *Store) Pending(ctx context.Context, after string, limit int) ([]Candidate, string, error) {
 	var out []Candidate
 	cursor := after
-	err := s.db.View(func(tx *badger.Txn) error {
+	err := s.view(func(tx *badger.Txn) error {
 		it := tx.NewIterator(badger.DefaultIteratorOptions)
 		defer it.Close()
 		start := []byte("p/")
@@ -350,7 +372,7 @@ func (s *Store) Reserve(ctx context.Context, c Candidate) (Candidate, error) {
 	if err := ctx.Err(); err != nil {
 		return c, err
 	}
-	err := s.db.Update(func(tx *badger.Txn) error {
+	err := s.update(func(tx *badger.Txn) error {
 		if err := read(tx, "u/"+c.Request.URI, &c); err != nil {
 			return err
 		}
@@ -372,7 +394,15 @@ func (s *Store) Reserve(ctx context.Context, c Candidate) (Candidate, error) {
 			if next > time.Now().UnixNano() {
 				return ErrCooling
 			}
-			if err := writeTTL(tx, "cool/"+c.Request.Host, time.Now().Add(time.Duration(s.params.OriginDelay)).UnixNano(), time.Duration(s.params.OriginDelay)+time.Second); err != nil {
+			delay := time.Duration(s.params.OriginDelay)
+			if p := s.params.Retry; p != nil {
+				var failures int
+				read(tx, "failures/"+c.Request.Host, &failures)
+				if failures >= p.FailureThreshold {
+					delay = p.ProbeInterval.Value()
+				}
+			}
+			if err := writeTTL(tx, "cool/"+c.Request.Host, time.Now().Add(delay).UnixNano(), delay+time.Second); err != nil {
 				return err
 			}
 		}
@@ -395,7 +425,7 @@ func (s *Store) Reserve(ctx context.Context, c Candidate) (Candidate, error) {
 func (s *Store) Published(c Candidate) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.db.Update(func(tx *badger.Txn) error {
+	return s.update(func(tx *badger.Txn) error {
 		var current Candidate
 		if err := read(tx, "u/"+c.Request.URI, &current); err != nil {
 			return err
@@ -427,12 +457,15 @@ func (s *Store) Outcome(r message.FetcherResponse) error {
 	if err != nil {
 		return err
 	}
-	return s.db.Update(func(tx *badger.Txn) error {
+	return s.update(func(tx *badger.Txn) error {
 		var c Candidate
 		if e := read(tx, "u/"+uri, &c); e == badger.ErrKeyNotFound {
 			return nil
 		} else if e != nil {
 			return e
+		}
+		if c.State == "retry_wait" {
+			return nil
 		}
 		if c.Terminal != 0 || c.Request.RequestID != r.RequestID || c.Request.BetterTraversalThan(r.FetcherRequest) {
 			return nil
@@ -444,6 +477,9 @@ func (s *Store) Outcome(r message.FetcherResponse) error {
 			if err := increment(tx, "meta/reserved", -1); err != nil {
 				return err
 			}
+		}
+		if retried, err := s.scheduleRetry(tx, &c, r); err != nil || retried {
+			return err
 		}
 		var originCount int
 		if err := read(tx, "origin/"+c.Request.Host, &originCount); err != nil {
@@ -543,60 +579,60 @@ func (s *Store) Outcome(r message.FetcherResponse) error {
 func (s *Store) Cleanup(ctx context.Context, now time.Time) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	count := 0
-	err := s.db.Update(func(tx *badger.Txn) error {
+	count, err := s.updateBounded(s.params.Retention.CleanupBatchSize, func(tx *badger.Txn, batch int) (int, error) {
+		count := 0
 		it := tx.NewIterator(badger.DefaultIteratorOptions)
 		defer it.Close()
-		for it.Seek([]byte("e/")); it.ValidForPrefix([]byte("e/")) && count < s.params.Retention.CleanupBatchSize; it.Next() {
+		for it.Seek([]byte("e/")); it.ValidForPrefix([]byte("e/")) && count < batch; it.Next() {
 			if err := ctx.Err(); err != nil {
-				return err
+				return 0, err
 			}
 			key := string(it.Item().Key())
 			var deadline int64
 			if _, err := fmt.Sscanf(key, "e/%d/", &deadline); err != nil {
-				return err
+				return 0, err
 			}
 			if deadline > now.UnixNano() {
 				break
 			}
 			var uri string
 			if err := it.Item().Value(func(b []byte) error { return json.Unmarshal(b, &uri) }); err != nil {
-				return err
+				return 0, err
 			}
 			var c Candidate
 			if err := read(tx, "u/"+uri, &c); err != nil {
-				return err
+				return 0, err
 			}
 			if c.Terminal == 0 {
-				return fmt.Errorf("expiration references active work")
+				return 0, fmt.Errorf("expiration references active work")
 			}
 			if strings.Contains(key, "/detail/") {
 				c.Request = message.FetcherRequest{URI: uri, RequestID: c.Request.RequestID}
 				c.State = "dedup"
 				if err := write(tx, "u/"+uri, c); err != nil {
-					return err
+					return 0, err
 				}
 				if d := s.params.Retention.DedupFor; d != 0 {
 					if err := write(tx, expiry(retentionDeadline(c.Terminal, d), "dedup", uri), uri); err != nil {
-						return err
+						return 0, err
 					}
 				}
 			} else {
 				if err := tx.Delete([]byte("u/" + uri)); err != nil {
-					return err
+					return 0, err
 				}
 			}
 			if err := tx.Delete([]byte(key)); err != nil {
-				return err
+				return 0, err
 			}
 			count++
 		}
-		return increment(tx, "meta/cleaned", int64(count))
+		return count, increment(tx, "meta/cleaned", int64(count))
 	})
 	if err != nil {
 		return count, s.storageError(err)
 	}
-	gcErr := s.db.RunValueLogGC(0.5)
+	gcErr := s.db.RunValueLogGC(.5)
 	if gcErr != nil && gcErr != badger.ErrNoRewrite {
 		return count, s.storageError(gcErr)
 	}
@@ -611,7 +647,7 @@ type rewardStats struct {
 
 func (s *Store) Scores(cs []Candidate) (map[string]float64, error) {
 	scores := map[string]float64{}
-	err := s.db.View(func(tx *badger.Txn) error {
+	err := s.view(func(tx *badger.Txn) error {
 		for _, c := range cs {
 			if _, ok := scores[c.Request.Host]; ok {
 				continue
@@ -628,8 +664,8 @@ func (s *Store) Scores(cs []Candidate) (map[string]float64, error) {
 }
 func (s *Store) Counts() (map[string]int64, error) {
 	out := map[string]int64{}
-	err := s.db.View(func(tx *badger.Txn) error {
-		for field, key := range map[string]string{"pending_and_active": "meta/pending", "deferred_discoveries": "meta/staged", "budget_rejected": "meta/budget_rejected", "capacity_deferrals": "meta/capacity_deferrals", "unique_html": "meta/unique_html", "failed_fetches": "meta/failed_fetches", "dispatched": "meta/dispatched", "reserved": "meta/reserved", "admitted": "meta/sequence", "terminal_outcomes": "meta/outcomes", "cleaned": "meta/cleaned"} {
+	err := s.view(func(tx *badger.Txn) error {
+		for field, key := range map[string]string{"retry_pending": "meta/retry_pending", "retries_scheduled": "meta/retries_scheduled", "host_cooldowns": "meta/host_cooldowns", "pending_and_active": "meta/pending", "deferred_discoveries": "meta/staged", "budget_rejected": "meta/budget_rejected", "capacity_deferrals": "meta/capacity_deferrals", "unique_html": "meta/unique_html", "failed_fetches": "meta/failed_fetches", "dispatched": "meta/dispatched", "reserved": "meta/reserved", "admitted": "meta/sequence", "terminal_outcomes": "meta/outcomes", "cleaned": "meta/cleaned"} {
 			var value int64
 			if err := read(tx, key, &value); err != nil && err != badger.ErrKeyNotFound {
 				return err
@@ -697,5 +733,11 @@ func (s *Store) checkDisk() error {
 // Cache budgets bound configured caches and memtables, not total process RSS.
 func frontierOptions(path string, budgetMB int) badger.Options {
 	budget := int64(budgetMB) << 20
-	return badger.DefaultOptions(path).WithLogger(nil).WithSyncWrites(true).WithMemTableSize(budget / 8).WithNumMemtables(2).WithBlockCacheSize(budget / 4).WithIndexCacheSize(budget / 4).WithValueThreshold(1024).WithValueLogFileSize(16 << 20)
+	opts := badger.DefaultOptions(path).WithLogger(nil).WithSyncWrites(true).WithMemTableSize(budget / 8).WithNumMemtables(2).WithBlockCacheSize(budget / 4).WithIndexCacheSize(budget / 4).WithValueThreshold(1024).WithValueLogFileSize(16 << 20)
+	// Badger's default table targets grow through the LSM levels. Its allocator
+	// pool retains uncompressed construction and compression buffers, so limiting
+	// only read caches does not bound write-side memory under sustained admission.
+	opts.BaseTableSize = budget / 64
+	opts.TableSizeMultiplier = 1
+	return opts.WithNumCompactors(2)
 }

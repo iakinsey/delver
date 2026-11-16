@@ -62,6 +62,11 @@ func init() {
 }
 
 func paramsFrontier(p frontier.StoreParams) error {
+	if p.Retry != nil {
+		if err := p.Retry.Validate(); err != nil {
+			return err
+		}
+	}
 	if p.Path == "" || p.MaxPending < 0 || p.MaxPendingPerOrigin < 0 || p.MaxURLs < 0 || p.MaxURLsPerOrigin < 0 {
 		return fmt.Errorf("invalid frontier storage limits")
 	}
@@ -105,6 +110,19 @@ func validateFrontierWorker(w config.Worker, resources map[string]config.Resourc
 	}
 	if w.Type == "frontier_publisher" && resources[refs.Output].Type != "crawl_queue" {
 		return fmt.Errorf("frontier publisher requires durable crawl_queue")
+	}
+	if w.Type == "frontier_publisher" && resource.Type == "frontier_store" {
+		var store frontier.StoreParams
+		var output queue.CrawlQueueParams
+		if err := json.Unmarshal(resource.Parameters, &store); err != nil {
+			return err
+		}
+		if err := json.Unmarshal(resources[refs.Output].Parameters, &output); err != nil {
+			return err
+		}
+		if store.Retry != nil && store.Retry.Limit > 0 && !output.AcceptFrontierGenerations {
+			return fmt.Errorf("durable frontier retries require accept_frontier_generations on output queue %s", refs.Output)
+		}
 	}
 	if w.Type == "frontier_admission" {
 		var p struct {

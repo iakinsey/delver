@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/iakinsey/delver/api"
 	"github.com/iakinsey/delver/config"
+	"github.com/iakinsey/delver/flow"
 	"github.com/iakinsey/delver/gateway"
 	"github.com/iakinsey/delver/instrument"
 	"github.com/iakinsey/delver/queue"
@@ -16,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"reflect"
 	"sync"
 	"time"
@@ -96,8 +98,12 @@ func normalizeDurations(value interface{}) error {
 				}
 			}
 			switch key {
-			case "timeout", "interval", "delay", "request_delay", "retry_delay", "retry_max_delay", "expiration", "clear_expired_delay", "gc_interval", "save_interval", "default_save_interval", "rotate_after", "recrawl_after", "shutdown_timeout":
+			case "timeout", "connect_timeout", "tls_timeout", "header_timeout", "body_timeout", "interval", "delay", "request_delay", "retry_delay", "retry_max_delay", "expiration", "clear_expired_delay", "gc_interval", "save_interval", "default_save_interval", "rotate_after", "recrawl_after", "shutdown_timeout":
 				if text, ok := child.(string); ok {
+					if text == "inherit" && (key == "connect_timeout" || key == "tls_timeout" || key == "header_timeout" || key == "body_timeout") {
+						v[key] = int64(0)
+						continue
+					}
 					duration, err := time.ParseDuration(text)
 					if err != nil {
 						return fmt.Errorf("%s: %w", key, err)
@@ -232,7 +238,7 @@ func Run(ctx context.Context, app config.Application) (err error) {
 	}
 
 	shutdownStarted := false
-	prepared := &preparedApplication{ctx: ctx, app: app, resources: map[string]interface{}{}, workers: map[string]worker.WorkerManager{}}
+	prepared := &preparedApplication{pressurePaths: append(pipelinePaths(app), filepath.Dir(app.Config.API.OperationsPath)), ctx: ctx, app: app, resources: map[string]interface{}{}, workers: map[string]worker.WorkerManager{}}
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			err = fmt.Errorf("application construction: %v", recovered)
@@ -261,6 +267,50 @@ func Run(ctx context.Context, app config.Application) (err error) {
 		sink, cancel := instrument.NewRuntimeMetrics(ctx, app.Config.Metrics.Enabled, q)
 		defer cancel()
 		prepared.metrics = sink
+	}
+	if app.Config.Fetch == nil {
+		count := 0
+		for _, definition := range app.Workers {
+			if definition.Type == "http_fetcher" {
+				n := definition.Count
+				if n == 0 {
+					n = app.Config.Workers.WorkerCounts
+				}
+				count += n
+			}
+		}
+		if count > 0 {
+			p := flow.Legacy()
+			p.Concurrency = count
+			p.Maximum = count
+			if p.QueueHardLimit < count {
+				p.QueueHardLimit = count
+			}
+			app.Config.Fetch = &p
+			prepared.app.Config.Fetch = &p
+		}
+	}
+	if app.Config.Fetch != nil {
+		statePath := ""
+		if app.Config.API.OperationsPath != "" {
+			statePath = app.Config.API.OperationsPath + ".fetch.json"
+		}
+		controller, e := flow.New(ctx, string(types.NewV4()), *app.Config.Fetch, prepared.pressure, statePath)
+		if e != nil {
+			return e
+		}
+		defer controller.Close()
+		prepared.flow = controller
+		for _, resource := range prepared.resources {
+			if target, ok := resource.(interface{ SetFlow(*flow.Controller) }); ok {
+				target.SetFlow(controller)
+			}
+		}
+		prepared.app.Config.HTTPClient.Flow = controller
+		prepared.app.Config.HTTPClient.ConnectTimeout = app.Config.Fetch.ConnectTimeout.Value()
+		prepared.app.Config.HTTPClient.TLSTimeout = app.Config.Fetch.TLSTimeout.Value()
+		prepared.app.Config.HTTPClient.HeaderTimeout = app.Config.Fetch.HeaderTimeout.Value()
+		prepared.app.Config.HTTPClient.BodyTimeout = app.Config.Fetch.BodyTimeout.Value()
 	}
 	for _, w := range app.Workers {
 		CreateWorker(w, prepared)
@@ -403,13 +453,17 @@ func Run(ctx context.Context, app config.Application) (err error) {
 			}(m)
 		}
 		wg.Wait()
+		for _, q := range started {
+			shutdownErrors.run("queue", q.Stop)
+		}
 		if control, ok := ctx.Value(runtimeKey{}).(*runtimeControl); ok {
+			// Workers and admission have settled; storage is still open for counts.
+			if control.onFinalSnapshot != nil {
+				control.onFinalSnapshot(control.snapshot())
+			}
 			control.mu.Lock()
 			control.prepared = nil
 			control.mu.Unlock()
-		}
-		for _, q := range started {
-			shutdownErrors.run("queue", q.Stop)
 		}
 		for name, resource := range prepared.resources {
 			if _, ok := resource.(queue.Queue); ok {

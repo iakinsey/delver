@@ -1,0 +1,322 @@
+[
+  {
+    "key": "metrics_save_interval",
+    "label": "Metrics save interval",
+    "group": "Metrics",
+    "kind": "duration",
+    "min": 0.01,
+    "max": 3600
+  },
+  {
+    "key": "process_origin_limit",
+    "label": "Shared requests per host",
+    "group": "Execution",
+    "kind": "integer",
+    "min": 1,
+    "max": 8192
+  },
+  {
+    "key": "process_origin_delay",
+    "label": "Shared delay per host",
+    "group": "Execution",
+    "kind": "duration",
+    "min": 0,
+    "max": 86400
+  },
+  {
+    "key": "concurrency",
+    "label": "Concurrent requests overall",
+    "group": "Execution",
+    "kind": "integer",
+    "min": 1,
+    "max": 8192
+  },
+  {
+    "key": "process_limit",
+    "label": "Process-wide request ceiling",
+    "group": "Execution",
+    "kind": "integer",
+    "min": 1,
+    "max": 8192
+  },
+  {
+    "key": "minimum",
+    "label": "Minimum concurrency",
+    "group": "Adaptive limits",
+    "kind": "integer",
+    "min": 1,
+    "max": 8192
+  },
+  {
+    "key": "maximum",
+    "label": "Maximum concurrency",
+    "group": "Adaptive limits",
+    "kind": "integer",
+    "min": 1,
+    "max": 8192
+  },
+  {
+    "key": "sample_interval",
+    "label": "Pressure sampling interval",
+    "group": "Adaptive control",
+    "kind": "duration",
+    "min": 0.01,
+    "max": 3600
+  },
+  {
+    "key": "evaluation_window",
+    "label": "Evaluation window",
+    "group": "Adaptive control",
+    "kind": "duration",
+    "min": 0.01,
+    "max": 86400
+  },
+  {
+    "key": "min_samples",
+    "label": "Minimum completed samples",
+    "group": "Adaptive control",
+    "kind": "integer",
+    "min": 1,
+    "max": 1000000
+  },
+  {
+    "key": "adjustment_cooldown",
+    "label": "Adjustment cooldown",
+    "group": "Adaptive control",
+    "kind": "duration",
+    "min": 0.01,
+    "max": 86400
+  },
+  {
+    "key": "increase_step",
+    "label": "Concurrency increase step",
+    "group": "Adaptive control",
+    "kind": "integer",
+    "min": 1,
+    "max": 8192
+  },
+  {
+    "key": "decrease_factor",
+    "label": "Concurrency decrease multiplier",
+    "group": "Adaptive control",
+    "kind": "number",
+    "min": 0.01,
+    "max": 0.99
+  },
+  {
+    "key": "ewma_alpha",
+    "label": "Latency smoothing weight",
+    "group": "Adaptive control",
+    "kind": "number",
+    "min": 0.01,
+    "max": 1
+  },
+  {
+    "key": "latency_inflation",
+    "label": "Allowed latency inflation",
+    "group": "Adaptive control",
+    "kind": "number",
+    "min": 1,
+    "max": 100
+  },
+  {
+    "key": "minimum_gain",
+    "label": "Minimum throughput gain",
+    "group": "Adaptive control",
+    "kind": "number",
+    "min": 0,
+    "max": 1
+  },
+  {
+    "key": "overload_failure_ratio",
+    "label": "Proxy/local overload failure ratio",
+    "group": "Adaptive control",
+    "kind": "number",
+    "min": 0.01,
+    "max": 1
+  },
+  {
+    "key": "memory_high_mb",
+    "label": "Memory high watermark (MiB)",
+    "group": "Resource limits",
+    "kind": "integer",
+    "min": 1,
+    "max": 1048576
+  },
+  {
+    "key": "memory_low_mb",
+    "label": "Memory resume watermark (MiB)",
+    "group": "Resource limits",
+    "kind": "integer",
+    "min": 0,
+    "max": 1048576
+  },
+  {
+    "key": "cpu_high_percent",
+    "label": "CPU high watermark (%)",
+    "group": "Resource limits",
+    "kind": "number",
+    "min": 1,
+    "max": 100
+  },
+  {
+    "key": "cpu_low_percent",
+    "label": "CPU resume watermark (%)",
+    "group": "Resource limits",
+    "kind": "number",
+    "min": 0,
+    "max": 99
+  },
+  {
+    "key": "min_free_disk_mb",
+    "label": "Minimum free disk space (MiB)",
+    "group": "Resource limits",
+    "kind": "integer",
+    "min": 1,
+    "max": 1048576
+  },
+  {
+    "key": "queue_low_multiplier",
+    "label": "Fetch refill low watermark multiplier",
+    "group": "Dispatch and backpressure",
+    "kind": "number",
+    "min": 0.1,
+    "max": 100
+  },
+  {
+    "key": "queue_target_multiplier",
+    "label": "Fetch queue target multiplier",
+    "group": "Dispatch and backpressure",
+    "kind": "number",
+    "min": 0.1,
+    "max": 100
+  },
+  {
+    "key": "queue_hard_limit",
+    "label": "Fetch queue hard ceiling",
+    "group": "Dispatch and backpressure",
+    "kind": "integer",
+    "min": 1,
+    "max": 1000000
+  },
+  {
+    "key": "refill_batch",
+    "label": "Maximum refill batch",
+    "group": "Dispatch and backpressure",
+    "kind": "integer",
+    "min": 1,
+    "max": 100000
+  },
+  {
+    "key": "candidate_window",
+    "label": "Candidate selection window",
+    "group": "Dispatch and backpressure",
+    "kind": "integer",
+    "min": 1,
+    "max": 1000000
+  },
+  {
+    "key": "downstream_high",
+    "label": "Downstream queue high watermark",
+    "group": "Dispatch and backpressure",
+    "kind": "integer",
+    "min": 1,
+    "max": 1000000
+  },
+  {
+    "key": "downstream_low",
+    "label": "Downstream queue resume watermark",
+    "group": "Dispatch and backpressure",
+    "kind": "integer",
+    "min": 0,
+    "max": 1000000
+  },
+  {
+    "key": "failure_threshold",
+    "label": "Failures before host cooldown",
+    "group": "Retries and recovery",
+    "kind": "integer",
+    "min": 1,
+    "max": 1000
+  },
+  {
+    "key": "host_cooldown",
+    "label": "Initial host cooldown",
+    "group": "Retries and recovery",
+    "kind": "duration",
+    "min": 0.01,
+    "max": 604800
+  },
+  {
+    "key": "host_cooldown_max",
+    "label": "Maximum host cooldown",
+    "group": "Retries and recovery",
+    "kind": "duration",
+    "min": 0.01,
+    "max": 31536000
+  },
+  {
+    "key": "recovery_probe_interval",
+    "label": "Recovery probe spacing",
+    "group": "Retries and recovery",
+    "kind": "duration",
+    "min": 0.01,
+    "max": 604800
+  },
+  {
+    "key": "retry_share",
+    "label": "Retry scheduling share",
+    "group": "Retries and recovery",
+    "kind": "number",
+    "min": 0.01,
+    "max": 1
+  },
+  {
+    "key": "connect_timeout",
+    "label": "Connection timeout",
+    "group": "Network phases",
+    "kind": "inherit_duration",
+    "min": 0,
+    "max": 86400
+  },
+  {
+    "key": "tls_timeout",
+    "label": "TLS handshake timeout",
+    "group": "Network phases",
+    "kind": "inherit_duration",
+    "min": 0,
+    "max": 86400
+  },
+  {
+    "key": "header_timeout",
+    "label": "Response header timeout",
+    "group": "Network phases",
+    "kind": "inherit_duration",
+    "min": 0,
+    "max": 86400
+  },
+  {
+    "key": "body_timeout",
+    "label": "Response body timeout",
+    "group": "Network phases",
+    "kind": "inherit_duration",
+    "min": 0,
+    "max": 86400
+  },
+  {
+    "key": "metrics_window",
+    "label": "Metric rate window",
+    "group": "Metrics",
+    "kind": "duration",
+    "min": 0.01,
+    "max": 86400
+  },
+  {
+    "key": "metrics_samples",
+    "label": "Maximum samples per metric",
+    "group": "Metrics",
+    "kind": "integer",
+    "min": 16,
+    "max": 65536
+  }
+]

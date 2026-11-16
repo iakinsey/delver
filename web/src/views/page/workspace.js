@@ -1,3 +1,4 @@
+import { FetchMetrics } from "./fetchMetrics";
 import React, { useEffect, useState, useRef } from "react";
 import { useHistory, useLocation } from "react-router-dom";
 import { uuid4 } from "../../util";
@@ -73,6 +74,14 @@ export default function Workspace({ defaults }) {
     [failureOffset, setFailureOffset] = useState(0),
     [results, setResults] = useState({ rows: [] }),
     [resultsRun, setResultsRun] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false),
+    [preserveLogs, setPreserveLogs] = useState(true);
+  const deleting = useRef("");
+  const deleteTrigger = useRef(null);
+  function cancelDeletion() {
+    setDeleteOpen(false);
+    deleteTrigger.current?.focus();
+  }
   const selection = useRef("");
   selection.current = `${selected}:${resultsRun}`;
   const detail = crawls.find((c) => c.id === selected),
@@ -110,7 +119,12 @@ export default function Workspace({ defaults }) {
   );
   const locked = busy || workflowBusy;
   const state = workflowBusy
-    ? "starting"
+    ? Object.values(detail?.operations || {}).some(
+        (op) =>
+          op.action === "delete" && ["accepted", "running"].includes(op.state),
+      )
+      ? "deleting"
+      : "starting"
     : run?.state === "completed"
       ? "completed"
       : run?.state === "draining" && runtime.state === "running"
@@ -120,6 +134,13 @@ export default function Workspace({ defaults }) {
     const list = await crawlAPI("list");
     setCrawls(list);
     const record = list.find((c) => c.id === selected);
+    if (record?.deletion) deleting.current = selected;
+    if (!record && selected && deleting.current === selected) {
+      deleting.current = "";
+      setError("");
+      history.replace("/");
+      return;
+    }
     const key = `${selected}:${resultsRun}`;
     if (record && key === selection.current) {
       const o = await crawlAPI("operations", { crawl_id: selected });
@@ -168,6 +189,7 @@ export default function Workspace({ defaults }) {
     setFailures(null);
     setFailureOffset(0);
     setResultsRun("");
+    setDeleteOpen(false);
   }, [selected]);
   useEffect(() => {
     const guard = (e) => {
@@ -462,8 +484,98 @@ export default function Workspace({ defaults }) {
                 >
                   {detail.archived ? "Restore crawl" : "Archive crawl"}
                 </button>
+                <button
+                  ref={deleteTrigger}
+                  disabled={locked}
+                  onClick={() => {
+                    setPreserveLogs(true);
+                    setError("");
+                    setDeleteOpen(true);
+                  }}
+                >
+                  Delete crawl
+                </button>
               </div>
             </div>
+            {deleteOpen && (
+              <div className="crawl-delete-backdrop">
+                <form
+                  role="alertdialog"
+                  aria-modal="true"
+                  aria-labelledby="delete-crawl-title"
+                  className="crawl-delete-dialog"
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape" && !busy) cancelDeletion();
+                    if (e.key === "Tab") {
+                      const controls = [
+                        ...e.currentTarget.querySelectorAll("input,button"),
+                      ].filter((el) => !el.disabled);
+                      const first = controls[0],
+                        last = controls.at(-1);
+                      if (e.shiftKey && document.activeElement === first) {
+                        e.preventDefault();
+                        last?.focus();
+                      }
+                      if (!e.shiftKey && document.activeElement === last) {
+                        e.preventDefault();
+                        first?.focus();
+                      }
+                    }
+                  }}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    perform(async () => {
+                      deleting.current = selected;
+                      await crawlAPI("delete", {
+                        crawl_id: selected,
+                        revision: detail.revision,
+                        id: uuid4(),
+                        confirm: true,
+                        preserve_logs: preserveLogs,
+                      });
+                      deleting.current = selected;
+                      setDeleteOpen(false);
+                    });
+                  }}
+                >
+                  {error && <p role="alert">{error}</p>}
+                  <h2 id="delete-crawl-title">
+                    Delete {detail.definition.name}?
+                  </h2>
+                  <p>
+                    This permanently removes its saved data and all run history.
+                  </p>
+                  <label className="crawl-check">
+                    <input
+                      type="checkbox"
+                      checked={preserveLogs}
+                      onChange={(e) => setPreserveLogs(e.target.checked)}
+                      disabled={busy}
+                    />
+                    Preserve crawl logs
+                  </label>
+                  <p>
+                    <small>
+                      Checked keeps Elasticsearch logs. Unchecked deletes this
+                      crawl’s Elasticsearch logs.
+                    </small>
+                  </p>
+                  <div className="crawl-actions">
+                    <button
+                      autoFocus
+                      type="button"
+                      disabled={busy}
+                      onClick={cancelDeletion}
+                    >
+                      Cancel
+                    </button>
+                    <button type="submit" disabled={busy}>
+                      Delete permanently
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
             {(detail.draft || detail.expert_draft) && (
               <p className="crawl-notice">
                 A draft is saved. Applying it starts a replacement run.
@@ -565,6 +677,7 @@ export default function Workspace({ defaults }) {
               </p>
             ))}
           </section>
+          <FetchMetrics data={frame.fetch} frontier={stats} />
           <section className="crawl-panel">
             <h2>Run activity</h2>
             {Object.values(ops).length ? (
@@ -799,9 +912,7 @@ export default function Workspace({ defaults }) {
       ) : !selected ? (
         <>
           <div className="crawl-library-toolbar">
-            <p>
-              {crawls.filter((c) => !c.archived).length} crawl definitions
-            </p>
+            <p>{crawls.filter((c) => !c.archived).length} crawl definitions</p>
             <label className="crawl-check">
               <input
                 type="checkbox"

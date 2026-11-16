@@ -3,6 +3,8 @@ package message
 import "github.com/iakinsey/delver/types"
 
 type FetcherRequest struct {
+	Attempt            int            `json:"attempt,omitempty"`
+	QueuedAt           int64          `json:"queued_at,omitempty"`
 	ScopeRoot          string         `json:"scope_root,omitempty"`
 	FrontierGeneration types.UUID     `json:"frontier_generation,omitempty"`
 	RequestID          types.UUID     `json:"request_id,omitempty"`

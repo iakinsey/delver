@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	"github.com/iakinsey/delver/flow"
 	"sync"
 	"time"
 
@@ -13,13 +14,15 @@ import (
 
 type runtimeKey struct{}
 type runtimeControl struct {
-	log           *crawlLog
-	initialPaused bool
-	resourcesDone chan struct{}
-	mu            sync.Mutex
-	prepared      *preparedApplication
+	log             *crawlLog
+	onFinalSnapshot func(RuntimeSnapshot)
+	initialPaused   bool
+	resourcesDone   chan struct{}
+	mu              sync.Mutex
+	prepared        *preparedApplication
 }
 type RuntimeSnapshot struct {
+	Fetch       *flow.Snapshot              `json:"fetch,omitempty"`
 	Frontier    map[string]int64            `json:"frontier"`
 	QueueStates map[string]map[string]int64 `json:"queue_states"`
 	Health      map[string]string           `json:"health"`
@@ -33,6 +36,10 @@ func (c *runtimeControl) snapshot() RuntimeSnapshot {
 	result := RuntimeSnapshot{Frontier: map[string]int64{}, QueueStates: map[string]map[string]int64{}, Health: map[string]string{}, Workers: map[string]worker.Activity{}, Queues: map[string]int64{}}
 	if c.prepared == nil {
 		return result
+	}
+	if c.prepared.flow != nil {
+		snapshot := c.prepared.flow.Snapshot()
+		result.Fetch = &snapshot
 	}
 	for name, manager := range c.prepared.workers {
 		if source, ok := manager.(interface{ Health() string }); ok {

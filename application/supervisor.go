@@ -42,23 +42,25 @@ type operationsState struct {
 type runtimeResult struct{ err error }
 
 type Supervisor struct {
-	onStatus   func(string, time.Time)
-	originGate config.HTTPGate
-	log        crawlLog
-	transition sync.Mutex
-	result     *runtimeResult
-	lockFile   *os.File
-	closing    bool
-	commands   sync.WaitGroup
-	mu         sync.Mutex
-	state      operationsState
-	path       string
-	status     string
-	lastError  string
-	control    *runtimeControl
-	cancel     context.CancelFunc
-	done       chan struct{}
-	ctx        context.Context
+	crawlID, runID  string
+	onStatus        func(string, time.Time)
+	onFinalSnapshot func(RuntimeSnapshot)
+	originGate      config.HTTPGate
+	log             crawlLog
+	transition      sync.Mutex
+	result          *runtimeResult
+	lockFile        *os.File
+	closing         bool
+	commands        sync.WaitGroup
+	mu              sync.Mutex
+	state           operationsState
+	path            string
+	status          string
+	lastError       string
+	control         *runtimeControl
+	cancel          context.CancelFunc
+	done            chan struct{}
+	ctx             context.Context
 }
 
 func newSupervisor(ctx context.Context, app config.Application) (*Supervisor, error) {
@@ -190,10 +192,11 @@ func (s *Supervisor) start() error {
 	s.setStatus("starting")
 	ctx, cancel := context.WithCancel(s.ctx)
 	s.cancel = cancel
-	s.control = &runtimeControl{log: &s.log, initialPaused: s.state.Desired == "paused", resourcesDone: make(chan struct{})}
+	s.control = &runtimeControl{log: &s.log, onFinalSnapshot: s.onFinalSnapshot, initialPaused: s.state.Desired == "paused", resourcesDone: make(chan struct{})}
 	s.done = make(chan struct{})
 	s.result = &runtimeResult{}
 	control, done, app, result := s.control, s.done, s.state.Active, s.result
+	app.Config.RuntimeCrawlID, app.Config.RuntimeRunID = s.crawlID, s.runID
 	if s.originGate != nil {
 		app.Config.HTTPClient.GlobalGate = s.originGate
 		app.Config.HTTPClient.LocalGate = util.NewOriginGate()

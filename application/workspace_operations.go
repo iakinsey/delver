@@ -43,6 +43,9 @@ func (w *Workspace) acceptWorkflow(r *CrawlRecord, slot *crawlSlot, action strin
 	if revision != r.Revision {
 		return nil, errs.NewRequestError("this crawl changed; reload before running")
 	}
+	if r.Deletion != nil {
+		return nil, errs.NewRequestError("crawl deletion is in progress")
+	}
 	if r.Archived {
 		return nil, errs.NewRequestError("restore this crawl before running")
 	}

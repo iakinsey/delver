@@ -31,7 +31,7 @@ func (s *Store) StageDiscovery(ctx context.Context, id string, requests []messag
 			if err := s.checkDisk(); err != nil {
 				return err
 			}
-			return s.db.Update(func(tx *badger.Txn) error {
+			return s.update(func(tx *badger.Txn) error {
 				marker := fmt.Sprintf("discovery/%s/%08d", digest, start)
 				if _, err := tx.Get([]byte(marker)); err == nil {
 					return nil
@@ -65,7 +65,7 @@ func (s *Store) DrainDiscovery(ctx context.Context, limit int) (int, error) {
 		request message.FetcherRequest
 	}
 	entries := []entry{}
-	err := s.db.View(func(tx *badger.Txn) error {
+	err := s.view(func(tx *badger.Txn) error {
 		var cursor string
 		if err := read(tx, "meta/staged_cursor", &cursor); err != nil && err != badger.ErrKeyNotFound {
 			return err
@@ -118,7 +118,7 @@ func (s *Store) DrainDiscovery(ctx context.Context, limit int) (int, error) {
 		err := func() error {
 			s.mu.Lock()
 			defer s.mu.Unlock()
-			return s.db.Update(func(tx *badger.Txn) error {
+			return s.update(func(tx *badger.Txn) error {
 				if err := write(tx, "meta/staged_cursor", e.key); err != nil {
 					return err
 				}

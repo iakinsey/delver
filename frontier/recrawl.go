@@ -21,7 +21,7 @@ func (s *Store) DrainRecrawls(ctx context.Context, limit int) error {
 		request message.FetcherRequest
 	}
 	entries := []due{}
-	err := s.db.View(func(tx *badger.Txn) error {
+	err := s.view(func(tx *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := tx.NewIterator(opts)
@@ -54,7 +54,7 @@ func (s *Store) DrainRecrawls(ctx context.Context, limit int) error {
 		err := func() error {
 			s.mu.Lock()
 			defer s.mu.Unlock()
-			return s.db.Update(func(tx *badger.Txn) error {
+			return s.update(func(tx *badger.Txn) error {
 				var c Candidate
 				if err := read(tx, "u/"+e.request.URI, &c); err == nil {
 					if c.Terminal == 0 || c.Request.RequestID != e.request.RequestID {
@@ -85,6 +85,7 @@ func (s *Store) DrainRecrawls(ctx context.Context, limit int) error {
 		}
 		if !active {
 			r := e.request
+			r.Attempt = 0
 			r.RequestID = ""
 			r.FrontierGeneration = ""
 			if err := s.Admit(ctx, r); err == ErrCapacity {
@@ -93,7 +94,7 @@ func (s *Store) DrainRecrawls(ctx context.Context, limit int) error {
 				return err
 			}
 		}
-		if err := s.db.Update(func(tx *badger.Txn) error { return tx.Delete([]byte(e.key)) }); err != nil {
+		if err := s.update(func(tx *badger.Txn) error { return tx.Delete([]byte(e.key)) }); err != nil {
 			return err
 		}
 	}

@@ -1,6 +1,9 @@
 package types
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 const (
 	MetricIndexable    = "metric"
@@ -8,7 +11,9 @@ const (
 )
 
 type Indexable struct {
-	ID string
+	CrawlID string `json:"-"`
+	RunID   string `json:"-"`
+	ID      string
 	// TODO Index and DataType may be redundant, but perhaps not if
 	// we want to house the same data different indices
 	Index      string
@@ -41,6 +46,7 @@ var Indices = []Index{
 			"settings":{},
 			"mappings": {
 				"properties": {
+ "delver_crawl_id": {"type":"keyword"}, "delver_run_id": {"type":"keyword"},
 					"key": {"type":"keyword"},
 					"when": {"type": "date", "format": "epoch_second"},
 					"value": {"type": "double"}
@@ -54,6 +60,7 @@ var Indices = []Index{
 			"settings": {},
 			"mappings": {
 			  "properties": {
+ "delver_crawl_id": {"type":"keyword"}, "delver_run_id": {"type":"keyword"},
 				"store_key": { "type": "keyword" },
 				"content_md5": { "type": "keyword" },
 				"elapsed_time_ms": { "type": "keyword" },
@@ -98,4 +105,22 @@ var Indices = []Index{
 			}
 		}`,
 	},
+}
+
+// IndexDocument adds ownership without changing the typed data used by live subscriptions.
+func (i *Indexable) IndexDocument() (interface{}, error) {
+	if i.CrawlID == "" {
+		return i.Data, nil
+	}
+	raw, err := json.Marshal(i.Data)
+	if err != nil {
+		return nil, err
+	}
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &document); err != nil || document == nil {
+		return nil, fmt.Errorf("indexed crawl logs must be JSON objects")
+	}
+	document["delver_crawl_id"], _ = json.Marshal(i.CrawlID)
+	document["delver_run_id"], _ = json.Marshal(i.RunID)
+	return document, nil
 }

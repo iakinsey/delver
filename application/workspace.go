@@ -20,6 +20,7 @@ import (
 )
 
 type CrawlRun struct {
+	LogsScoped bool                `json:"logs_scoped,omitempty"`
 	Continued  int                 `json:"continued,omitempty"`
 	Summary    *RuntimeSnapshot    `json:"summary,omitempty"`
 	Legacy     bool                `json:"legacy,omitempty"`
@@ -32,6 +33,7 @@ type CrawlRun struct {
 	Expert     *config.Application `json:"expert,omitempty"`
 }
 type CrawlRecord struct {
+	Deletion     *CrawlDeletion        `json:"deletion,omitempty"`
 	LegacySource string                `json:"legacy_source,omitempty"`
 	CreationID   string                `json:"creation_id,omitempty"`
 	CreationHash string                `json:"creation_hash,omitempty"`
@@ -94,7 +96,7 @@ func NewWorkspace(parent context.Context, options Options) (*Workspace, error) {
 		return nil, errs.NewRequestError("workspace is already open")
 	}
 	ctx, cancel := context.WithCancel(parent)
-	w := &Workspace{ctx: ctx, cancel: cancel, options: options, root: root, records: map[string]*CrawlRecord{}, slots: map[string]*crawlSlot{}, lock: lock, gate: util.NewOriginGate(), done: make(chan struct{})}
+	w := &Workspace{ctx: ctx, cancel: cancel, options: options, root: root, records: map[string]*CrawlRecord{}, slots: map[string]*crawlSlot{}, lock: lock, gate: util.ProcessOriginGate(), done: make(chan struct{})}
 	b, err := os.ReadFile(filepath.Join(root, "crawls.json"))
 	if err == nil {
 		if err = json.Unmarshal(b, &w.records); err != nil {
@@ -132,7 +134,7 @@ func NewWorkspace(parent context.Context, options Options) (*Workspace, error) {
 				return nil, e
 			}
 		}
-	} else if len(w.records) == 0 {
+	} else if len(w.records) == 0 && os.IsNotExist(err) {
 		if data, e := os.ReadFile(filepath.Join(root, "state.json")); e == nil {
 			var old operationsState
 			if e := json.Unmarshal(data, &old); e != nil {
@@ -180,7 +182,7 @@ func NewWorkspace(parent context.Context, options Options) (*Workspace, error) {
 		}
 		slot := newCrawlSlot()
 		w.slots[id] = slot
-		if len(r.Runs) > 0 {
+		if len(r.Runs) > 0 && r.Deletion == nil {
 			run := r.Runs[len(r.Runs)-1]
 			if !validWorkspaceID(run.ID) {
 				w.CloseWithoutMonitor()
@@ -304,7 +306,11 @@ func (w *Workspace) openSupervisor(r *CrawlRecord, run CrawlRun) (*Supervisor, e
 			}
 		}
 	}
+	s.crawlID, s.runID = r.ID, run.ID
 	s.originGate = w.gate
+	s.onFinalSnapshot = func(snapshot RuntimeSnapshot) {
+		w.saveRunSummary(r.ID, run.ID, sanitizeRuntimeSnapshot(snapshot, s.state.Active))
+	}
 	s.onStatus = func(state string, now time.Time) {
 		if state == "stopping" && s.control != nil {
 			w.saveRunSummary(r.ID, run.ID, sanitizeRuntimeSnapshot(s.control.snapshot(), s.state.Active))
@@ -448,6 +454,8 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 	}
 	var req struct {
 		CrawlID           string          `json:"crawl_id"`
+		Confirm           bool            `json:"confirm"`
+		PreserveLogs      *bool           `json:"preserve_logs"`
 		Revision          uint64          `json:"revision"`
 		Definition        json.RawMessage `json:"definition"`
 		Configuration     json.RawMessage `json:"configuration"`
@@ -470,6 +478,9 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 		}
 		req.Configuration = json.RawMessage(*req.ConfigurationJSON)
 	}
+	if action == "patch_fetch" {
+		return patchFetch(raw)
+	}
 	if action == "preview" {
 		return previewDefinition(raw)
 	}
@@ -488,6 +499,12 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 		for _, id := range ids {
 			v, err := w.snapshot(id)
 			if err != nil {
+				w.mu.Lock()
+				gone := w.records[id] == nil
+				w.mu.Unlock()
+				if gone {
+					continue
+				}
 				return nil, err
 			}
 			out = append(out, v)
@@ -535,6 +552,9 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 		}
 		return w.snapshot(id)
 	}
+	if action == "delete" && !validWorkspaceID(req.CrawlID) {
+		return nil, errs.NewRequestError("select a crawl to delete")
+	}
 	w.mu.Lock()
 	r := w.records[req.CrawlID]
 	slot := w.slots[req.CrawlID]
@@ -546,7 +566,13 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 	}
 	w.mu.Unlock()
 	if r == nil {
+		if action == "delete" && req.Confirm && validWorkspaceID(req.CrawlID) {
+			return map[string]interface{}{"deleted": true}, nil
+		}
 		return nil, errs.NewRequestError("select a crawl")
+	}
+	if action == "delete" {
+		return w.acceptDeletion(r, slot, req.Revision, req.ID, req.Confirm, req.PreserveLogs)
 	}
 	if action == "results" {
 		return w.recentResults(r, req.RunID)
@@ -581,6 +607,12 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 	}
 	slot.mu.Lock()
 	defer slot.mu.Unlock()
+	w.mu.Lock()
+	unavailable := w.records[r.ID] != r || r.Deletion != nil
+	w.mu.Unlock()
+	if unavailable {
+		return nil, errs.NewRequestError("crawl deletion is in progress; retry deletion if it failed")
+	}
 	if action == "draft" {
 		w.mu.Lock()
 		defer w.mu.Unlock()
@@ -806,7 +838,7 @@ func (w *Workspace) applyRun(r *CrawlRecord, slot *crawlSlot, action string, rev
 		}
 		slot.setSupervisor(nil)
 	}
-	run := CrawlRun{ID: string(types.NewV4()), Created: time.Now().Unix(), Version: r.Revision + 1, State: "running", Definition: d, Expert: expert}
+	run := CrawlRun{LogsScoped: true, ID: string(types.NewV4()), Created: time.Now().Unix(), Version: r.Revision + 1, State: "running", Definition: d, Expert: expert}
 	s, err := w.openSupervisor(r, run)
 	if err != nil {
 		return nil, err

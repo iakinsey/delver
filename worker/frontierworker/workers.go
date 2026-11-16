@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/armon/go-metrics"
+	"github.com/iakinsey/delver/flow"
 	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/instrument"
 	"github.com/iakinsey/delver/queue"
@@ -15,6 +16,7 @@ import (
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
 	"golang.org/x/net/publicsuffix"
+	"math"
 	"net"
 	"net/url"
 	"regexp"
@@ -23,6 +25,8 @@ import (
 )
 
 type Params struct {
+	Flow                *flow.Controller       `json:"-"`
+	RetryShare          float64                `json:"retry_share"`
 	AllowedHostSuffixes []string               `json:"allowed_host_suffixes,omitempty"`
 	AllowPattern        string                 `json:"allow_pattern"`
 	DenyPattern         string                 `json:"deny_pattern"`
@@ -220,6 +224,13 @@ func domain(h string) string {
 }
 func (w *Worker) publish(ctx context.Context) error {
 	if target, ok := w.Store.(interface {
+		DrainRetries(context.Context, int) error
+	}); ok {
+		if err := target.DrainRetries(ctx, w.Window); err != nil {
+			return err
+		}
+	}
+	if target, ok := w.Store.(interface {
 		DrainRecrawls(context.Context, int) error
 	}); ok {
 		if err := target.DrainRecrawls(ctx, w.Window); err != nil {
@@ -234,10 +245,15 @@ func (w *Worker) publish(ctx context.Context) error {
 		return fmt.Errorf("fetch queue unavailable")
 	}
 	remaining := w.LowWater - int(n)
+	if w.Flow != nil {
+		var window int
+		remaining, _, window, _ = w.Flow.DispatchBounds(int(n))
+		w.Window = window
+	}
 	if remaining <= 0 {
 		return nil
 	}
-	if remaining > w.BatchSize {
+	if w.Flow == nil && remaining > w.BatchSize {
 		remaining = w.BatchSize
 	}
 	candidates, err := w.Store.Candidates(ctx, w.Strategy, w.lastHost, w.Window)
@@ -256,9 +272,27 @@ func (w *Worker) publish(ctx context.Context) error {
 		if selector == nil {
 			selector = frontier.Strategy(w.Strategy)
 		}
-		at := selector.Select(candidates, w.lastHost, w.step, scores)
-		if at < 0 || at >= len(candidates) {
+		selection := candidates
+		positions := []int{}
+		if w.RetryShare > 0 {
+			retries := retryTurn(w.step, w.RetryShare)
+			subset := []frontier.Candidate{}
+			for i, c := range candidates {
+				if (c.Request.Attempt > 0) == retries {
+					subset = append(subset, c)
+					positions = append(positions, i)
+				}
+			}
+			if len(subset) > 0 {
+				selection = subset
+			}
+		}
+		at := selector.Select(selection, w.lastHost, w.step, scores)
+		if at < 0 || at >= len(selection) {
 			return fmt.Errorf("selector returned invalid candidate index %d", at)
+		}
+		if len(positions) > 0 {
+			at = positions[at]
 		}
 
 		c := candidates[at]
@@ -273,6 +307,7 @@ func (w *Worker) publish(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		c.Request.QueuedAt = time.Now().UnixNano()
 		body, err := json.Marshal(c.Request)
 		if err != nil {
 			return err
@@ -298,3 +333,14 @@ func (w *Worker) publish(ctx context.Context) error {
 }
 
 func (w *Worker) SetMetricSink(sink metrics.MetricSink) { w.metrics = sink }
+
+func (w *Worker) SetFlow(controller *flow.Controller, p flow.Policy) {
+	w.Flow = controller
+	w.RetryShare = p.RetryShare
+	w.Window = p.CandidateWindow
+	w.BatchSize = p.RefillBatch
+}
+
+func retryTurn(step uint64, share float64) bool {
+	return math.Floor(float64(step+1)*share) > math.Floor(float64(step)*share)
+}

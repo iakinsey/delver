@@ -8,11 +8,19 @@ import (
 )
 
 func schedulingKeys(c Candidate) []string {
-	return []string{
+	keys := []string{
 		fmt.Sprintf("b/%010d/%020d/%s", c.Request.Depth, c.Sequence, c.Request.URI),
 		fmt.Sprintf("d/%010d/%020d/%s", int64(2147483647)-int64(c.Request.Depth), int64(9223372036854775807)-c.Sequence, c.Request.URI),
 		fmt.Sprintf("h/%s/%010d/%020d/%s", c.Request.Host, c.Request.Depth, c.Sequence, c.Request.URI),
 	}
+	if c.Request.Attempt > 0 {
+		keys = append(keys, fmt.Sprintf("retry_ready/%020d/%s", c.Sequence, c.Request.URI))
+	} else {
+		for _, key := range append([]string{}, keys...) {
+			keys = append(keys, "f"+key)
+		}
+	}
+	return keys
 }
 func schedule(tx *badger.Txn, c Candidate, remove bool) error {
 	for _, k := range schedulingKeys(c) {
@@ -32,7 +40,7 @@ func schedule(tx *badger.Txn, c Candidate, remove bool) error {
 // Candidates uses strategy-specific indexes; completed history is never visited.
 func (s *Store) Candidates(ctx context.Context, strategy, lastHost string, limit int) ([]Candidate, error) {
 	out := []Candidate{}
-	err := s.db.View(func(tx *badger.Txn) error {
+	err := s.view(func(tx *badger.Txn) error {
 		seen := map[string]bool{}
 		ropts := badger.DefaultIteratorOptions
 		ropts.PrefetchValues = false
@@ -41,6 +49,7 @@ func (s *Store) Candidates(ctx context.Context, strategy, lastHost string, limit
 			var uri string
 			if err := read(tx, string(reserved.Item().Key()), &uri); err != nil {
 				reserved.Close()
+
 				return err
 			}
 			var c Candidate
@@ -52,6 +61,40 @@ func (s *Store) Candidates(ctx context.Context, strategy, lastHost string, limit
 			seen[uri] = true
 		}
 		reserved.Close()
+		// Reserve a bounded part of the candidate window for eligible retries so
+		// a large untouched seed index cannot starve their recovery probes.
+		if s.params.Retry != nil {
+			quota := int(float64(limit) * s.params.Retry.Share)
+			if quota < 1 {
+				quota = 1
+			}
+			retry := tx.NewIterator(badger.DefaultIteratorOptions)
+			n := 0
+			for retry.Seek([]byte("retry_ready/")); retry.ValidForPrefix([]byte("retry_ready/")) && n < quota && len(out) < limit; retry.Next() {
+				if err := ctx.Err(); err != nil {
+					retry.Close()
+					return err
+				}
+				var uri string
+				if err := read(tx, string(retry.Item().Key()), &uri); err != nil {
+					retry.Close()
+					return err
+				}
+				if seen[uri] {
+					continue
+				}
+				var c Candidate
+				if err := read(tx, "u/"+uri, &c); err != nil {
+					retry.Close()
+					return err
+				}
+				out = append(out, c)
+				seen[uri] = true
+				n++
+			}
+			retry.Close()
+		}
+
 		prefix := "b/"
 		if strategy == "depth_first" {
 			prefix = "d/"
@@ -59,6 +102,9 @@ func (s *Store) Candidates(ctx context.Context, strategy, lastHost string, limit
 		diverse := strategy == "host_diverse" || strategy == "adaptive"
 		if diverse {
 			prefix = "h/"
+		}
+		if s.params.Retry != nil {
+			prefix = "f" + prefix
 		}
 		opts := badger.DefaultIteratorOptions
 		opts.PrefetchValues = false
@@ -87,7 +133,7 @@ func (s *Store) Candidates(ctx context.Context, strategy, lastHost string, limit
 				}
 				if diverse {
 					parts := strings.SplitN(key, "/", 3)
-					it.Seek([]byte("h/" + parts[1] + "/\xff"))
+					it.Seek([]byte(prefix + parts[1] + "/\xff"))
 				} else {
 					it.Next()
 				}
@@ -96,13 +142,38 @@ func (s *Store) Candidates(ctx context.Context, strategy, lastHost string, limit
 		}
 		start := prefix
 		if diverse && lastHost != "" {
-			start = "h/" + lastHost + "/\xff"
+			start = prefix + lastHost + "/\xff"
 		}
 		if err := scan(start, ""); err != nil {
 			return err
 		}
 		if diverse && start != prefix && len(out) < limit {
-			return scan(prefix, start)
+			if err := scan(prefix, start); err != nil {
+				return err
+			}
+		}
+		// Fill unused fresh capacity with retries when no fresh candidates remain.
+		if s.params.Retry != nil && len(out) < limit {
+			retry := tx.NewIterator(badger.DefaultIteratorOptions)
+			defer retry.Close()
+			for retry.Seek([]byte("retry_ready/")); retry.ValidForPrefix([]byte("retry_ready/")) && len(out) < limit; retry.Next() {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				var uri string
+				if err := read(tx, string(retry.Item().Key()), &uri); err != nil {
+					return err
+				}
+				if seen[uri] {
+					continue
+				}
+				var c Candidate
+				if err := read(tx, "u/"+uri, &c); err != nil {
+					return err
+				}
+				out = append(out, c)
+				seen[uri] = true
+			}
 		}
 		return nil
 	})

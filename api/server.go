@@ -71,7 +71,7 @@ func NewServerWithOperations(conf config.APIConfig, operations Operations) (*htt
 		if multi, ok := operations.(interface {
 			HandleCrawls(context.Context, string, json.RawMessage) (interface{}, error)
 		}); ok {
-			for _, name := range []string{"defaults", "preview", "results", "list", "create", "detail", "validate", "draft", "activate", "start_run", "continue_run", "duplicate", "archive", "restore", "command", "status", "operations", "failed", "log", "pipeline"} {
+			for _, name := range []string{"defaults", "patch_fetch", "preview", "results", "list", "create", "detail", "validate", "draft", "activate", "start_run", "continue_run", "duplicate", "delete", "archive", "restore", "command", "status", "operations", "failed", "log", "pipeline"} {
 				action := name
 				routes["/crawls/"+action] = func(ctx context.Context, raw json.RawMessage) (interface{}, error) {
 					return multi.HandleCrawls(ctx, action, raw)

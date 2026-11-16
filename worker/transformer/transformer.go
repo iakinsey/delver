@@ -11,12 +11,15 @@ import (
 )
 
 type transformer struct {
-	t        []transformers.Transformer
-	search   gateway.SearchGateway
-	streamer gateway.ClientStreamer
+	crawlID, runID string
+	t              []transformers.Transformer
+	search         gateway.SearchGateway
+	streamer       gateway.ClientStreamer
 }
 
 type TransformerParams struct {
+	CrawlID         string   `json:"-"`
+	RunID           string   `json:"-"`
 	Enabled         []string `json:"enabled"`
 	SearchAddresses []string `json:"search_addresses"`
 }
@@ -46,6 +49,7 @@ func NewTransformerWorkerContext(ctx context.Context, opts TransformerParams) wo
 	}
 
 	return &transformer{
+		crawlID: opts.CrawlID, runID: opts.RunID,
 		t:        t,
 		search:   search,
 		streamer: gateway.NewClientStreamer(),
@@ -71,6 +75,10 @@ func (s *transformer) OnMessageContext(ctx context.Context, msg types.Message) (
 		}
 
 		entities = append(entities, idx...)
+	}
+
+	for _, entity := range entities {
+		entity.CrawlID, entity.RunID = s.crawlID, s.runID
 	}
 
 	var indexErr error

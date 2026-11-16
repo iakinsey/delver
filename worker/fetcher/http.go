@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/iakinsey/delver/config"
+	"github.com/iakinsey/delver/flow"
 	"github.com/iakinsey/delver/frontier"
 	"io"
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,6 +30,7 @@ type HttpFetcherParams struct {
 }
 
 type httpFetcher struct {
+	flow        *flow.Controller
 	scope       string
 	allow, deny *regexp.Regexp
 	maxBytes    int64
@@ -74,6 +77,7 @@ func NewHttpFetcherWithConfig(args HttpFetcherParams, c config.Config) worker.Wo
 		deny = regexp.MustCompile(conf.DenyPattern)
 	}
 	return &httpFetcher{
+		flow:  c.HTTPClient.Flow,
 		allow: allow, deny: deny,
 		ObjectStore: args.ObjectStore,
 		maxBytes:    c.HTTPClient.MaxResponseBytes,
@@ -111,7 +115,14 @@ func (s *httpFetcher) OnMessageContext(ctx context.Context, msg types.Message) (
 		FetcherRequest: request,
 	}
 
+	if s.flow != nil && request.QueuedAt > 0 {
+		s.flow.Measure("queue_wait", time.Since(time.Unix(0, request.QueuedAt)))
+	}
 	s.doHttpRequestWithRetry(ctx, request, &response)
+	classifyResponse(&response)
+	if s.flow != nil {
+		s.flow.Record(response.HTTPCode, response.Success && response.HTTPCode >= 200 && response.HTTPCode < 400, strings.Contains(strings.ToLower(http.Header(response.Header).Get("Content-Type")), "text/html"), response.FailureClass, time.Duration(response.ElapsedTimeMs)*time.Millisecond, response.BytesReceived, response.BytesStored)
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -183,7 +194,14 @@ func (s *httpFetcher) doHttpRequest(ctx context.Context, request message.Fetcher
 	if limit <= 0 {
 		limit = 16 << 20
 	}
-	hash, err := s.ObjectStore.Put(key, &boundedBody{reader: res.Body, remaining: limit})
+	storageStart := time.Now()
+	hash, err := s.ObjectStore.Put(key, &boundedBody{reader: res.Body, remaining: limit, count: &response.BytesReceived})
+	if s.flow != nil {
+		s.flow.Measure("storage", time.Since(storageStart))
+	}
+	if err == nil {
+		response.BytesStored = response.BytesReceived
+	}
 
 	if err == nil {
 		response.ContentMD5 = hash
@@ -193,6 +211,7 @@ func (s *httpFetcher) doHttpRequest(ctx context.Context, request message.Fetcher
 }
 
 type boundedBody struct {
+	count     *int64
 	reader    io.Reader
 	remaining int64
 }
@@ -211,5 +230,50 @@ func (b *boundedBody) Read(p []byte) (int, error) {
 	}
 	n, err := b.reader.Read(p)
 	b.remaining -= int64(n)
+	if b.count != nil {
+		*b.count += int64(n)
+	}
 	return n, err
+}
+
+func classifyResponse(r *message.FetcherResponse) {
+	if r.Error != "" {
+		text := strings.ToLower(r.Error)
+		switch {
+		case strings.Contains(text, "outside"), strings.Contains(text, "excluded"), strings.Contains(text, "robots disallows"), strings.Contains(text, "invalid http"), strings.Contains(text, "configured size limit"):
+			r.FailureClass = "policy"
+		case strings.Contains(text, "context canceled"):
+			r.FailureClass = "cancelled"
+		case strings.Contains(text, "proxyconnect"), strings.Contains(text, "proxy connection"):
+			r.FailureClass = "proxy"
+			r.Retryable = true
+		case strings.Contains(text, "deadline"), strings.Contains(text, "timeout"):
+			r.FailureClass = "timeout"
+			r.Retryable = true
+		case strings.Contains(text, "store object failure"):
+			r.FailureClass = "storage"
+			if strings.Contains(text, "eof") || strings.Contains(text, "read tcp") {
+				r.FailureClass = "body"
+				r.Retryable = true
+			}
+		default:
+			r.FailureClass = "connection"
+			r.Retryable = true
+		}
+	} else if r.HTTPCode == 429 {
+		r.FailureClass = "http_429"
+		r.Retryable = true
+	} else if r.HTTPCode >= 500 {
+		r.FailureClass = "http_5xx"
+		r.Retryable = true
+	}
+	if r.FailureClass == "" && r.HTTPCode >= 400 {
+		r.FailureClass = "http_4xx"
+	}
+	value := http.Header(r.Header).Get("Retry-After")
+	if seconds, err := strconv.ParseInt(value, 10, 32); err == nil && seconds >= 0 {
+		r.RetryAfterMS = seconds * 1000
+	} else if when, err := http.ParseTime(value); err == nil && when.After(time.Now()) {
+		r.RetryAfterMS = time.Until(when).Milliseconds()
+	}
 }

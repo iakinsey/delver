@@ -132,7 +132,11 @@ func (s *searchGateway) SearchAggregate(query io.Reader) (entities []json.RawMes
 }
 
 func (s *searchGateway) Index(indexable *types.Indexable) error {
-	payload, err := json.Marshal(indexable.Data)
+	document, err := indexable.IndexDocument()
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(document)
 
 	if err != nil {
 		return errors.Wrap(err, "failed to serialize resource for logging")
@@ -198,7 +202,11 @@ func (s *searchGateway) IndexManyContext(parent context.Context, entities []*typ
 		if err := encoder.Encode(map[string]interface{}{"index": map[string]interface{}{"_index": entity.Index, "_id": entity.ID}}); err != nil {
 			return err
 		}
-		if err := encoder.Encode(entity.Data); err != nil {
+		document, err := entity.IndexDocument()
+		if err != nil {
+			return err
+		}
+		if err := encoder.Encode(document); err != nil {
 			return err
 		}
 	}

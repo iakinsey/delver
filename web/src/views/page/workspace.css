@@ -359,3 +359,24 @@
     grid-template-columns: 1fr 1fr;
   }
 }
+
+.crawl-delete-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #000a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.crawl-delete-dialog {
+  width: 100%;
+  max-width: 540px;
+  padding: 28px;
+  background: #1c1c1c;
+  border: 1px solid #b2c096;
+}
+.crawl-delete-dialog h2 {
+  overflow-wrap: anywhere;
+}

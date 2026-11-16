@@ -4,14 +4,19 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"fmt"
+	"github.com/iakinsey/delver/flow"
 	"io"
+	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/iakinsey/delver/config"
@@ -26,6 +31,8 @@ type DelverHTTPClient interface {
 }
 
 type delverHTTPClient struct {
+	Flow                      *flow.Controller
+	BodyTimeout               time.Duration
 	configError               error
 	HostSuffixes              []string
 	RetryDelay, RetryMaxDelay time.Duration
@@ -50,10 +57,13 @@ func NewHTTPClient() DelverHTTPClient {
 	return NewHTTPClientWithConfig(config.Get().HTTPClient)
 }
 func NewHTTPClientWithConfig(params config.HTTPClientConfig) DelverHTTPClient {
+	if params.Flow != nil && params.GlobalGate == nil {
+		params.GlobalGate = ProcessOriginGate()
+	}
 	if params.GlobalGate != nil && params.LocalGate == nil {
 		params.LocalGate = NewOriginGate()
 	}
-	client := &http.Client{Timeout: params.Timeout}
+	client := &http.Client{}
 	if params.GlobalGate != nil {
 		client.Timeout = 0
 	}
@@ -78,6 +88,16 @@ func NewHTTPClientWithConfig(params config.HTTPClientConfig) DelverHTTPClient {
 	// The request deadline also bounds TLS negotiation. Do not retain the
 	// default transport's shorter handshake cutoff on slower connections.
 	transport.TLSHandshakeTimeout = params.Timeout
+	if params.TLSTimeout > 0 {
+		transport.TLSHandshakeTimeout = params.TLSTimeout
+	}
+	transport.ResponseHeaderTimeout = params.HeaderTimeout
+	dialTimeout := params.Timeout
+	if params.ConnectTimeout > 0 {
+		dialTimeout = params.ConnectTimeout
+	}
+	direct := &net.Dialer{Timeout: dialTimeout, KeepAlive: 30 * time.Second}
+	transport.DialContext = direct.DialContext
 	if params.Socks5Url != "" {
 		address, auth, err := ParseSOCKSProxy(params.Socks5Url)
 		if err != nil {
@@ -101,12 +121,19 @@ func NewHTTPClientWithConfig(params config.HTTPClientConfig) DelverHTTPClient {
 					auth = &proxy.Auth{User: "session-" + hex.EncodeToString(user[:16]), Password: hex.EncodeToString(password[:])}
 				}
 			}
-			dialer, err := proxy.SOCKS5("tcp", address, auth, proxy.Direct)
+			dialer, err := proxy.SOCKS5("tcp", address, auth, proxyEndpointDialer{dialer: direct})
 			if err != nil {
 				configError = fmt.Errorf("cannot configure SOCKS5 dialer")
 			} else if contextual, ok := dialer.(proxy.ContextDialer); ok {
 				transport.Proxy = nil
-				transport.DialContext = contextual.DialContext
+				transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+					if dialTimeout > 0 {
+						var cancel context.CancelFunc
+						ctx, cancel = context.WithTimeout(ctx, dialTimeout)
+						defer cancel()
+					}
+					return contextual.DialContext(ctx, network, address)
+				}
 			} else {
 				configError = fmt.Errorf("SOCKS5 dialer requires context support")
 			}
@@ -125,6 +152,7 @@ func NewHTTPClientWithConfig(params config.HTTPClientConfig) DelverHTTPClient {
 	client.Transport = transport
 
 	return &delverHTTPClient{
+		Flow: params.Flow, BodyTimeout: params.BodyTimeout,
 		configError: configError, HostSuffixes: suffixes,
 		RetryDelay: params.RetryDelay, RetryMaxDelay: params.RetryMaxDelay,
 		HTTP:           client,
@@ -172,7 +200,8 @@ func (s *delverHTTPClient) PerformContext(ctx context.Context, uri string) (*htt
 		return nil
 	}
 	for attempt := 0; attempt <= s.MaxRetries; attempt++ {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, uri, nil)
+		attemptCtx := context.WithValue(ctx, networkBudgetKey{}, &networkBudget{remaining: s.NetworkTimeout})
+		req, err := http.NewRequestWithContext(attemptCtx, http.MethodGet, uri, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -276,13 +305,15 @@ func (s *limitedTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 			return nil, err
 		}
 	}
+	gateStart := time.Now()
 	var release func()
 	if s.owner.GlobalGate != nil {
 		local, err := s.owner.LocalGate.Acquire(req.Context(), req.URL.Scheme+"://"+req.URL.Host, s.owner.Concurrency, s.owner.Delay)
 		if err != nil {
 			return nil, err
 		}
-		global, err := s.owner.GlobalGate.Acquire(req.Context(), req.URL.Scheme+"://"+req.URL.Host, 2, 100*time.Millisecond)
+		originLimit, originDelay := flow.SharedOriginLimits()
+		global, err := s.owner.GlobalGate.Acquire(req.Context(), req.URL.Scheme+"://"+req.URL.Host, originLimit, originDelay)
 		if err != nil {
 			local()
 			return nil, err
@@ -314,12 +345,65 @@ func (s *limitedTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		}
 	}
 
-	if s.owner.NetworkTimeout > 0 {
-		ctx, cancel := context.WithTimeout(req.Context(), s.owner.NetworkTimeout)
+	if s.owner.Flow != nil {
+		s.owner.Flow.Measure("origin_wait", time.Since(gateStart))
+	}
+	networkStart := time.Now()
+	var connectStart, tlsStart time.Time
+	var traceMu sync.Mutex
+	if s.owner.Flow != nil {
+		trace := &httptrace.ClientTrace{
+			ConnectStart: func(_, _ string) { traceMu.Lock(); connectStart = time.Now(); traceMu.Unlock() },
+			ConnectDone: func(_, _ string, _ error) {
+				traceMu.Lock()
+				defer traceMu.Unlock()
+				if !connectStart.IsZero() {
+					s.owner.Flow.Measure("connect", time.Since(connectStart))
+				}
+			},
+			TLSHandshakeStart: func() { traceMu.Lock(); tlsStart = time.Now(); traceMu.Unlock() },
+			TLSHandshakeDone: func(_ tls.ConnectionState, _ error) {
+				traceMu.Lock()
+				defer traceMu.Unlock()
+				if !tlsStart.IsZero() {
+					s.owner.Flow.Measure("tls", time.Since(tlsStart))
+				}
+			},
+			GotFirstResponseByte: func() { s.owner.Flow.Measure("headers", time.Since(networkStart)) },
+		}
+		req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
+	}
+	budget, _ := req.Context().Value(networkBudgetKey{}).(*networkBudget)
+	timeout := s.owner.NetworkTimeout
+	if budget != nil {
+		budget.mu.Lock()
+		timeout = budget.remaining
+		budget.mu.Unlock()
+	}
+	if timeout > 0 {
+		ctx, cancel := context.WithTimeout(req.Context(), timeout)
 		req = req.Clone(ctx)
 		prior := release
 		release = func() { cancel(); prior() }
+	} else if s.owner.NetworkTimeout > 0 {
+		release()
+		return nil, context.DeadlineExceeded
 	}
+	started := time.Now()
+	priorBudgetRelease := release
+	release = func() {
+		if budget != nil {
+			budget.mu.Lock()
+			budget.remaining -= time.Since(started)
+			budget.mu.Unlock()
+		}
+		priorBudgetRelease()
+	}
+
+	networkCtx, cancelBody := context.WithCancel(req.Context())
+	req = req.Clone(networkCtx)
+	priorRelease := release
+	release = func() { cancelBody(); priorRelease() }
 	response, err := s.base.RoundTrip(req)
 	if err != nil {
 		release()
@@ -328,12 +412,28 @@ func (s *limitedTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	if response.Body == nil {
 		release()
 	} else {
-		response.Body = &limitedBody{ReadCloser: response.Body, release: release}
+		bodyStart := time.Now()
+		prior := release
+		var timer *time.Timer
+		timedOut := &atomic.Bool{}
+		if s.owner.BodyTimeout > 0 {
+			timer = time.AfterFunc(s.owner.BodyTimeout, func() { timedOut.Store(true); cancelBody() })
+		}
+		response.Body = &limitedBody{ReadCloser: response.Body, timedOut: timedOut, release: func() {
+			if timer != nil {
+				timer.Stop()
+			}
+			if s.owner.Flow != nil {
+				s.owner.Flow.Measure("body", time.Since(bodyStart))
+			}
+			prior()
+		}}
 	}
 	return response, nil
 }
 
 type limitedBody struct {
+	timedOut *atomic.Bool
 	io.ReadCloser
 	once    sync.Once
 	release func()
@@ -341,6 +441,9 @@ type limitedBody struct {
 
 func (b *limitedBody) Read(data []byte) (int, error) {
 	n, err := b.ReadCloser.Read(data)
+	if err != nil && b.timedOut != nil && b.timedOut.Load() {
+		err = context.DeadlineExceeded
+	}
 	if err != nil {
 		b.once.Do(b.release)
 	}
@@ -350,3 +453,24 @@ func (b *limitedBody) Close() error { err := b.ReadCloser.Close(); b.once.Do(b.r
 
 // Close releases this client's idle connections without touching other crawls.
 func (s *delverHTTPClient) Close() error { s.HTTP.CloseIdleConnections(); return nil }
+
+type networkBudgetKey struct{}
+type networkBudget struct {
+	mu        sync.Mutex
+	remaining time.Duration
+}
+
+// proxyEndpointDialer identifies failures reaching the configured proxy itself.
+// SOCKS destination replies remain destination failures rather than global load.
+type proxyEndpointDialer struct{ dialer *net.Dialer }
+
+func (d proxyEndpointDialer) Dial(network, address string) (net.Conn, error) {
+	return d.DialContext(context.Background(), network, address)
+}
+func (d proxyEndpointDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	connection, err := d.dialer.DialContext(ctx, network, address)
+	if err != nil {
+		return nil, fmt.Errorf("proxy connection: %w", err)
+	}
+	return connection, nil
+}

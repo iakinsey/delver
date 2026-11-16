@@ -1,3 +1,4 @@
+import { FetchSettings, ExpertFetchSettings } from "./fetchSettings";
 import React, { useState, useRef, useId, useEffect } from "react";
 import { crawlAPI, strategyTitle, words } from "./crawlApi";
 function Choice({ group, value, selected, title, children, onChange }) {
@@ -73,8 +74,10 @@ export function CrawlEditor({
     [seeds, setSeeds] = useState(d.seeds.join("\n")),
     [feeds, setFeeds] = useState(d.feeds.join("\n")),
     [url, setURL] = useState(""),
-    [preview, setPreview] = useState(null);
+    [preview, setPreview] = useState(null),
+    [fetchApplying, setFetchApplying] = useState(false);
   const network = {
+    respect_robots: true,
     request_timeout: "10s",
     max_retries: 1,
     retry_delay: "100ms",
@@ -87,6 +90,7 @@ export function CrawlEditor({
     ...d.network,
   };
   network.max_retries ??= 1;
+  network.respect_robots ??= true;
   const [hostSuffixText, setHostSuffixText] = useState(
     (network.allowed_host_suffixes || []).join("\n"),
   );
@@ -111,13 +115,13 @@ export function CrawlEditor({
     retention = (key, value) =>
       set({ retention: { ...d.retention, [key]: value } });
   const isExpert = editor.pipeline !== null,
-    locked = busy;
+    locked = busy || fetchApplying;
   return (
     <form
       className="crawl-editor"
       onSubmit={(e) => {
         e.preventDefault();
-        onSave(false);
+        if (!locked) onSave(false);
       }}
     >
       <section className="crawl-panel">
@@ -144,12 +148,19 @@ export function CrawlEditor({
               <textarea
                 rows={25}
                 value={editor.pipeline}
+                disabled={fetchApplying}
                 spellCheck={false}
                 onChange={(e) =>
                   setEditor((old) => ({ ...old, pipeline: e.target.value }))
                 }
               />
             </Field>
+            <ExpertFetchSettings
+              pipeline={editor.pipeline}
+              onBusy={setFetchApplying}
+              onApply={(pipeline) => setEditor((old) => ({ ...old, pipeline }))}
+              onError={onError}
+            />
             <h3>Run completion</h3>
             <fieldset className="crawl-choices">
               <legend className="sr-only">Custom pipeline completion</legend>
@@ -508,25 +519,19 @@ export function CrawlEditor({
             {d.proxy?.mode && d.proxy.mode !== "direct" && (
               <Field label="Proxy address">
                 <input
-                  type="password"
+                  type="text"
                   aria-label="Proxy address"
                   autoComplete="off"
-                  value={d.proxy.url === "__REDACTED__" ? "" : d.proxy.url}
+                  value={d.proxy.url}
                   placeholder={
-                    d.proxy.url === "__REDACTED__"
-                      ? "Saved proxy — leave unchanged to keep it"
-                      : d.proxy.mode === "http"
-                        ? "http://user:password@proxy:8080"
-                        : "socks5://user:password@proxy:1080"
+                    d.proxy.mode === "http"
+                      ? "http://user:password@proxy:8080"
+                      : "socks5://user:password@proxy:1080"
                   }
                   onChange={(e) =>
                     set({ proxy: { ...d.proxy, url: e.target.value } })
                   }
                 />
-                <small>
-                  Credentials are stored privately and redacted from
-                  configuration responses and diagnostics.
-                </small>
               </Field>
             )}
             <label className="crawl-check">
@@ -570,6 +575,14 @@ export function CrawlEditor({
                 )}
               </>
             )}
+            <label className="crawl-check">
+              <input
+                type="checkbox"
+                checked={network.respect_robots}
+                onChange={(e) => net({ respect_robots: e.target.checked })}
+              />
+              Respect robots.txt
+            </label>
             <details>
               <summary>Request timeouts and retries</summary>
               <div className="crawl-pair">
@@ -621,6 +634,11 @@ export function CrawlEditor({
                 </small>
               </p>
             </details>
+            <FetchSettings
+              value={d.fetch}
+              onChange={(fetch) => set({ fetch })}
+              onError={onError}
+            />
             <details>
               <summary>Request pacing</summary>
               <p>

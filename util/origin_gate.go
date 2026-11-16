@@ -8,12 +8,14 @@ import (
 )
 
 type gateEntry struct {
-	key   string
-	slots chan struct{}
-	mu    sync.Mutex
-	next  time.Time
-	refs  int
-	idle  *list.Element
+	key     string
+	active  int
+	limit   int
+	changed chan struct{}
+	mu      sync.Mutex
+	next    time.Time
+	refs    int
+	idle    *list.Element
 }
 
 // OriginGate is shared by all HTTP clients belonging to one runtime or workspace.
@@ -44,7 +46,7 @@ func (g *OriginGate) Acquire(ctx context.Context, key string, count int, delay t
 	}
 	e := g.entries[key]
 	if e == nil {
-		e = &gateEntry{key: key, slots: make(chan struct{}, count)}
+		e = &gateEntry{key: key, limit: count, changed: make(chan struct{})}
 		g.entries[key] = e
 	}
 	if e.idle != nil {
@@ -61,14 +63,36 @@ func (g *OriginGate) Acquire(ctx context.Context, key string, count int, delay t
 		}
 		g.mu.Unlock()
 	}
-	select {
-	case e.slots <- struct{}{}:
-	case <-ctx.Done():
-		forget()
-		return nil, ctx.Err()
+
+	g.mu.Lock()
+	e.limit = count
+	close(e.changed)
+	e.changed = make(chan struct{})
+	for e.active >= e.limit {
+		changed := e.changed
+		g.mu.Unlock()
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			forget()
+			return nil, ctx.Err()
+		}
+		g.mu.Lock()
 	}
+	e.active++
+	g.mu.Unlock()
 	var once sync.Once
-	release := func() { once.Do(func() { <-e.slots; forget() }) }
+	release := func() {
+		once.Do(func() {
+			g.mu.Lock()
+			e.active--
+			close(e.changed)
+			e.changed = make(chan struct{})
+			g.mu.Unlock()
+			forget()
+		})
+	}
+
 	e.mu.Lock()
 	wait := time.Until(e.next)
 	if wait < 0 {
@@ -82,3 +106,8 @@ func (g *OriginGate) Acquire(ctx context.Context, key string, count int, delay t
 	}
 	return release, nil
 }
+
+var sharedProcessOriginGate = NewOriginGate()
+
+// ProcessOriginGate shares host pacing across all application runtimes.
+func ProcessOriginGate() *OriginGate { return sharedProcessOriginGate }

@@ -3,6 +3,11 @@ package message
 import "github.com/iakinsey/delver/types"
 
 type FetcherResponse struct {
+	FailureClass  string `json:"failure_class,omitempty"`
+	Retryable     bool   `json:"retryable,omitempty"`
+	RetryAfterMS  int64  `json:"retry_after_ms,omitempty"`
+	BytesReceived int64  `json:"bytes_received,omitempty"`
+	BytesStored   int64  `json:"bytes_stored,omitempty"`
 	FetcherRequest
 
 	EffectiveURI  string              `json:"effective_uri,omitempty"`
