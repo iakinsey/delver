@@ -6,6 +6,7 @@ import { useHistory, useLocation } from "react-router-dom";
 import { uuid4 } from "../../util";
 import {
   crawlAPI,
+  workspaceAPI,
   clone,
   strategyTitle,
   operationTitle,
@@ -58,6 +59,8 @@ export function WorkspaceLanding() {
 export default function Workspace({ defaults }) {
   const location = useLocation(),
     history = useHistory();
+  const configuration = location.pathname === "/workspace/configuration";
+  const [execution, setExecution] = useState(null);
   const selected = location.pathname.startsWith("/crawls/")
     ? decodeURIComponent(location.pathname.split("/")[2])
     : "";
@@ -118,7 +121,11 @@ export default function Workspace({ defaults }) {
   const locked = busy || Object.values(operations).some(operationActive);
   const state = crawlState(detail, ops, pendingAction);
   async function refresh() {
-    const list = await crawlAPI("list");
+    const [list, settings] = await Promise.all([
+      crawlAPI("list"),
+      workspaceAPI("settings"),
+    ]);
+    setExecution(settings.execution);
     setCrawls(list);
     const record = list.find((c) => c.id === selected);
     if (record?.deletion) deleting.current = selected;
@@ -151,6 +158,7 @@ export default function Workspace({ defaults }) {
     }
   }
   useEffect(() => {
+    if (configuration) return;
     let live = true,
       timer;
     async function poll() {
@@ -169,7 +177,7 @@ export default function Workspace({ defaults }) {
       live = false;
       clearTimeout(timer);
     };
-  }, [selected, resultsRun, queue, failureOffset]);
+  }, [selected, resultsRun, queue, failureOffset, configuration]);
   useEffect(() => {
     setOps({});
     setResults({ rows: [] });
@@ -331,10 +339,20 @@ export default function Workspace({ defaults }) {
           )}
         </div>
         <div className="crawl-actions">
-          {selected && <button onClick={() => open("")}>← Crawls</button>}
+          {(selected || configuration) && (
+            <button onClick={() => open("")}>← Crawls</button>
+          )}
+          {!configuration && (
+            <button
+              disabled={!!editor || locked}
+              onClick={() => history.push("/workspace/configuration")}
+            >
+              Workspace configuration
+            </button>
+          )}
           <button
             className="crawl-primary"
-            disabled={locked || !!editor}
+            disabled={locked || !!editor || configuration}
             onClick={newCrawl}
           >
             ＋ Create crawl
@@ -346,9 +364,14 @@ export default function Workspace({ defaults }) {
           {error || connectionError}
         </p>
       )}
-      {!editor && <ExecutionLimits onError={setError} />}
-      {editor ? (
+      {configuration ? (
+        <>
+          <h1>Workspace configuration</h1>
+          <ExecutionLimits onError={setError} onChange={setExecution} />
+        </>
+      ) : editor ? (
         <CrawlEditor
+          execution={execution}
           editor={editor}
           setEditor={setEditor}
           busy={locked}

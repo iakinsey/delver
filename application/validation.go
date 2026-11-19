@@ -61,6 +61,9 @@ func validateParameters(app config.Application, resources map[string]config.Reso
 			return fmt.Errorf("automatic proxy session labels require a SOCKS5 address without authentication credentials")
 		}
 	}
+	if _, err := util.NormalizeExtensions(strings.Join(http.ExcludedExtensions, ",")); err != nil {
+		return err
+	}
 	if _, err := util.NormalizeHostSuffixes(http.AllowedHostSuffixes); err != nil {
 		return err
 	}

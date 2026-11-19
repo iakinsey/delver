@@ -367,7 +367,10 @@ func relocatePipeline(a config.Application, root string) config.Application {
 			case map[string]interface{}:
 				for k, child := range obj {
 					if text, ok := child.(string); ok && (k == "path" || k == "base_path" || k == "dlq_path") {
-						obj[k] = filepath.Join(root, fmt.Sprintf("%x", sha256.Sum256([]byte(prefix))), k, filepath.Base(text))
+						relative, err := filepath.Rel(root, text)
+						if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+							obj[k] = filepath.Join(root, fmt.Sprintf("%x", sha256.Sum256([]byte(prefix))), k, filepath.Base(text))
+						}
 					} else {
 						visit(child)
 					}
@@ -623,7 +626,12 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 		if r.Draft != nil {
 			d = *r.Draft
 		}
-		a, err := CompileCrawl(filepath.Join(w.root, "preview"), "preview", d)
+		root, runID := filepath.Join(w.root, "preview"), "preview"
+		if len(r.Runs) > 0 {
+			runID = r.Runs[len(r.Runs)-1].ID
+			root = w.runRoot(r.ID, runID)
+		}
+		a, err := CompileCrawl(root, runID, d)
 		if err != nil {
 			return nil, err
 		}
@@ -802,16 +810,11 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 		return publicRecord(r), nil
 	}
 
+	if action == "command" && (req.Action == "start" || req.Action == "resume") {
+		return w.acceptWorkflow(r, slot, req.Action, r.Revision, req.ID, Operation{})
+	}
 	if slot.supervisor == nil {
 		return nil, errs.NewRequestError("run required")
-	}
-	if action == "command" && req.Action == "start" {
-		w.mu.Lock()
-		completed := len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "completed"
-		w.mu.Unlock()
-		if completed {
-			return nil, errs.NewRequestError("run completed")
-		}
 	}
 	switch action {
 	case "command":
@@ -866,7 +869,7 @@ func (w *Workspace) applyRun(r *CrawlRecord, slot *crawlSlot, action string, rev
 	}
 	d := r.Definition
 	expert := r.Expert
-	if action == "activate" {
+	if r.Draft != nil || r.ExpertDraft != nil {
 		if r.Draft != nil {
 			d = *r.Draft
 		}
@@ -875,7 +878,47 @@ func (w *Workspace) applyRun(r *CrawlRecord, slot *crawlSlot, action string, rev
 		}
 	}
 	execution := w.settings.Execution
+	run := CrawlRun{Desired: "running", LogsScoped: true, ID: string(types.NewV4()), Created: time.Now().Unix()}
+	if len(r.Runs) > 0 {
+		run = r.Runs[len(r.Runs)-1]
+	}
+	run.Definition, run.Expert = d, expert
+	if r.Draft != nil || r.ExpertDraft != nil {
+		run.Continued = 0
+	}
+	var previous *config.Application
+	if len(r.Runs) > 0 {
+		app, err := prepareRunPipeline(w.runRoot(r.ID, run.ID), r.Runs[len(r.Runs)-1])
+		if err != nil {
+			w.mu.Unlock()
+			return nil, err
+		}
+		previous = &app
+	}
+	if previous != nil && r.Runs[len(r.Runs)-1].Expert == nil && expert != nil {
+		bound, err := bindExistingStorage(*expert, *previous)
+		if err != nil {
+			w.mu.Unlock()
+			return nil, err
+		}
+		expert = &bound
+		run.Expert = expert
+	}
 	w.mu.Unlock()
+	// Validate against the existing run's storage before interrupting execution.
+	// Starting or applying configuration never allocates a replacement frontier.
+	prepared, err := prepareRunPipeline(w.runRoot(r.ID, run.ID), run)
+	if err != nil {
+		return nil, err
+	}
+	if err := Validate(prepared); err != nil {
+		return nil, err
+	}
+	if previous != nil {
+		if err := validateExistingStorage(*previous, prepared); err != nil {
+			return nil, err
+		}
+	}
 	if slot.supervisor != nil {
 		if err := stopSupervisor(slot.supervisor); err != nil {
 			return nil, err
@@ -885,7 +928,23 @@ func (w *Workspace) applyRun(r *CrawlRecord, slot *crawlSlot, action string, rev
 		}
 		slot.setSupervisor(nil)
 	}
-	run := CrawlRun{ConfigurationSnapshot: configurationSnapshot(d, expert, execution), Desired: "running", LogsScoped: true, ID: string(types.NewV4()), Created: time.Now().Unix(), Version: r.Revision + 1, State: "running", Definition: d, Expert: expert}
+	if previous != nil {
+		if err := resetChangedSources(*previous, prepared); err != nil {
+			return nil, err
+		}
+	}
+	// Shutdown checkpoints elapsed time and final metrics. Read those after all
+	// workers finish, rather than replacing them with the pre-shutdown snapshot.
+	w.mu.Lock()
+	if len(r.Runs) > 0 {
+		latest := r.Runs[len(r.Runs)-1]
+		run.Elapsed, run.Summary = latest.Elapsed, latest.Summary
+	}
+	run.Version, run.State, run.Desired = r.Revision+1, "starting", "running"
+	if len(run.ConfigurationSnapshot) == 0 {
+		run.ConfigurationSnapshot = configurationSnapshot(d, expert, execution)
+	}
+	w.mu.Unlock()
 	s, err := w.openSupervisor(r, run)
 	if err != nil {
 		return nil, err
@@ -895,9 +954,6 @@ func (w *Workspace) applyRun(r *CrawlRecord, slot *crawlSlot, action string, rev
 	slot.stable = 0
 
 	w.mu.Lock()
-	if len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State != "completed" {
-		r.Runs[len(r.Runs)-1].State = "stopped"
-	}
 	before := *r
 	before.Runs = append([]CrawlRun(nil), r.Runs...)
 	r.Definition = d
@@ -907,7 +963,11 @@ func (w *Workspace) applyRun(r *CrawlRecord, slot *crawlSlot, action string, rev
 	r.Revision++
 	slot.clockRunning = false
 	slot.clockMark = time.Now()
-	r.Runs = append(r.Runs, run)
+	if len(r.Runs) == 0 {
+		r.Runs = append(r.Runs, run)
+	} else {
+		r.Runs[len(r.Runs)-1] = run
+	}
 	err = w.saveLocked()
 	w.mu.Unlock()
 	if err != nil {

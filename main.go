@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"github.com/iakinsey/delver/application"
 	"os"
@@ -10,13 +11,15 @@ import (
 )
 
 func main() {
-	if len(os.Args) > 2 {
-		fmt.Fprintln(os.Stderr, "usage: delver [CONFIG.json]")
+	options := application.Options{}
+	flag.StringVar(&options.Address, "listen", "", "Workspace listen address (default 127.0.0.1:8080)")
+	flag.Parse()
+	if flag.NArg() > 1 {
+		fmt.Fprintln(os.Stderr, "usage: delver [-listen ADDRESS] [CONFIG.json]")
 		os.Exit(2)
 	}
-	options := application.Options{}
-	if len(os.Args) == 2 {
-		options.ImportPath = os.Args[1]
+	if flag.NArg() == 1 {
+		options.ImportPath = flag.Arg(0)
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()

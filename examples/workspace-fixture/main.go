@@ -64,6 +64,7 @@ func main() {
 		requestEvents.Lock()
 		requestEvents.Rows = append(requestEvents.Rows, map[string]string{"host": r.Host, "path": r.URL.Path, "query": r.URL.RawQuery, "user_agent": r.UserAgent(), "time_ms": fmt.Sprint(time.Now().UnixMilli())})
 		attempt := 0
+
 		if r.URL.Path == "/retry" {
 			if requestEvents.Attempts == nil {
 				requestEvents.Attempts = map[string]int{}
@@ -76,6 +77,19 @@ func main() {
 			requestEvents.Rows = append([]map[string]string(nil), requestEvents.Rows[len(requestEvents.Rows)-32768:]...)
 		}
 		requestEvents.Unlock()
+		if strings.HasPrefix(r.URL.Path, "/extension-test/") {
+			if strings.HasSuffix(r.URL.Path, "/redirect") {
+				http.Redirect(w, r, "archive.PDF?download=1", 302)
+				return
+			}
+			w.Header().Set("Content-Type", "text/html")
+			if strings.HasSuffix(r.URL.Path, "/root") {
+				fmt.Fprint(w, `<title>Extension fixture</title><a href="archive.ZIP">zip</a><a href="archive.PDF?download=1">pdf</a><a href="archive.docx">docx</a><a href="archive.tar.gz">gz</a><a href="archive.tar.xz">xz</a><a href="archive.zip.html">html</a><a href="redirect">redirect</a>`)
+			} else {
+				fmt.Fprintf(w, `<title>%s</title><p>Extension fixture</p>`, html.EscapeString(r.URL.Path))
+			}
+			return
+		}
 		if r.URL.Path == "/retry" {
 			if attempt <= 2 {
 				w.WriteHeader(503)

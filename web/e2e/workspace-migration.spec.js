@@ -21,7 +21,9 @@ test("legacy workspace limits and adaptive controls migrate into editable UI set
     await page
       .getByRole("button", { name: "Migrated crawl", exact: true })
       .click();
-    await page.getByText("Execution limits", { exact: true }).click();
+    await page
+      .getByRole("button", { name: "Workspace configuration", exact: true })
+      .click();
     await expect(
       page.getByLabel("Process concurrency", { exact: true }),
     ).toHaveValue("8");
@@ -31,6 +33,7 @@ test("legacy workspace limits and adaptive controls migrate into editable UI set
     await expect(
       page.getByLabel("Shared host delay", { exact: true }),
     ).toHaveValue("150ms");
+    await page.goto(fixture.url + "/crawls/fixture-legacy");
     await page.getByRole("button", { name: "Edit", exact: true }).click();
     const group = page.locator(".fetch-settings details").filter({
       has: page.locator("summary", { hasText: /^Adaptive control$/ }),
@@ -81,7 +84,11 @@ test("legacy workspace limits and adaptive controls migrate into editable UI set
     );
     const migrated = await api("detail");
     expect(migrated.runs[0].id).toBe("fixture-history");
-    expect(migrated.runs[0].summary.fetch.process_limit).toBe(0);
+    expect(migrated.runs).toHaveLength(1);
+    expect(
+      migrated.runs[0].configuration_snapshot.definition.fetch
+        .latency_inflation,
+    ).toBe(1.5);
 
     await page.getByRole("button", { name: "Stop", exact: true }).click();
     await expect(page.locator(".crawl-state")).toHaveText("stopped");

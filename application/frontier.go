@@ -1,15 +1,18 @@
 package application
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/queue"
+	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/worker"
 	"github.com/iakinsey/delver/worker/frontierworker"
 	"regexp"
+	"strings"
 )
 
 func init() {
@@ -31,11 +34,12 @@ func init() {
 		}
 		return &frontierworker.Admission{Store: store, AllowedHostSuffixes: suffixes}, nil
 	})
-	RegisterResource("frontier_store", func(raw json.RawMessage) (interface{}, error) {
+	RegisterResourceWithRuntime("frontier_store", func(_ context.Context, raw json.RawMessage, deps RuntimeDependencies) (interface{}, error) {
 		p := frontier.StoreParams{Retention: frontier.DefaultRetention()}
 		if err := decodeParameters(raw, &p); err != nil {
 			return nil, err
 		}
+		p.ExcludedExtensions = append(p.ExcludedExtensions, deps.Configuration.HTTPClient.ExcludedExtensions...)
 		return frontier.OpenStore(p)
 	})
 	for name, kind := range map[string]string{"frontier_accumulator": "accumulator", "frontier_publisher": "publisher", "frontier_cleanup": "cleanup"} {
@@ -56,12 +60,26 @@ func init() {
 			if refs.Output != "" {
 				p.Output, _ = resources[refs.Output].(queue.Queue)
 			}
+			if kind == "publisher" {
+				if source, ok := p.Store.(interface {
+					DispatchedRequest(string) (message.FetcherRequest, bool, error)
+				}); ok {
+					if target, ok := p.Output.(interface {
+						SetFrontierIdentityLookup(func(string) (message.FetcherRequest, bool, error))
+					}); ok {
+						target.SetFrontierIdentityLookup(source.DispatchedRequest)
+					}
+				}
+			}
 			return frontierworker.New(p, kind)
 		})
 	}
 }
 
 func paramsFrontier(p frontier.StoreParams) error {
+	if _, err := util.NormalizeExtensions(strings.Join(p.ExcludedExtensions, ",")); err != nil {
+		return err
+	}
 	if p.Retry != nil {
 		if err := p.Retry.Validate(); err != nil {
 			return err

@@ -26,7 +26,10 @@ async function settings(request) {
   ).data;
 }
 async function editor(page) {
-  await page.getByText("Execution limits", { exact: true }).click();
+  if (!new URL(page.url()).pathname.endsWith("/workspace/configuration"))
+    await page
+      .getByRole("button", { name: "Workspace configuration", exact: true })
+      .click();
   await expect(
     page.getByLabel("Process concurrency", { exact: true }),
   ).toBeVisible();
@@ -87,6 +90,20 @@ test("workspace limits update running crawls without changing local configuratio
     expect(
       (await api(request, "detail", { crawl_id: a })).definition.fetch,
     ).toEqual(beforeA);
+    await page.goto(`${fixture.url}/crawls/${b}`);
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect(
+      page.getByText("Effective concurrency ceiling: 1 · Process ceiling: 1", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page.getByText("Request pacing", { exact: true }).click();
+    await expect(
+      page.getByText(
+        "Effective host concurrency: 1 · Shared ceiling: 1 · Shared delay: 20ms",
+        { exact: true },
+      ),
+    ).toBeVisible();
     await page.reload();
     await editor(page);
     await expect(
@@ -306,11 +323,11 @@ test("combined adaptive proxy workflow recovers in the same run and survives app
       .check();
     for (const [group, fields] of [
       ["Execution", [["Concurrent requests overall", "1"]]],
+      ["Resource limits", [["Pressure sampling interval", "20ms"]]],
       ["Adaptive limits", [["Maximum concurrency", "4"]]],
       [
         "Adaptive control",
         [
-          ["Pressure sampling interval", "20ms"],
           ["Adjustment interval", "100ms"],
           ["Concurrency increase step", "1"],
         ],
@@ -374,9 +391,13 @@ test("combined adaptive proxy workflow recovers in the same run and survives app
     // Pause with pending durable records while storage admission remains blocked.
     await expect
       .poll(async () => {
-        const queues = (await api(request, "detail", { crawl_id: a })).runtime
-          .runtime.queues;
-        return Object.values(queues).reduce((sum, count) => sum + count, 0);
+        const runtime = (await api(request, "detail", { crawl_id: a })).runtime
+          .runtime;
+        return (
+          Object.values(runtime.queues).reduce((sum, count) => sum + count, 0) +
+          (runtime.frontier?.pending_and_active || 0) +
+          (runtime.frontier?.deferred_discoveries || 0)
+        );
       })
       .toBeGreaterThan(0);
     await page.getByRole("button", { name: "Pause", exact: true }).click();
@@ -475,7 +496,8 @@ test("combined adaptive proxy workflow recovers in the same run and survives app
     await expect(page.locator(".crawl-state")).toHaveText("running");
     const before = await api(request, "detail", { crawl_id: a }),
       run = before.runs.at(-1).id;
-    expect(before.runs).toHaveLength(2);
+    expect(before.runs).toHaveLength(1);
+    expect(run).toBe(first);
     expect(
       before.runs[0].configuration_snapshot.pipeline.resources.some(
         (r) => r.type === "fixture_pressure",

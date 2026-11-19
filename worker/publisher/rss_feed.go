@@ -2,8 +2,10 @@ package publisher
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/iakinsey/delver/config"
+	"github.com/iakinsey/delver/flow"
 	"github.com/iakinsey/delver/frontier"
 	"io"
 	"net/http"
@@ -20,6 +22,7 @@ import (
 )
 
 type rssFeedPublisher struct {
+	flow                *flow.Controller
 	allowedHostSuffixes []string
 	robots              frontier.ClosableFilter
 	maxBytes            int64
@@ -55,6 +58,7 @@ func NewRssFeedPublisherWithConfig(params RssFeedPublisherParams, c config.Confi
 		})
 	}
 	return &rssFeedPublisher{
+		flow:                c.HTTPClient.Flow,
 		allowedHostSuffixes: suffixes,
 		robots:              robots,
 		uris:                params.Uris,
@@ -135,6 +139,13 @@ func (s *rssFeedPublisher) getRssUrlsContext(ctx context.Context, feedUri string
 	}
 
 	if err != nil {
+		if errors.Is(err, util.ErrFileExtensionExcluded) {
+			if s.flow != nil {
+				s.flow.Counter("feed_policy_skips", 1)
+			}
+			done <- result
+			return
+		}
 		failure = err
 		log.Errorf("failed to perform http request: %s", err)
 		done <- result

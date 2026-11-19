@@ -21,9 +21,9 @@ func (w *OnceWorker) OnMessage(m types.Message) (interface{}, error) {
 	return w.OnMessageContext(context.Background(), m)
 }
 func (w *OnceWorker) OnMessageContext(ctx context.Context, m types.Message) (interface{}, error) {
-	if _, err := w.Store.Get([]byte(w.Key)); err == nil {
+	if value, err := w.Store.Get([]byte(w.Key)); err == nil && len(value) > 0 {
 		return nil, nil
-	} else if err != maps.ErrKeyNotFound {
+	} else if err != nil && err != maps.ErrKeyNotFound {
 		return nil, err
 	}
 	var result interface{}

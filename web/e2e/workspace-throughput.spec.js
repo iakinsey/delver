@@ -41,14 +41,19 @@ for (const mode of ["fixed", "adaptive"]) {
         exact: true,
       })
       .check();
-    for (const group of new Set(options.map((o) => o.group))) {
+    const visibleOptions = options.filter(
+      (o) =>
+        mode === "adaptive" ||
+        !(o.group.startsWith("Adaptive") || o.key.startsWith("cpu_")),
+    );
+    for (const group of new Set(visibleOptions.map((o) => o.group))) {
       const details = page.locator(".fetch-settings details").filter({
         has: page.locator("summary", { hasText: new RegExp(`^${group}$`) }),
       });
       if (!(await details.evaluate((e) => e.open)))
         await details.locator("summary").click();
     }
-    for (const option of options) {
+    for (const option of visibleOptions) {
       const field = page.getByLabel(option.label, { exact: true });
       const original = await field.inputValue();
       for (const invalid of [option.min - 1, option.max + 1]) {
@@ -102,12 +107,16 @@ for (const mode of ["fixed", "adaptive"])
         await page
           .getByLabel("Respect robots.txt", { exact: true })
           .setChecked(robots);
-        await page
-          .locator(".fetch-settings summary", {
-            hasText: /^Adaptive limits$/,
-          })
-          .click();
-        await page.getByLabel("Maximum concurrency", { exact: true }).fill("8");
+        if (mode === "adaptive") {
+          await page
+            .locator(".fetch-settings summary", {
+              hasText: /^Adaptive limits$/,
+            })
+            .click();
+          await page
+            .getByLabel("Maximum concurrency", { exact: true })
+            .fill("8");
+        }
         await page
           .locator(".fetch-settings summary", {
             hasText: /^Network phases$/,
@@ -303,7 +312,12 @@ for (const mode of ["fixed", "adaptive"])
           exact: true,
         })
         .check();
-      for (const group of new Set(options.map((o) => o.group))) {
+      const visibleOptions = options.filter(
+        (o) =>
+          mode === "adaptive" ||
+          !(o.group.startsWith("Adaptive") || o.key.startsWith("cpu_")),
+      );
+      for (const group of new Set(visibleOptions.map((o) => o.group))) {
         const details = page.locator(".fetch-settings details").filter({
           has: page.locator("summary", { hasText: new RegExp(`^${group}$`) }),
         });
@@ -321,7 +335,7 @@ for (const mode of ["fixed", "adaptive"])
         metrics_window: "20s",
       };
       const expected = { mode };
-      for (const option of options) {
+      for (const option of visibleOptions) {
         let value;
         if (option.kind === "inherit_duration")
           value = inherit ? "inherit" : "4s";
@@ -356,13 +370,13 @@ for (const mode of ["fixed", "adaptive"])
         );
       expect(values).toEqual(
         Object.fromEntries(
-          options.map((o) => [o.label, String(expected[o.key])]),
+          visibleOptions.map((o) => [o.label, String(expected[o.key])]),
         ),
       );
     });
 
 for (const mode of ["fixed", "adaptive"])
-  test(`UI pressure recovery ${mode} replaces blocked run without losing history`, async ({
+  test(`UI pressure recovery ${mode} retains the blocked run state`, async ({
     page,
     request,
   }) => {
@@ -420,9 +434,9 @@ for (const mode of ["fixed", "adaptive"])
         timeout: 20000,
       });
       const final = await api(request, "detail", { crawl_id: record.id });
-      expect(final.runs).toHaveLength(2);
-      expect(final.runs[0].summary.fetch.totals.attempts).toBe(0);
-      expect(final.runs[1].summary.fetch.totals.attempts).toBeGreaterThan(0);
+      expect(final.runs).toHaveLength(1);
+      expect(final.runs[0].id).toBe(blocked.runs[0].id);
+      expect(final.runs[0].summary.fetch.totals.attempts).toBeGreaterThan(0);
     } finally {
       await cleanup(request, record);
     }

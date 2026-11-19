@@ -220,7 +220,7 @@ func TestFailedArchiveAndRunSaveRetainConfigurationAndRevision(t *testing.T) {
 	require.Equal(t, "pending draft", reopened.records[id].Draft.Name)
 }
 
-func TestExecutionSettingsCanChangeDuringRunReplacement(t *testing.T) {
+func TestExecutionSettingsCanChangeDuringRunRestart(t *testing.T) {
 	w, err := NewWorkspace(context.Background(), Options{DataDirectory: t.TempDir()})
 	require.NoError(t, err)
 	defer w.Close()
@@ -257,7 +257,7 @@ func TestExecutionSettingsCanChangeDuringRunReplacement(t *testing.T) {
 		workspaceCall(t, w, "command", map[string]interface{}{"crawl_id": id, "id": fmt.Sprint("stop-", i), "action": "stop"})
 		record = waitWorkspace(t, w, id, func(v map[string]interface{}) bool { return runtimeState(v) == "stopped" })
 	}
-	require.Len(t, w.records[id].Runs, 3)
+	require.Len(t, w.records[id].Runs, 1)
 }
 
 func TestLegacyImporterPreservesUnactivatedDraftAndConfigurationRevision(t *testing.T) {

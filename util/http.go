@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"github.com/iakinsey/delver/flow"
 	"io"
@@ -34,6 +35,7 @@ type delverHTTPClient struct {
 	Flow                      *flow.Controller
 	BodyTimeout               time.Duration
 	configError               error
+	ExcludedExtensions        []string
 	HostSuffixes              []string
 	RetryDelay, RetryMaxDelay time.Duration
 	NetworkTimeout            time.Duration
@@ -71,6 +73,10 @@ func NewHTTPClientWithConfig(params config.HTTPClientConfig) DelverHTTPClient {
 	suffixes, err := NormalizeHostSuffixes(params.AllowedHostSuffixes)
 	if err != nil {
 		configError = err
+	}
+	extensions, extensionErr := NormalizeExtensions(strings.Join(params.ExcludedExtensions, ","))
+	if extensionErr != nil {
+		configError = extensionErr
 	}
 	if params.RequireProxy && params.Socks5Url == "" && params.HTTPProxyUrl == "" {
 		configError = fmt.Errorf("a configured proxy connection is required")
@@ -153,7 +159,7 @@ func NewHTTPClientWithConfig(params config.HTTPClientConfig) DelverHTTPClient {
 
 	return &delverHTTPClient{
 		Flow: params.Flow, BodyTimeout: params.BodyTimeout,
-		configError: configError, HostSuffixes: suffixes,
+		configError: configError, HostSuffixes: suffixes, ExcludedExtensions: extensions,
 		RetryDelay: params.RetryDelay, RetryMaxDelay: params.RetryMaxDelay,
 		HTTP:           client,
 		NetworkTimeout: params.Timeout,
@@ -211,7 +217,7 @@ func (s *delverHTTPClient) PerformContext(ctx context.Context, uri string) (*htt
 		}
 		req.Header.Set("User-Agent", agent)
 		resp, err := client.Do(req)
-		retry := err != nil || (resp != nil && (resp.StatusCode == 429 || resp.StatusCode >= 500))
+		retry := (err != nil && !errors.Is(err, ErrFileExtensionExcluded)) || (resp != nil && (resp.StatusCode == 429 || resp.StatusCode >= 500))
 		if !retry || attempt == s.MaxRetries {
 			return resp, err
 		}
@@ -286,6 +292,9 @@ type limitedTransport struct {
 }
 
 func (s *limitedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if ExtensionExcluded(req.URL, s.owner.ExcludedExtensions) {
+		return nil, ErrFileExtensionExcluded
+	}
 	if !HostnameAllowed(req.URL, s.owner.HostSuffixes) {
 		return nil, fmt.Errorf("destination hostname is outside the allowed suffixes")
 	}

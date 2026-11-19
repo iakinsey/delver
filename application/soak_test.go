@@ -177,9 +177,19 @@ func TestWorkspaceSoak(t *testing.T) {
 		p.FailureThreshold = 3
 		p.MetricsSamples = 128
 		p.MetricsSaveInterval = flow.Duration(time.Second)
+		p.DownstreamHigh, p.DownstreamLow = 8, 4
 		record := createWorkspaceCrawl(t, workspace, d)
 		pipeline, e := CompileCrawl(filepath.Join(root, "fixture-pipeline", mode), "fixture", d)
 		require.NoError(t, e)
+		for i := range pipeline.Resources {
+			if pipeline.Resources[i].Type == "frontier_store" {
+				var limits frontier.StoreParams
+				require.NoError(t, json.Unmarshal(pipeline.Resources[i].Parameters, &limits))
+				limits.MaxPending, limits.MaxPendingPerOrigin = 12, 2
+				pipeline.Resources[i].Parameters, e = json.Marshal(limits)
+				require.NoError(t, e)
+			}
+		}
 		parameters, _ := json.Marshal(map[string]string{"mode": mode})
 		pipeline.Resources = append(pipeline.Resources, config.Resource{Name: "soak-pressure", Type: "soak_pressure_fixture", Parameters: parameters})
 		draft := workspaceCall(t, workspace, "draft", map[string]interface{}{"crawl_id": record["id"], "revision": record["revision"], "configuration": pipeline}).(map[string]interface{})
@@ -234,6 +244,8 @@ func TestWorkspaceSoak(t *testing.T) {
 	var maximumHeap uint64
 	peakGoroutines := 0
 	var lastRequests int64
+	capacityPeaks := map[string]int64{}
+	hostDeferrals := map[string]int64{}
 	for time.Since(started) < duration {
 		if time.Since(started) >= nextRestart && restarts < 3 {
 			closeAndVerify()
@@ -303,6 +315,12 @@ func TestWorkspaceSoak(t *testing.T) {
 			require.LessOrEqual(t, fetch["effective"].(float64), float64(8))
 			require.Empty(t, frame["health"], "pipeline health failed: %v", frame["health"])
 			front := frame["frontier"].(map[string]interface{})
+			pending := int64(front["pending_and_active"].(float64))
+			require.LessOrEqual(t, pending, int64(12), "soak exceeded frontier capacity")
+			if pending > capacityPeaks[id] {
+				capacityPeaks[id] = pending
+			}
+			hostDeferrals[id] = int64(front["capacity_deferrals"].(float64))
 			if samples > 0 && front["terminal_outcomes"].(float64) > 10 {
 				require.Greater(t, front["cleaned"].(float64), float64(0), "configured short retention cleanup never ran")
 			}
@@ -370,6 +388,8 @@ func TestWorkspaceSoak(t *testing.T) {
 	require.Greater(t, atomic.LoadInt64(&truncated), int64(0))
 	for _, id := range ids {
 		require.Greater(t, previous[id], int64(100))
+		require.EqualValues(t, 12, capacityPeaks[id], "soak never reached global frontier capacity")
+		require.Greater(t, hostDeferrals[id], int64(0), "soak never exercised blocked-host discovery")
 	}
-	emit(map[string]interface{}{"complete": true, "duration_seconds": time.Since(started).Seconds(), "requests": atomic.LoadInt64(&hits), "timeouts_injected": atomic.LoadInt64(&timeouts), "overload_responses_injected": atomic.LoadInt64(&overloads), "truncated_bodies_injected": atomic.LoadInt64(&truncated), "maximum_sampled_live_heap_bytes": maximumHeap, "peak_goroutines": peakGoroutines, "restarts": restarts, "samples": samples, "pressure_pulses": pressurePulses})
+	emit(map[string]interface{}{"complete": true, "duration_seconds": time.Since(started).Seconds(), "requests": atomic.LoadInt64(&hits), "timeouts_injected": atomic.LoadInt64(&timeouts), "overload_responses_injected": atomic.LoadInt64(&overloads), "truncated_bodies_injected": atomic.LoadInt64(&truncated), "maximum_sampled_live_heap_bytes": maximumHeap, "peak_goroutines": peakGoroutines, "restarts": restarts, "samples": samples, "pressure_pulses": pressurePulses, "frontier_capacity_peaks": capacityPeaks, "host_capacity_deferrals": hostDeferrals})
 }

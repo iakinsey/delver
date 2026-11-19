@@ -42,7 +42,7 @@
   {
     "key": "sample_interval",
     "label": "Pressure sampling interval",
-    "group": "Adaptive control",
+    "group": "Resource limits",
     "kind": "duration",
     "min": 0.01,
     "max": 3600

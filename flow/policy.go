@@ -89,7 +89,7 @@ func Options() []Option {
 
 		{"concurrency", "Concurrent requests overall", "Execution", "integer", 1, 8192},
 		{"minimum", "Minimum concurrency", "Adaptive limits", "integer", 1, 8192}, {"maximum", "Maximum concurrency", "Adaptive limits", "integer", 1, 8192},
-		{"sample_interval", "Pressure sampling interval", "Adaptive control", "duration", .01, 3600}, {"min_samples", "Minimum completed samples", "Adaptive control", "integer", 1, 1000000},
+		{"sample_interval", "Pressure sampling interval", "Resource limits", "duration", .01, 3600}, {"min_samples", "Minimum completed samples", "Adaptive control", "integer", 1, 1000000},
 		{"increase_step", "Concurrency increase step", "Adaptive control", "integer", 1, 8192}, {"decrease_factor", "Concurrency decrease multiplier", "Adaptive control", "number", .01, .99}, {"overload_failure_ratio", "Proxy/local overload failure ratio", "Adaptive control", "number", .01, 1},
 		{"memory_high_mb", "Memory high watermark (MiB)", "Resource limits", "integer", 1, 1048576}, {"memory_low_mb", "Memory resume watermark (MiB)", "Resource limits", "integer", 0, 1048576}, {"cpu_high_percent", "CPU high watermark (%)", "Resource limits", "number", 1, 100}, {"cpu_low_percent", "CPU resume watermark (%)", "Resource limits", "number", 0, 99}, {"min_free_disk_mb", "Minimum free disk space (MiB)", "Resource limits", "integer", 1, 1048576},
 		{"queue_low_multiplier", "Fetch refill low watermark multiplier", "Dispatch and backpressure", "number", .1, 100}, {"queue_target_multiplier", "Fetch queue target multiplier", "Dispatch and backpressure", "number", .1, 100}, {"queue_hard_limit", "Fetch queue hard ceiling", "Dispatch and backpressure", "integer", 1, 1000000}, {"refill_batch", "Maximum refill batch", "Dispatch and backpressure", "integer", 1, 100000}, {"candidate_window", "Candidate selection window", "Dispatch and backpressure", "integer", 1, 1000000}, {"downstream_high", "Downstream queue high watermark", "Dispatch and backpressure", "integer", 1, 1000000}, {"downstream_low", "Downstream queue resume watermark", "Dispatch and backpressure", "integer", 0, 1000000},
@@ -128,12 +128,15 @@ func (p Policy) Validate() error {
 		values[rt.Field(i).Tag.Get("json")] = f
 	}
 	for _, o := range Options() {
+		if p.Mode == "fixed" && AdaptiveOption(o.Key) {
+			continue
+		}
 		v := values[o.Key]
 		if math.IsNaN(v) || math.IsInf(v, 0) || v < o.Minimum || v > o.Maximum {
 			return fmt.Errorf("%s must be between %g and %g", o.Label, o.Minimum, o.Maximum)
 		}
 	}
-	if p.Minimum > p.Concurrency || p.Concurrency > p.Maximum {
+	if p.Mode == "adaptive" && (p.Minimum > p.Concurrency || p.Concurrency > p.Maximum) {
 		return fmt.Errorf("fetch minimum must not exceed initial concurrency, which must not exceed maximum")
 	}
 	if p.QueueLowMultiplier >= p.QueueTargetMultiplier {
@@ -145,10 +148,10 @@ func (p Policy) Validate() error {
 	if p.Mode == "adaptive" && p.QueueHardLimit < p.Maximum {
 		return fmt.Errorf("fetch queue ceiling must cover adaptive maximum")
 	}
-	if p.DownstreamLow >= p.DownstreamHigh || p.MemoryLowMB >= p.MemoryHighMB || p.CPULowPercent >= p.CPUHighPercent {
+	if p.DownstreamLow >= p.DownstreamHigh || p.MemoryLowMB >= p.MemoryHighMB || p.Mode == "adaptive" && p.CPULowPercent >= p.CPUHighPercent {
 		return fmt.Errorf("resume watermarks must be below high watermarks")
 	}
-	if p.HostCooldownMax < p.HostCooldown || p.AdjustmentInterval < p.SampleInterval {
+	if p.HostCooldownMax < p.HostCooldown || p.Mode == "adaptive" && p.AdjustmentInterval < p.SampleInterval {
 		return fmt.Errorf("maximum cooldown and evaluation window must cover their initial intervals")
 	}
 	return nil
@@ -194,4 +197,12 @@ func (p Policy) PoolSize() int {
 		return p.Maximum
 	}
 	return p.Concurrency
+}
+
+func AdaptiveOption(key string) bool {
+	switch key {
+	case "adjustment_interval", "minimum", "maximum", "min_samples", "increase_step", "decrease_factor", "overload_failure_ratio", "cpu_high_percent", "cpu_low_percent":
+		return true
+	}
+	return false
 }

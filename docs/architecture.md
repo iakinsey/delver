@@ -45,6 +45,10 @@ File and crawl queues stage each worker's serialized output batch before sending
 
 This is at-least-once delivery, not a transaction spanning every resource. Side effects inside a custom worker can run again if the process fails before its result is staged. Use idempotent operations or return explicit messages for downstream processing.
 
+Frontier admission examines a bounded rotating batch of staged discoveries. A full global frontier returns without writes. Each pass caches host capacity, skips unknown URLs for full hosts, and continues to other hosts; existing URLs still pass through duplicate and traversal-update handling. Atomic per-URL admission enforces capacity when concurrent workers share stale snapshots. Staging cleanup commits in bounded chunks, with one cursor/counter checkpoint per pass. Admission committed before interrupted cleanup is replayed idempotently. The existing worker batch size bounds admission work; the candidate-selection window only bounds fetch selection.
+
+New frontier generations retain their own request IDs when replacing completed queue records. During the queue's existing startup recovery scan, suspect IDs are checked against dispatched frontier records by point lookup. Confirmed mismatches in the same generation are requeued with the current identity and without stale output batches. Completed history and valid retry identities are retained.
+
 ## Body lifetime
 
 The fetcher writes bodies through temporary files and computes an MD5 content fingerprint. A complete body becomes visible only after the write succeeds. Extraction opens an independent reader for each extractor. It retains the body until its output has been accepted and the input acknowledged, then removes it through `MessageCommitter`.
@@ -61,7 +65,7 @@ Plain text stripping and mention detection are general heuristics, not an articl
 
 ## Runtime ownership
 
-Workspace owns saved definitions, desired state, revisions, settings, and operation records in its versioned registry. Mutations serialize per crawl; command IDs are idempotent and stale revisions fail. Accepted operations interrupted by a process restart are reported as failed. A run retains its immutable original configuration snapshot.
+Workspace owns saved definitions, desired state, revisions, settings, and operation records in its versioned registry. Mutations serialize per crawl; command IDs are idempotent and stale revisions fail. Accepted operations interrupted by a process restart are reported as failed. A run retains its immutable original configuration snapshot. Start, Resume, Restart, and configuration activation reuse the latest run ID, storage, queues, frontier, results, metrics, and elapsed time. Saved drafts apply on Start or Resume; applying changes shuts down workers and checkpoints metrics before reopening the same storage. A new run is created only when the crawl has never run. Previously recorded historical runs remain accessible.
 
 Supervisor executes lifecycle commands and exposes runtime snapshots. It has no separate configuration editor or operation journal. Final metrics are captured after workers finish. Shutdown retains exclusive ownership until resources close; a close failure prevents replacement from opening the same data.
 

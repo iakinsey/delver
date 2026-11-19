@@ -23,23 +23,24 @@ type ProxySettings struct {
 	URL  string `json:"url"`
 }
 type CrawlDefinition struct {
-	Fetch        *flow.Policy       `json:"fetch,omitempty"`
-	Network      NetworkSettings    `json:"network"`
-	Proxy        ProxySettings      `json:"proxy"`
-	Name         string             `json:"name"`
-	Seeds        []string           `json:"seeds"`
-	Feeds        []string           `json:"feeds"`
-	Scope        string             `json:"scope"`
-	Strategy     string             `json:"strategy"`
-	MaxDepth     int                `json:"max_depth"`
-	MaxHops      int                `json:"max_hops"`
-	AllowPattern string             `json:"allow_pattern"`
-	DenyPattern  string             `json:"deny_pattern"`
-	RequestDelay string             `json:"request_delay"`
-	Concurrency  int                `json:"concurrency"`
-	Revisit      string             `json:"revisit"`
-	Retention    frontier.Retention `json:"retention"`
-	Termination  Termination        `json:"termination"`
+	ExcludedExtensions string             `json:"excluded_extensions,omitempty"`
+	Fetch              *flow.Policy       `json:"fetch,omitempty"`
+	Network            NetworkSettings    `json:"network"`
+	Proxy              ProxySettings      `json:"proxy"`
+	Name               string             `json:"name"`
+	Seeds              []string           `json:"seeds"`
+	Feeds              []string           `json:"feeds"`
+	Scope              string             `json:"scope"`
+	Strategy           string             `json:"strategy"`
+	MaxDepth           int                `json:"max_depth"`
+	MaxHops            int                `json:"max_hops"`
+	AllowPattern       string             `json:"allow_pattern"`
+	DenyPattern        string             `json:"deny_pattern"`
+	RequestDelay       string             `json:"request_delay"`
+	Concurrency        int                `json:"concurrency"`
+	Revisit            string             `json:"revisit"`
+	Retention          frontier.Retention `json:"retention"`
+	Termination        Termination        `json:"termination"`
 }
 
 func DefaultCrawlDefinition() CrawlDefinition {
@@ -52,6 +53,11 @@ func decodeDefinition(raw json.RawMessage) (CrawlDefinition, error) {
 	if err := decodeParameters(raw, &d); err != nil {
 		return d, errs.NewRequestError(err.Error())
 	}
+	extensions, err := util.NormalizeExtensions(d.ExcludedExtensions)
+	if err != nil {
+		return d, errs.NewRequestError(err.Error())
+	}
+	d.ExcludedExtensions = strings.Join(extensions, ", ")
 	return d, nil
 }
 func CompileCrawl(root, runID string, d CrawlDefinition) (config.Application, error) {
@@ -64,8 +70,8 @@ func CompileCrawl(root, runID string, d CrawlDefinition) (config.Application, er
 			return config.Application{}, errs.NewRequestError("seed URLs must use HTTP or HTTPS without credentials")
 		}
 	}
-	if d.MaxDepth < 1 || d.MaxHops < 1 || d.Concurrency < 1 || d.Concurrency > 2 {
-		return config.Application{}, errs.NewRequestError("depth and hop limits must be positive; per-host concurrency must be 1 or 2")
+	if d.MaxDepth < 1 || d.MaxHops < 1 || d.Concurrency < 1 || d.Concurrency > 8192 {
+		return config.Application{}, errs.NewRequestError("depth and hop limits must be positive; per-host concurrency must be between 1 and 8192")
 	}
 	delay, err := time.ParseDuration(d.RequestDelay)
 	if err != nil || delay < 0 {
@@ -126,6 +132,11 @@ func CompileCrawl(root, runID string, d CrawlDefinition) (config.Application, er
 			return a, errs.NewRequestError("seed and feed URLs must match allowed hostname suffixes")
 		}
 	}
+	extensions, err := util.NormalizeExtensions(d.ExcludedExtensions)
+	if err != nil {
+		return a, errs.NewRequestError(err.Error())
+	}
+	c.HTTPClient.ExcludedExtensions = extensions
 	c.HTTPClient.Scope = d.Scope
 	c.HTTPClient.AllowPattern = d.AllowPattern
 	c.HTTPClient.DenyPattern = d.DenyPattern
@@ -178,7 +189,8 @@ func CompileCrawl(root, runID string, d CrawlDefinition) (config.Application, er
 	worker("save", "jsonl_sink", "results", "", map[string]string{"path": filepath.Join(root, "results.jsonl")}, false, 0, false)
 	worker("publish", "frontier_publisher", "", "", map[string]interface{}{"frontier_store": "frontier", "output_queue": "requests", "strategy": d.Strategy}, true, 100*time.Millisecond, false)
 	worker("cleanup", "frontier_cleanup", "", "", map[string]string{"frontier_store": "frontier"}, true, time.Duration(d.Retention.CleanupInterval), false)
-	if err := Validate(a); err != nil {
+	a, err = prepareApplication(a)
+	if err != nil {
 		return a, errs.NewRequestError(err.Error())
 	}
 	return a, nil

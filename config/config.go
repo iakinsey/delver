@@ -22,6 +22,7 @@ type HTTPGate interface {
 	Acquire(context.Context, string, int, time.Duration) (func(), error)
 }
 type HTTPClientConfig struct {
+	ExcludedExtensions   []string         `json:"excluded_extensions,omitempty"`
 	Flow                 *flow.Controller `json:"-"`
 	ConnectTimeout       time.Duration    `json:"connect_timeout"`
 	TLSTimeout           time.Duration    `json:"tls_timeout"`

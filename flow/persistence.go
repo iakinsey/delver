@@ -52,7 +52,7 @@ func (c *Controller) restore() {
 	}
 	for key, value := range state.Counters {
 		switch key {
-		case "storage_conflicts", "storage_failures", "storage_operations":
+		case "storage_conflicts", "storage_failures", "storage_operations", "policy_skips", "feed_policy_skips", "selection_inspected", "selection_cooling", "selection_eligible", "selection_published", "selection_sweeps":
 			if value >= 0 {
 				c.counters[key] = value
 			}

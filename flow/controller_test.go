@@ -130,6 +130,7 @@ func TestAdaptiveLimitsAndDestinationFailures(t *testing.T) {
 }
 func TestAllOptionBoundsAndStrictSchema(t *testing.T) {
 	base := Default()
+	base.Mode = "adaptive"
 	for _, o := range Options() {
 		o := o
 		for _, upper := range []bool{false, true} {
@@ -226,11 +227,43 @@ func TestPolicyRejectsInconsistentLimitsAndNonFiniteThresholds(t *testing.T) {
 		"nan":              func(p *Policy) { p.DecreaseFactor = math.NaN() },
 		"infinity":         func(p *Policy) { p.OverloadFailureRatio = math.Inf(1) },
 	} {
-		t.Run(name, func(t *testing.T) { p := Default(); mutate(&p); require.Error(t, p.Validate()) })
+		t.Run(name, func(t *testing.T) { p := Default(); p.Mode = "adaptive"; mutate(&p); require.Error(t, p.Validate()) })
 	}
 	p := Default()
 	require.Equal(t, runtime.NumCPU()*4, p.Concurrency)
 	require.Greater(t, p.MemoryHighMB, p.MemoryLowMB)
 	require.NoError(t, p.Validate())
 	require.Error(t, json.Unmarshal([]byte(`{"mode":"fixed","concurrency":1.5}`), &p))
+}
+
+func TestFixedModeIgnoresOnlyInactiveAdaptiveControls(t *testing.T) {
+	p := Default()
+	p.Minimum = 999
+	p.Maximum = 0
+	p.AdjustmentInterval = 0
+	p.MinSamples = 0
+	p.IncreaseStep = 0
+	p.CPULowPercent = 100
+	p.CPUHighPercent = 0
+	require.NoError(t, p.Validate())
+	p.Mode = "adaptive"
+	require.Error(t, p.Validate())
+	p = Default()
+	p.SampleInterval = 0
+	require.Error(t, p.Validate())
+}
+func TestDispatchReportsEligibilityAndPolicySkips(t *testing.T) {
+	c := controller(t, "", testPolicy())
+	c.ReportDispatch(4096, 4096, 0, 0, false, "continuing candidate selection")
+	s := c.Snapshot()
+	require.False(t, s.Runnable)
+	require.Equal(t, 4096, s.Dispatch.Inspected)
+	require.EqualValues(t, 4096, s.Counters["selection_cooling"])
+	c.ReportDispatch(10, 9, 1, 1, true, "requests published")
+	require.True(t, c.Snapshot().Runnable)
+	c.Record(0, false, false, "excluded", 0, 0, 0)
+	s = c.Snapshot()
+	require.Zero(t, s.Totals.Failures)
+	require.Zero(t, s.Totals.Attempts)
+	require.EqualValues(t, 1, s.Counters["policy_skips"])
 }

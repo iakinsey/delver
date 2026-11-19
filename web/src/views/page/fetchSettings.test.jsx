@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { FetchSettings } from "./fetchSettings";
+import { FetchSettings, adaptiveOption } from "./fetchSettings";
 import options from "./fetchOptions.json";
 afterEach(cleanup);
 for (const mode of ["fixed", "adaptive"]) {
@@ -29,6 +29,10 @@ for (const mode of ["fixed", "adaptive"]) {
           );
         }
         render(<Form />);
+        if (mode === "fixed" && adaptiveOption(option.key)) {
+          expect(screen.queryByLabelText(option.label)).not.toBeInTheDocument();
+          return;
+        }
         const field = screen.getByLabelText(option.label);
         if (!option.kind.includes("duration")) {
           expect(Number(field.min)).toBe(option.min);

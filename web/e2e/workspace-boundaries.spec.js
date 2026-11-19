@@ -30,7 +30,7 @@ const invalid = [
   ["Maximum host hops", "0"],
   ["Maximum host hops", "-1"],
   ["Per-host concurrency", "0"],
-  ["Per-host concurrency", "3"],
+  ["Per-host concurrency", "8193"],
   ["Per-host concurrency", "1.5"],
   ["Request delay", "-1s"],
   ["Request delay", "tomorrow"],

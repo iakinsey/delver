@@ -3,13 +3,15 @@
 VALIDATION_ROOT ?= $(HOME)/.cache/delver-validation/current
 BASELINE_APP ?= $(VALIDATION_ROOT)/benchmark-pipeline-baseline.log
 BASELINE ?=
+DISCOVERY_BASELINE ?=
+DISCOVERY_PIPELINE_BASELINE ?=
 ES_URL ?=
 TOR_CONFIG ?=
 TOR_PROXY ?= socks5h://127.0.0.1:5566
 TMPFS_ROOT ?= /dev/shm/delver-validation
 MILLION_DISK_TIMEOUT ?= 4h
 DISK_ROOT ?= $(HOME)/.cache/delver-validation/million-disk
-.PHONY: build ui test-setup test test-race test-static test-ui test-ui-coverage test-inventory test-benchmark test-soak test-million test-million-disk test-storage-scale test-elasticsearch test-tor validate-local validate
+.PHONY: build ui test-setup test test-race test-static test-ui test-ui-coverage test-inventory test-benchmark test-discovery-benchmark test-soak test-million test-million-disk test-storage-scale test-elasticsearch test-tor validate-local validate
 build: ui
 	go build -o build/delver .
 ui:
@@ -36,6 +38,8 @@ test-ui-coverage:
 	node scripts/check-ui-coverage.mjs "$(VALIDATION_ROOT)/browser-results.json"
 test-benchmark:
 	DELVER_VALIDATION_ROOT="$(VALIDATION_ROOT)" DELVER_BENCHMARK_BASELINE="$(BASELINE)" DELVER_PIPELINE_BASELINE="$(BASELINE_APP)" node scripts/compare-benchmark.mjs
+test-discovery-benchmark:
+	DELVER_VALIDATION_ROOT="$(VALIDATION_ROOT)" DELVER_DISCOVERY_BASELINE="$(DISCOVERY_BASELINE)" DELVER_DISCOVERY_PIPELINE_BASELINE="$(DISCOVERY_PIPELINE_BASELINE)" node scripts/compare-discovery.mjs
 test-soak:
 	DELVER_SOAK=1 DELVER_SOAK_DURATION=1h DELVER_VALIDATION_ROOT="$(VALIDATION_ROOT)/soak" go test -race ./application -run '^TestWorkspaceSoak$$' -count=1 -timeout=75m -v
 test-million:

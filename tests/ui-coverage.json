@@ -207,6 +207,38 @@
       "title": "two editors reject stale saves while preserving both entered text and winning draft"
     },
     {
+      "file": "workspace-extensions.spec.js",
+      "title": "configuration navigation separates settings from monitoring on mobile"
+    },
+    {
+      "file": "workspace-extensions.spec.js",
+      "title": "document exclusions respect robots and skip blocked feed sources"
+    },
+    {
+      "file": "workspace-extensions.spec.js",
+      "title": "extension edits invalidate URL preview and show the updated verdict"
+    },
+    {
+      "file": "workspace-extensions.spec.js",
+      "title": "extension exclusions format 1 persists and prevents network requests"
+    },
+    {
+      "file": "workspace-extensions.spec.js",
+      "title": "extension exclusions format 2 persists and prevents network requests"
+    },
+    {
+      "file": "workspace-extensions.spec.js",
+      "title": "extension exclusions format 3 persists and prevents network requests"
+    },
+    {
+      "file": "workspace-extensions.spec.js",
+      "title": "extension exclusions format 4 persists and prevents network requests"
+    },
+    {
+      "file": "workspace-extensions.spec.js",
+      "title": "extension exclusions reject invalid input and preserve editor text"
+    },
+    {
       "file": "workspace-graph.spec.js",
       "title": "graph open_web depth=1 hops=1"
     },
@@ -264,7 +296,7 @@
     },
     {
       "file": "workspace-lifecycle.spec.js",
-      "title": "saving a draft leaves a live run unchanged and history stays isolated"
+      "title": "saving a draft leaves a live run unchanged and applying retains its state"
     },
     {
       "file": "workspace-matrix.spec.js",
@@ -364,7 +396,7 @@
     },
     {
       "file": "workspace-network.spec.js",
-      "title": "SOCKS labels survive resume and rotate for a new run"
+      "title": "SOCKS labels survive resume and restart in the same run"
     },
     {
       "file": "workspace-network.spec.js",
@@ -459,6 +491,30 @@
       "title": "stopping cancels a long-timeout connection without waiting for its deadline"
     },
     {
+      "file": "workspace-reconfigure.spec.js",
+      "title": "configuration paused save-and-restart retains run and pending work"
+    },
+    {
+      "file": "workspace-reconfigure.spec.js",
+      "title": "configuration paused save-and-resume retains run and pending work"
+    },
+    {
+      "file": "workspace-reconfigure.spec.js",
+      "title": "configuration stopped save-and-restart retains run and pending work"
+    },
+    {
+      "file": "workspace-reconfigure.spec.js",
+      "title": "configuration stopped save-and-resume retains run and pending work"
+    },
+    {
+      "file": "workspace-reconfigure.spec.js",
+      "title": "guided host concurrency accepts the upper boundary and persists it"
+    },
+    {
+      "file": "workspace-reconfigure.spec.js",
+      "title": "paused draft survives application restart and resumes the same run"
+    },
+    {
       "file": "workspace-recovery.spec.js",
       "title": "workspace reconnects without hiding failed form validation"
     },
@@ -524,11 +580,11 @@
     },
     {
       "file": "workspace-throughput.spec.js",
-      "title": "UI pressure recovery adaptive replaces blocked run without losing history"
+      "title": "UI pressure recovery adaptive retains the blocked run state"
     },
     {
       "file": "workspace-throughput.spec.js",
-      "title": "UI pressure recovery fixed replaces blocked run without losing history"
+      "title": "UI pressure recovery fixed retains the blocked run state"
     },
     {
       "file": "workspace-throughput.spec.js",

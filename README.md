@@ -8,6 +8,8 @@ Persistent crawl queues deduplicate normalized URLs exactly and remember complet
 
 Run `go run .` and open http://127.0.0.1:8080. Create and configure independent crawls in the bundled UI; no scenario JSON is required. Per-crawl controls include traversal, scope, completion, retention, and authenticated HTTP/HTTPS or SOCKS5 proxies. See the [workspace guide](docs/workspace.md).
 
+To listen on network interfaces, run `./build/delver -listen 0.0.0.0:8080`.
+
 ## Run a local crawl
 
 Install Go 1.23 or newer and a C compiler; SQLite support uses CGO. From the repository root:

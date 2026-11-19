@@ -48,6 +48,7 @@ type Worker struct {
 	step        uint64
 	Selector    frontier.Selector
 	allow, deny *regexp.Regexp
+	scanCursor  frontier.ScanCursor
 	nextCleanup time.Time
 	Filters     []frontier.Filter
 }
@@ -209,7 +210,7 @@ func (w *Worker) OnMessageContext(ctx context.Context, m types.Message) (interfa
 	if err := w.Store.StageDiscovery(ctx, id, discoveries); err != nil {
 		return nil, err
 	}
-	_, err = w.Store.DrainDiscovery(ctx, w.Window)
+	_, err = w.Store.DrainDiscovery(ctx, w.BatchSize)
 	return nil, err
 }
 func domain(h string) string {
@@ -237,7 +238,7 @@ func (w *Worker) publish(ctx context.Context) error {
 			return err
 		}
 	}
-	if _, err := w.Store.DrainDiscovery(ctx, w.Window); err != nil {
+	if _, err := w.Store.DrainDiscovery(ctx, w.BatchSize); err != nil {
 		return err
 	}
 	n := w.Output.Len()
@@ -245,23 +246,66 @@ func (w *Worker) publish(ctx context.Context) error {
 		return fmt.Errorf("fetch queue unavailable")
 	}
 	remaining := w.LowWater - int(n)
+	dispatchReason := "dispatch capacity blocked"
 	if w.Flow != nil {
 		var window int
-		remaining, _, window, _ = w.Flow.DispatchBounds(int(n))
+		remaining, _, window, dispatchReason = w.Flow.DispatchBounds(int(n))
 		w.Window = window
 	}
 	if remaining <= 0 {
+		if w.Flow != nil {
+			w.Flow.ReportDispatch(0, 0, 0, 0, false, dispatchReason)
+		}
 		return nil
 	}
 	if w.Flow == nil && remaining > w.BatchSize {
 		remaining = w.BatchSize
 	}
-	candidates, err := w.Store.Candidates(ctx, w.Strategy, w.lastHost, w.Window)
+	var candidates []frontier.Candidate
+	var err error
+	inspected, cooling := 0, 0
+	complete := true
+	if scanner, ok := w.Store.(interface {
+		ScanCandidates(context.Context, string, frontier.ScanCursor, int) (frontier.CandidatePage, error)
+	}); ok {
+		page, e := scanner.ScanCandidates(ctx, w.Strategy, w.scanCursor, w.Window)
+		err = e
+		if err == nil {
+			for _, excluded := range page.Excluded {
+				if e := w.Store.Outcome(message.FetcherResponse{FetcherRequest: excluded.Request, FailureClass: "excluded", Error: "file extension excluded by crawl policy"}); e != nil {
+					return e
+				}
+				if w.Flow != nil {
+					w.Flow.Record(0, false, false, "excluded", 0, 0, 0)
+				}
+			}
+		}
+		candidates = page.Candidates
+		w.scanCursor = page.Cursor
+		inspected = page.Inspected
+		cooling = page.Cooling
+		complete = page.Complete
+	} else {
+		candidates, err = w.Store.Candidates(ctx, w.Strategy, w.lastHost, w.Window)
+		inspected = len(candidates)
+	}
 	if err != nil {
 		return err
 	}
-	if w.Flow != nil {
-		w.Flow.ReportRunnable(len(candidates) > 0)
+	eligible, published := len(candidates), 0
+	reason := "no pending work"
+	defer func() {
+		if complete || remaining == 0 {
+			w.scanCursor = frontier.ScanCursor{}
+		}
+		if w.Flow != nil {
+			w.Flow.ReportDispatch(inspected, cooling, eligible, published, complete, reason)
+		}
+	}()
+	if !complete {
+		reason = "continuing candidate selection"
+	} else if cooling > 0 {
+		reason = "host cooldown"
 	}
 	var scores map[string]float64
 	if w.Strategy == "adaptive" {
@@ -302,9 +346,14 @@ func (w *Worker) publish(ctx context.Context) error {
 		candidates = append(candidates[:at], candidates[at+1:]...)
 		c, err = w.Store.Reserve(ctx, c)
 		if errors.Is(err, frontier.ErrDispatchBudget) {
-			continue
+			reason = "request budget reached"
+			eligible = 0
+			break
 		}
 		if errors.Is(err, frontier.ErrCooling) {
+			cooling++
+			eligible--
+			reason = "host cooldown"
 			continue
 		}
 		if err != nil {
@@ -330,6 +379,8 @@ func (w *Worker) publish(ctx context.Context) error {
 		}
 		w.metrics.IncrCounter([]string{"frontier", "published"}, 1)
 		w.step++
+		published++
+		reason = "requests published"
 		remaining--
 	}
 	return nil

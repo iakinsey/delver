@@ -20,6 +20,13 @@ func previewDefinition(raw json.RawMessage) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
+	extensions, err := util.NormalizeExtensions(d.ExcludedExtensions)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := CompileCrawl("preview", "preview", d); err != nil {
+		return nil, err
+	}
 	var allow, deny *regexp.Regexp
 	if d.AllowPattern != "" {
 		allow, err = regexp.Compile(d.AllowPattern)
@@ -65,10 +72,13 @@ func previewDefinition(raw json.RawMessage) (interface{}, error) {
 		if !hostAllowed {
 			ok = false
 		}
+		if util.URLFileExcluded(uri, extensions) {
+			ok = false
+		}
 		row := map[string]interface{}{"url": uri, "allowed": ok}
 		target, parseErr := url.Parse(uri)
 		valid := parseErr == nil && target.Hostname() != "" && (target.Scheme == "http" || target.Scheme == "https")
-		if len(d.Seeds) == 0 && len(d.Feeds) > 0 && d.Scope != "open_web" && valid && hostAllowed && (allow == nil || allow.MatchString(uri)) && (deny == nil || !deny.MatchString(uri)) {
+		if len(d.Seeds) == 0 && len(d.Feeds) > 0 && d.Scope != "open_web" && valid && hostAllowed && !util.URLFileExcluded(uri, extensions) && (allow == nil || allow.MatchString(uri)) && (deny == nil || !deny.MatchString(uri)) {
 			row["reason"] = "Scope unresolved: feed sources not loaded"
 		}
 		out = append(out, row)

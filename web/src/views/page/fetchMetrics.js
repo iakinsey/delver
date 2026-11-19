@@ -25,6 +25,11 @@ export function FetchMetrics({ data, frontier }) {
           ["Scheduled retries", frontier?.retries_scheduled],
           ["Pending retries", frontier?.retry_pending],
           ["Host cooldowns", frontier?.host_cooldowns],
+          [
+            "Policy skips",
+            (frontier?.policy_skips ?? data.counters?.policy_skips ?? 0) +
+              (data.counters?.feed_policy_skips || 0),
+          ],
         ].map(([label, value]) => (
           <div key={label}>
             <strong>{number(value)}</strong>
@@ -32,16 +37,32 @@ export function FetchMetrics({ data, frontier }) {
           </div>
         ))}
       </div>
+      {data.dispatch && (
+        <p>
+          Selection: {data.dispatch.reason} · Inspected:{" "}
+          {number(data.dispatch.inspected)} · Cooling:{" "}
+          {number(data.dispatch.cooling)} · Eligible:{" "}
+          {number(data.dispatch.eligible)} · Published:{" "}
+          {number(data.dispatch.published)}
+        </p>
+      )}
       <p role="status">
         {data.reason}
-        {data.last_adjustment ? ` · ${data.last_adjustment}` : ""}
+        {data.mode === "adaptive" && data.last_adjustment
+          ? ` · ${data.last_adjustment}`
+          : ""}
       </p>
       <p>
-        Runnable demand: {data.runnable_demand ? "Yes" : "No"} · Next
-        adjustment:{" "}
-        {data.next_adjustment
-          ? new Date(data.next_adjustment).toLocaleTimeString()
-          : "—"}
+        Runnable demand: {data.runnable_demand ? "Yes" : "No"}
+        {data.mode === "adaptive" && (
+          <>
+            {" "}
+            · Next adjustment:{" "}
+            {data.next_adjustment
+              ? new Date(data.next_adjustment).toLocaleTimeString()
+              : "—"}
+          </>
+        )}
       </p>
       <details>
         <summary>Details</summary>

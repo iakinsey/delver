@@ -3,10 +3,13 @@ package frontier
 import (
 	"context"
 	"fmt"
+	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/util"
+	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -112,3 +115,30 @@ func TestRobotsMetadataIgnoresPagePatternAndCancelsNetwork(t *testing.T) {
 	}
 }
 func mustRobotsURL(raw string) *url.URL { u, _ := url.Parse(raw); return u }
+
+func TestRobotsPolicyFetchIsNotBlockedByDocumentExtensions(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if r.URL.Path != "/robots.txt" {
+			t.Errorf("unexpected policy request %s", r.URL.Path)
+		}
+		fmt.Fprint(w, "User-agent: *\nDisallow: /denied\n")
+	}))
+	defer server.Close()
+	c := config.LoadConfig()
+	c.HTTPClient.ExcludedExtensions = []string{"txt"}
+	filter := NewMemoryRobotsWithConfig(c)
+	defer filter.Close()
+	allowed, err := filter.IsAllowed(server.URL + "/page.html")
+	require.NoError(t, err)
+	require.True(t, allowed)
+	allowed, err = filter.IsAllowed(server.URL + "/denied")
+	require.NoError(t, err)
+	require.False(t, allowed)
+	require.EqualValues(t, 1, requests.Load())
+	client := util.NewHTTPClientWithConfig(c.HTTPClient)
+	_, err = client.Perform(server.URL + "/document.txt")
+	require.Error(t, err)
+	require.EqualValues(t, 1, requests.Load(), "ordinary txt documents bypassed exclusions")
+}

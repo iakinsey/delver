@@ -14,7 +14,7 @@ createRoot(document.getElementById("root")).render(
   <Router>
     <Header />
     <Switch>
-      <Route exact path={["/", "/crawls/:crawlId"]}>
+      <Route exact path={["/", "/crawls/:crawlId", "/workspace/configuration"]}>
         <WorkspaceLanding />
       </Route>
       <Route>

@@ -72,7 +72,7 @@ test("archiving one live crawl preserves another and restore does not start it",
     if (second) await cleanup(request, second);
   }
 });
-test("saving a draft leaves a live run unchanged and history stays isolated", async ({
+test("saving a draft leaves a live run unchanged and applying retains its state", async ({
   page,
   request,
 }) => {
@@ -87,6 +87,7 @@ test("saving a draft leaves a live run unchanged and history stays isolated", as
     await expect
       .poll(() => progress(page, "Processed"), { timeout: 15000 })
       .toBeGreaterThan(0);
+    const original = await api(request, "detail", { crawl_id: record.id });
     await page.getByRole("button", { name: "Edit", exact: true }).click();
     await page
       .getByLabel("Name", { exact: true })
@@ -100,7 +101,7 @@ test("saving a draft leaves a live run unchanged and history stays isolated", as
       page.getByRole("heading", { name: "live draft history", exact: true }),
     ).toBeVisible();
     const active = await api(request, "detail", { crawl_id: record.id });
-    expect(active.runs.at(-1).id).toBe(record.runs.at(-1).id);
+    expect(active.runs.at(-1).id).toBe(original.runs.at(-1).id);
     expect(active.runtime.state).toBe("running");
     await page.reload();
     await expect(
@@ -126,7 +127,7 @@ test("saving a draft leaves a live run unchanged and history stays isolated", as
     ).toBeVisible();
     expect(
       (await api(request, "detail", { crawl_id: record.id })).runs,
-    ).toHaveLength(2);
+    ).toHaveLength(1);
     const recent = page.getByRole("table").filter({
       has: page.getByRole("columnheader", {
         name: "Title or error",
@@ -134,15 +135,14 @@ test("saving a draft leaves a live run unchanged and history stays isolated", as
       }),
     });
     await expect(recent).toContainText("/article");
-    await expect(recent).not.toContainText("Workspace site");
-    await page
-      .getByRole("button", { name: "View", exact: true })
-      .nth(1)
-      .click();
+    await expect(recent).toContainText("Workspace site");
+    const retained = await api(request, "detail", { crawl_id: record.id });
+    expect(retained.runs[0].id).toBe(original.runs[0].id);
+    await page.getByRole("button", { name: "View", exact: true }).click();
     await expect(page.getByText("Run:", { exact: false })).toBeVisible();
     await expect(recent).toContainText("Workspace site");
     await page.getByRole("button", { name: "Latest", exact: true }).click();
-    await expect(recent).not.toContainText("Workspace site");
+    await expect(recent).toContainText("Workspace site");
   } finally {
     await cleanup(request, record);
   }

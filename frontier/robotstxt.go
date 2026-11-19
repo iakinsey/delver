@@ -44,11 +44,14 @@ func NewMemoryRobots() ClosableFilter {
 func NewMemoryRobotsWithConfig(c config.Config) ClosableFilter {
 	conf := c.Robots
 	clientConf := c.HTTPClient
+	// Robots metadata is not a crawl document. Keep network restrictions while
+	// allowing its mandatory .txt policy request.
+	clientConf.ExcludedExtensions = nil
 
 	job := &memoryRobots{
 		done:              make(chan struct{}),
 		fetchGate:         make(chan struct{}, 1),
-		client:            util.NewHTTPClientWithConfig(c.HTTPClient),
+		client:            util.NewHTTPClientWithConfig(clientConf),
 		userAgent:         clientConf.UserAgent,
 		expiration:        conf.Expiration,
 		clearExpiredDelay: conf.ClearExpiredDelay,

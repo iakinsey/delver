@@ -2,6 +2,19 @@ import React, { useState } from "react";
 import options from "./fetchOptions.json";
 import { crawlAPI } from "./crawlApi";
 
+export const adaptiveOption = (key) =>
+  [
+    "adjustment_interval",
+    "minimum",
+    "maximum",
+    "min_samples",
+    "increase_step",
+    "decrease_factor",
+    "overload_failure_ratio",
+    "cpu_high_percent",
+    "cpu_low_percent",
+  ].includes(key);
+
 export function FetchSettings({ value, onChange, onError, disabled = false }) {
   if (!value)
     return (
@@ -24,22 +37,25 @@ export function FetchSettings({ value, onChange, onError, disabled = false }) {
       </section>
     );
   const set = (key, v) => onChange({ ...value, [key]: v });
-  const groups = [...new Set(options.map((option) => option.group))].sort(
-    (a, b) => {
-      const order = [
-        "Execution",
-        "Adaptive limits",
-        "Adaptive control",
-        "Resource limits",
-        "Dispatch and backpressure",
-        "Retries and recovery",
-        "Network phases",
-        "Metrics",
-      ];
-      const rank = (v) => order.indexOf(v);
-      return rank(a) - rank(b);
-    },
+  const visibleOptions = options.filter(
+    (o) => value.mode === "adaptive" || !adaptiveOption(o.key),
   );
+  const groups = [
+    ...new Set(visibleOptions.map((option) => option.group)),
+  ].sort((a, b) => {
+    const order = [
+      "Execution",
+      "Adaptive limits",
+      "Adaptive control",
+      "Resource limits",
+      "Dispatch and backpressure",
+      "Retries and recovery",
+      "Network phases",
+      "Metrics",
+    ];
+    const rank = (v) => order.indexOf(v);
+    return rank(a) - rank(b);
+  });
   return (
     <section className="fetch-settings">
       <h3>Fetch throughput</h3>
@@ -68,7 +84,7 @@ export function FetchSettings({ value, onChange, onError, disabled = false }) {
         <details key={group} open={group === "Execution" || undefined}>
           <summary>{group}</summary>
           <div className="crawl-pair">
-            {options
+            {visibleOptions
               .filter((option) => option.group === group)
               .map((option) => (
                 <label className="crawl-field" key={option.key}>

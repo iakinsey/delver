@@ -43,6 +43,14 @@ type crawlQueue struct {
 	closed                         bool
 	healthMu                       sync.Mutex
 	lastError                      string
+	frontierIdentity               func(string) (message.FetcherRequest, bool, error)
+}
+
+// SetFrontierIdentityLookup is wired before Start by the frontier publisher.
+// Prepare uses its existing recovery scan to repair only confirmed old identity
+// mismatches; valid retries may legitimately use different generation/request IDs.
+func (s *crawlQueue) SetFrontierIdentityLookup(lookup func(string) (message.FetcherRequest, bool, error)) {
+	s.frontierIdentity = lookup
 }
 
 func NewCrawlQueue(p CrawlQueueParams) (Queue, error) {
@@ -131,7 +139,13 @@ func (s *crawlQueue) PutContext(ctx context.Context, msg types.Message, priority
 			if err := json.Unmarshal(old.Message.Message, &existing); err != nil {
 				return err
 			}
-			if incoming.BetterTraversalThan(existing) && old.State != "failed" {
+			newGeneration := s.params.AcceptFrontierGenerations && incoming.FrontierGeneration != "" && incoming.FrontierGeneration != existing.FrontierGeneration
+			if newGeneration && old.State == "leased" {
+				return fmt.Errorf("previous frontier generation is still leased")
+			}
+			// A new generation owns its request identity, even when its path is
+			// better. Only an update within the same generation retains the ID.
+			if !newGeneration && incoming.BetterTraversalThan(existing) && old.State != "failed" {
 				incoming.RequestID = existing.RequestID
 				data, err := json.Marshal(incoming)
 				if err != nil {
@@ -151,10 +165,6 @@ func (s *crawlQueue) PutContext(ctx context.Context, msg types.Message, priority
 					return err
 				}
 				return s.setRecord(txn, key, data)
-			}
-			newGeneration := s.params.AcceptFrontierGenerations && incoming.FrontierGeneration != "" && incoming.FrontierGeneration != existing.FrontierGeneration
-			if newGeneration && old.State == "leased" {
-				return fmt.Errorf("previous frontier generation is still leased")
 			}
 			if old.State != "completed" || (!newGeneration && (s.params.RecrawlAfter <= 0 || time.Since(time.Unix(0, old.Updated)) < s.params.RecrawlAfter)) {
 				return nil
@@ -194,8 +204,37 @@ func (s *crawlQueue) Prepare() error {
 			if err := item.Value(func(data []byte) error { return json.Unmarshal(data, &record) }); err != nil {
 				return err
 			}
+			changed := false
 			if record.State == "leased" {
 				record.State = "pending"
+				changed = true
+			}
+			if s.params.AcceptFrontierGenerations && s.frontierIdentity != nil && record.State != "failed" {
+				var queued message.FetcherRequest
+				if err := json.Unmarshal(record.Message.Message, &queued); err != nil {
+					return err
+				}
+				if queued.FrontierGeneration != "" && queued.FrontierGeneration != queued.RequestID {
+					current, found, err := s.frontierIdentity(queued.URI)
+					if err != nil {
+						return err
+					}
+					if found && current.URI == queued.URI && current.RequestID != "" && current.FrontierGeneration == queued.FrontierGeneration && current.RequestID != queued.RequestID {
+						current.QueuedAt = time.Now().UnixNano()
+						record.Message.Message, err = json.Marshal(current)
+						if err != nil {
+							return err
+						}
+						record.Message.ID = string(current.RequestID)
+						record.State, record.Attempts, record.Updated = "pending", 0, time.Now().UnixNano()
+						if err := batch.Delete(append([]byte("outputs\x00"), item.KeyCopy(nil)...)); err != nil {
+							return err
+						}
+						changed = true
+					}
+				}
+			}
+			if changed {
 				data, err := json.Marshal(record)
 				if err != nil {
 					return err

@@ -37,12 +37,21 @@ type Totals struct {
 	Failures  int64 `json:"failures"`
 	Overload  int64 `json:"overload"`
 }
+type DispatchStatus struct {
+	Reason    string `json:"reason"`
+	Inspected int    `json:"inspected"`
+	Cooling   int    `json:"cooling"`
+	Eligible  int    `json:"eligible"`
+	Published int    `json:"published"`
+	Complete  bool   `json:"sweep_complete"`
+}
 type Snapshot struct {
-	ObservationAttempts int64     `json:"observation_attempts"`
-	ObservationOverload int64     `json:"observation_overload"`
-	NextAdjustment      time.Time `json:"next_adjustment"`
-	Runnable            bool      `json:"runnable_demand"`
-	NetworkActive       int       `json:"network_active"`
+	Dispatch            DispatchStatus `json:"dispatch"`
+	ObservationAttempts int64          `json:"observation_attempts"`
+	ObservationOverload int64          `json:"observation_overload"`
+	NextAdjustment      time.Time      `json:"next_adjustment"`
+	Runnable            bool           `json:"runnable_demand"`
+	NetworkActive       int            `json:"network_active"`
 
 	Counters       map[string]int64     `json:"counters"`
 	QueueGrowth    map[string]float64   `json:"queue_growth_per_second"`
@@ -62,6 +71,7 @@ type Snapshot struct {
 	Pressure       Pressure             `json:"pressure"`
 }
 type Controller struct {
+	dispatch                    DispatchStatus
 	broker                      *broker
 	queueBlocked, memoryBlocked bool
 	runnable                    bool
@@ -310,6 +320,12 @@ func add(a *Totals, b Totals) {
 	a.Overload += b.Overload
 }
 func (c *Controller) Record(status int, success, html bool, kind string, elapsed time.Duration, received, stored int64) {
+	if kind == "excluded" {
+		c.mu.Lock()
+		c.counters["policy_skips"]++
+		c.mu.Unlock()
+		return
+	}
 	c.Measure("attempt", elapsed)
 	if status < 100 || status > 599 {
 		status = 0
@@ -480,7 +496,7 @@ func (c *Controller) Evaluate(now time.Time, p Pressure) {
 }
 func (c *Controller) Snapshot() Snapshot {
 	c.mu.Lock()
-	s := Snapshot{ObservationAttempts: c.observationAttempts, ObservationOverload: c.observationOverload, NextAdjustment: c.nextAdjustment, Runnable: c.pressure.FetchPending > 0 || c.runnable && time.Since(c.runnableAt) <= 2*c.policy.SampleInterval.Value(), NetworkActive: c.networkActive, Mode: c.policy.Mode, Configured: c.policy.Concurrency, Effective: c.effective, Reason: c.reason, LastAdjustment: c.adjustment, Totals: c.totals, Pressure: copyPressure(c.pressure), Rates: map[string]float64{}, Errors: map[string]int64{}, HTTPStatuses: map[int]int64{}, Latencies: map[string]Histogram{}, Counters: map[string]int64{}, QueueGrowth: map[string]float64{}}
+	s := Snapshot{Dispatch: c.dispatch, ObservationAttempts: c.observationAttempts, ObservationOverload: c.observationOverload, NextAdjustment: c.nextAdjustment, Runnable: c.pressure.FetchPending > 0 || c.runnable && time.Since(c.runnableAt) <= 2*c.policy.SampleInterval.Value(), NetworkActive: c.networkActive, Mode: c.policy.Mode, Configured: c.policy.Concurrency, Effective: c.effective, Reason: c.reason, LastAdjustment: c.adjustment, Totals: c.totals, Pressure: copyPressure(c.pressure), Rates: map[string]float64{}, Errors: map[string]int64{}, HTTPStatuses: map[int]int64{}, Latencies: map[string]Histogram{}, Counters: map[string]int64{}, QueueGrowth: map[string]float64{}}
 	for k, v := range c.counters {
 		s.Counters[k] = v
 	}
@@ -567,7 +583,7 @@ type queuePoint struct {
 
 func (c *Controller) Counter(key string, n int64) {
 	switch key {
-	case "storage_conflicts", "storage_failures", "storage_operations":
+	case "storage_conflicts", "storage_failures", "storage_operations", "feed_policy_skips":
 	default:
 		return
 	}
@@ -630,3 +646,18 @@ func (c *Controller) BeginNetwork(ctx context.Context) func() {
 }
 
 func (c *Controller) Close() { c.cancel(); <-c.done; c.finalSave.Do(c.save) }
+
+// ReportDispatch reports bounded selection activity, not candidate existence.
+func (c *Controller) ReportDispatch(inspected, cooling, eligible, published int, complete bool, reason string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.runnable = eligible > 0
+	c.runnableAt = time.Now()
+	c.dispatch = DispatchStatus{reason, inspected, cooling, eligible, published, complete}
+	for k, v := range map[string]int{"selection_inspected": inspected, "selection_cooling": cooling, "selection_eligible": eligible, "selection_published": published} {
+		c.counters[k] += int64(v)
+	}
+	if complete {
+		c.counters["selection_sweeps"]++
+	}
+}

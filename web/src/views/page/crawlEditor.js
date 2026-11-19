@@ -69,6 +69,7 @@ export function CrawlEditor({
   onError,
   onCancel,
   onSave,
+  execution,
 }) {
   const d = editor.definition,
     [seeds, setSeeds] = useState(d.seeds.join("\n")),
@@ -105,6 +106,7 @@ export function CrawlEditor({
     d.feeds,
     d.allow_pattern,
     d.deny_pattern,
+    d.excluded_extensions,
     d.network?.restrict_hosts,
     d.network?.allowed_host_suffixes,
   ]);
@@ -253,6 +255,13 @@ export function CrawlEditor({
             </fieldset>
             <details>
               <summary>URL filters</summary>
+              <Field label="Excluded file extensions">
+                <input
+                  value={d.excluded_extensions || ""}
+                  placeholder="zip, tar.gz, pdf"
+                  onChange={(e) => set({ excluded_extensions: e.target.value })}
+                />
+              </Field>
               <Field label="Allow pattern">
                 <input
                   value={d.allow_pattern}
@@ -568,10 +577,24 @@ export function CrawlEditor({
               onChange={(fetch) => set({ fetch })}
               onError={onError}
             />
+            {execution && d.fetch && (
+              <p>
+                Effective concurrency ceiling:{" "}
+                {Math.min(
+                  d.fetch.mode === "adaptive"
+                    ? d.fetch.maximum
+                    : d.fetch.concurrency,
+                  execution.concurrency,
+                )}{" "}
+                · Process ceiling: {execution.concurrency}
+              </p>
+            )}
             <details>
               <summary>Request pacing</summary>
               <p>
-                Per-host limits are shared across crawls; the strictest applies.
+                {execution
+                  ? `Effective host concurrency: ${Math.min(Number(d.concurrency) || 1, execution.host_concurrency)} · Shared ceiling: ${execution.host_concurrency} · Shared delay: ${execution.host_delay}`
+                  : ""}
               </p>
               <div className="crawl-pair">
                 <Field label="Request delay">
@@ -582,9 +605,10 @@ export function CrawlEditor({
                 </Field>
                 <Field label="Per-host concurrency">
                   <input
+                    required
                     type="number"
                     min="1"
-                    max="2"
+                    max="8192"
                     value={d.concurrency}
                     onChange={(e) =>
                       set({ concurrency: Number(e.target.value) })

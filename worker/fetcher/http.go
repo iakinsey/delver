@@ -240,6 +240,8 @@ func classifyResponse(r *message.FetcherResponse) {
 	if r.Error != "" {
 		text := strings.ToLower(r.Error)
 		switch {
+		case strings.Contains(text, "file extension excluded"):
+			r.FailureClass = "excluded"
 		case strings.Contains(text, "outside"), strings.Contains(text, "excluded"), strings.Contains(text, "robots disallows"), strings.Contains(text, "invalid http"), strings.Contains(text, "configured size limit"):
 			r.FailureClass = "policy"
 		case strings.Contains(text, "context canceled"):

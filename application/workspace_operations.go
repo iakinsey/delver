@@ -88,16 +88,7 @@ func (w *Workspace) acceptWorkflow(r *CrawlRecord, slot *crawlSlot, action strin
 			if w.ctx.Err() != nil {
 				err = w.ctx.Err()
 			} else {
-				switch action {
-				case "start_run", "activate", "continue_run":
-					_, err = w.applyRun(r, slot, action, revision)
-				default:
-					if slot.supervisor == nil {
-						err = errs.NewRequestError("run required")
-					} else {
-						err = slot.supervisor.Execute(w.ctx, action, op.Queue, op.Record)
-					}
-				}
+				err = w.executeWorkflow(r, slot, action, revision, op)
 			}
 		}
 		w.mu.Lock()
@@ -128,4 +119,25 @@ func (w *Workspace) crawlOperations(ctx context.Context, r *CrawlRecord, slot *c
 	}
 	w.mu.Unlock()
 	return out, nil
+}
+
+// All accepted commands execute under the same per-crawl slot lock.
+func (w *Workspace) executeWorkflow(r *CrawlRecord, slot *crawlSlot, action string, revision uint64, op *Operation) error {
+	switch action {
+	case "start_run", "activate", "continue_run":
+		_, err := w.applyRun(r, slot, action, revision)
+		return err
+	case "start", "resume":
+		w.mu.Lock()
+		reopen := r.Draft != nil || r.ExpertDraft != nil || len(r.Runs) == 0 || r.Runs[len(r.Runs)-1].State == "completed" || slot.supervisor == nil
+		w.mu.Unlock()
+		if reopen {
+			_, err := w.applyRun(r, slot, "activate", revision)
+			return err
+		}
+	}
+	if slot.supervisor == nil {
+		return errs.NewRequestError("run required")
+	}
+	return slot.supervisor.Execute(w.ctx, action, op.Queue, op.Record)
 }

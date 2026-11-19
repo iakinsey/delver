@@ -1,6 +1,7 @@
 package application
 
 import (
+	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/resource/maps"
 	"github.com/iakinsey/delver/worker"
 	"time"
@@ -122,7 +123,7 @@ func (w *Workspace) checkRun(id string, slot *crawlSlot) {
 						sourceDone = false
 						break
 					}
-					if _, err := store.Get([]byte(d.Name)); err != nil {
+					if value, err := store.Get([]byte(d.Name)); err != nil || len(value) == 0 {
 						sourceDone = false
 						break
 					}
@@ -137,11 +138,13 @@ func (w *Workspace) checkRun(id string, slot *crawlSlot) {
 			idle = false
 		}
 	}
-	for _, a := range snapshot.Workers {
-		if a.Active > 0 {
-			idle = false
-		}
+	control.mu.Lock()
+	var definitions []config.Worker
+	if control.prepared != nil {
+		definitions = control.prepared.app.Workers
 	}
+	control.mu.Unlock()
+	idle = idle && crawlWorkersIdle(snapshot.Workers, definitions)
 	for _, counts := range snapshot.QueueStates {
 		if counts["failed"] > 0 {
 			idle = false
@@ -173,4 +176,26 @@ func (w *Workspace) checkRun(id string, slot *crawlSlot) {
 			w.saveLocked()
 		}
 	}
+}
+
+// Periodic frontier jobs may be active even when all crawl work is drained.
+// Frontier reservations, pending records, and queue leases guard their output;
+// shutdown still waits for these jobs before closing storage.
+func crawlWorkersIdle(activities map[string]worker.Activity, definitions []config.Worker) bool {
+	for name, activity := range activities {
+		if activity.Active == 0 {
+			continue
+		}
+		maintenance := false
+		for _, definition := range definitions {
+			if definition.Name == name && definition.Manager == "job" && (definition.Type == "frontier_publisher" || definition.Type == "frontier_cleanup") {
+				maintenance = true
+				break
+			}
+		}
+		if !maintenance {
+			return false
+		}
+	}
+	return true
 }

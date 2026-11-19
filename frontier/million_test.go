@@ -198,6 +198,85 @@ func TestFrontierMillionURLs(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(n), counts["admitted"])
 	probe("million_active")
+
+	// Verify bounded progress past cooling prefixes on the actual million-record
+	// indexes, without consuming requests or changing the lifecycle cohort.
+	for _, strategy := range []string{"breadth_first", "depth_first", "host_diverse", "adaptive"} {
+		head, e := s.Candidates(ctx, strategy, "", 4096)
+		require.NoError(t, e)
+		require.Len(t, head, 4096)
+		hosts := map[string]bool{}
+		for _, c := range head {
+			hosts[c.Request.Host] = true
+		}
+		require.NoError(t, s.update(func(tx *badger.Txn) error {
+			for host := range hosts {
+				if e := write(tx, "cool/"+host, time.Now().Add(time.Hour).UnixNano()); e != nil {
+					return e
+				}
+			}
+			return nil
+		}))
+		cursor := ScanCursor{}
+		found := false
+		passes, inspected := 0, 0
+		started := time.Now()
+		for passes = 0; passes < n/4096+2; passes++ {
+			page, e := s.ScanCandidates(ctx, strategy, cursor, 4096)
+			require.NoError(t, e)
+			require.LessOrEqual(t, page.Inspected, 4096)
+			inspected += page.Inspected
+			if passes == 0 {
+				require.Empty(t, page.Candidates, "blocked prefix was not reproduced")
+			}
+			if len(page.Candidates) > 0 {
+				found = true
+				break
+			}
+			require.False(t, page.Complete, "sweep missed eligible work")
+			cursor = page.Cursor
+		}
+		require.True(t, found, "ready work remained unreachable")
+		require.NoError(t, s.update(func(tx *badger.Txn) error {
+			for host := range hosts {
+				if e := tx.Delete([]byte("cool/" + host)); e != nil {
+					return e
+				}
+			}
+			return nil
+		}))
+		emit("cooling_prefix_recovery", map[string]interface{}{"strategy": strategy, "passes": passes + 1, "inspected": inspected, "seconds": time.Since(started).Seconds()})
+	}
+	// Exercise staged admission against the actual million-record store without
+	// changing the lifecycle cohort. Full global capacity must be read-only;
+	// known URLs at full hosts must then clean up in bounded transactions.
+	staged := make([]message.FetcherRequest, 4096)
+	for i := range staged {
+		staged[i] = message.FetcherRequest{URI: millionURI(i % n)}
+	}
+	require.NoError(t, s.StageDiscovery(ctx, "million-admission-replay", staged))
+	originalGlobal, originalHost := s.params.MaxPending, s.params.MaxPendingPerOrigin
+	s.params.MaxPending = n
+	version := admissionVersion(s)
+	for i := 0; i < 20; i++ {
+		drained, e := s.DrainDiscovery(ctx, 4096)
+		require.NoError(t, e)
+		require.Zero(t, drained)
+	}
+	require.Equal(t, version, admissionVersion(s), "full million-record frontier wrote during idle admission")
+	s.params.MaxPending, s.params.MaxPendingPerOrigin = originalGlobal, 1
+	version = admissionVersion(s)
+	drained, e := s.DrainDiscovery(ctx, 4096)
+	require.NoError(t, e)
+	require.Equal(t, 4096, drained)
+	require.LessOrEqual(t, admissionVersion(s)-version, uint64(33), "staging cleanup wrote per record")
+	s.params.MaxPendingPerOrigin = originalHost
+	counts, err = s.Counts()
+	require.NoError(t, err)
+	require.EqualValues(t, n, counts["admitted"])
+	require.EqualValues(t, n, counts["pending_and_active"])
+	require.Zero(t, counts["deferred_discoveries"])
+	emit("staged_capacity_recovery", map[string]interface{}{"staged_duplicates": len(staged), "cleanup_commits": admissionVersion(s) - version})
 	// Simulate an interrupted index upgrade, then rebuild from all million active
 	// requests. Normal startup thereafter must skip this completed migration.
 	require.NoError(t, s.db.Update(func(tx *badger.Txn) error {

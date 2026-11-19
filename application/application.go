@@ -89,7 +89,7 @@ func Decode(reader io.Reader) (config.Application, error) {
 	if err = decoder.Decode(&app); err != nil {
 		return app, err
 	}
-	return app, Validate(app)
+	return prepareApplication(app)
 }
 func normalizeDurations(value interface{}) error {
 	switch v := value.(type) {
@@ -464,6 +464,11 @@ func Run(ctx context.Context, app config.Application) (err error) {
 			control.mu.Lock()
 			control.prepared = nil
 			control.mu.Unlock()
+		}
+		// A pressure sample can still be inside a resource read after context
+		// cancellation. Join the sampler before closing its databases.
+		if prepared.flow != nil {
+			shutdownErrors.run("fetch controller", func() error { prepared.flow.Close(); return nil })
 		}
 		for name, resource := range prepared.resources {
 			if _, ok := resource.(queue.Queue); ok {

@@ -1,11 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { workspaceAPI } from "./crawlApi";
 import { Field } from "./crawlEditor";
 
-export function ExecutionLimits({ onError }) {
+export function ExecutionLimits({ onError, onChange }) {
   const [settings, setSettings] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    load();
+  }, []);
   const set = (key, value) =>
     setSettings((old) => ({
       ...old,
@@ -14,7 +16,9 @@ export function ExecutionLimits({ onError }) {
   async function load() {
     setBusy(true);
     try {
-      setSettings(await workspaceAPI("settings"));
+      const next = await workspaceAPI("settings");
+      setSettings(next);
+      onChange?.(next.execution);
       onError("");
     } catch (e) {
       onError(e.message);
@@ -23,15 +27,8 @@ export function ExecutionLimits({ onError }) {
     }
   }
   return (
-    <details
-      className="crawl-panel"
-      open={open}
-      onToggle={(e) => {
-        setOpen(e.currentTarget.open);
-        if (e.currentTarget.open && !settings && !busy) load();
-      }}
-    >
-      <summary>Execution limits</summary>
+    <section className="crawl-panel">
+      <h2>Execution limits</h2>
       {settings && (
         <form
           onSubmit={async (e) => {
@@ -39,7 +36,9 @@ export function ExecutionLimits({ onError }) {
             setBusy(true);
             onError("");
             try {
-              setSettings(await workspaceAPI("settings", settings));
+              const next = await workspaceAPI("settings", settings);
+              setSettings(next);
+              onChange?.(next.execution);
             } catch (e) {
               onError(e.message);
             } finally {
@@ -98,6 +97,6 @@ export function ExecutionLimits({ onError }) {
         </form>
       )}
       {!settings && !busy && <button onClick={load}>Load</button>}
-    </details>
+    </section>
   );
 }

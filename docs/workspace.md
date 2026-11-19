@@ -6,13 +6,13 @@ The UI opens directly into the crawl workspace. Legacy dashboard and singleton c
 
 The library starts empty. Create a crawl, give it a name, and enter one starting URL or RSS/Atom feed per line. Choose the boundary (host, domain, or open web), traversal strategy, and completion behavior. The rule preview shows how example URLs match your boundary and patterns. Advanced settings expose depth, domain hops, pacing, parallel requests, and retention. The summary explains the resulting behavior before starting.
 
-Each crawl has independent configuration, drafts, queues, frontier, results, runtime metrics, and controls. Multiple crawls can run together. Pausing one does not pause another. A shared per-origin gate limits aggregate traffic to two concurrent requests and 100ms spacing; a crawl can request stricter pacing. Active duration budgets exclude paused time and application downtime.
+Each crawl has independent configuration, drafts, queues, frontier, results, runtime metrics, and controls. Multiple crawls can run together. Pausing one does not pause another. The shared per-origin gate defaults to two concurrent requests and 100ms spacing. Configure shared ceilings in Execution limits; a crawl can request stricter pacing. Active duration budgets exclude paused time and application downtime.
 
 ## Completion and recovery
 
-The default monitors its sources and revisits pages every 24 hours. Choose finish when drained for a finite crawl, or set request and active-duration limits. Reaching a limit stops new dispatch, drains work already sent to workers, and preserves remaining discoveries. The completed run shows its queue snapshot. Continue pending work resumes the latest run's storage with limits lifted, source polling disabled, and finite drain behavior. A new run instead uses separate storage and the current draft.
+The default monitors its sources and revisits pages every 24 hours. Choose finish when drained for a finite crawl, or set request and active-duration limits. Reaching a limit stops new dispatch, drains work already sent to workers, and preserves remaining discoveries. The completed run shows its queue snapshot. Continue pending work resumes the latest run's storage with limits lifted, source polling disabled, and finite drain behavior. Start, Resume, Restart, and applying a saved configuration reuse the latest run and its storage. Saved configuration changes apply on Start or Resume. Request and duration limits remain cumulative; raise or remove an exhausted limit to continue under the updated configuration. Duplicate creates a separate crawl.
 
-Draft edits do not change a running crawl. Apply the draft to create a new versioned run. Pause, resume, and stop operate on the selected crawl. Operations are asynchronous and their status is visible in the UI. Interrupted operations are reported after restart. Archived definitions and historical run previews remain available.
+Draft edits do not change a running crawl. Apply the draft, or Start/Resume, to load the configuration in the same run. Pause, resume, and stop operate on the selected crawl. Operations are asynchronous and their status is visible in the UI. Interrupted operations are reported after restart. Archived definitions and historical run previews remain available.
 
 Storage defaults to `run-data/workspace`. `crawls.json` stores definitions, versions, and desired lifecycle state; each crawl/run has its own data directory. A workspace lock prevents two processes opening the same library. Back up the entire directory with the process stopped. The default retention expires completed frontier details after 7 days, failed frontier details after 30 days, and deduplication history after 90 days. Choose never for permanent retention. Pending and reserved work is protected; expiration does not use an offset cursor that can skip surviving records. Retention is not a hard disk quota: queued work, results, and retained history still require capacity. See [frontier storage](frontier.md).
 
@@ -65,3 +65,32 @@ Use **Fetch throughput** to set overall capacity independently of host pacing, c
 Open **Execution limits** to configure aggregate process concurrency, shared host concurrency, and shared host delay. Defaults are host CPU count × 16, 2, and 100ms. Per-crawl settings can impose stricter bounds. Applying lower limits blocks new admissions until existing work falls below them; in-flight requests finish normally.
 
 `POST /workspace/settings` with `{}` reads revision and execution settings. An update supplies `revision` and `execution`. Stale revisions fail. Registry migration imports the smallest old process/host ceilings and longest delay and writes an exact private pre-migration backup under `migration-backups`, outside Git. Original historical snapshots are retained.
+
+Configuration updates retain the run ID, frontier, pending discoveries, retries, queues, results, counters, and active elapsed time. Applying changes checkpoints workers before reopening the same storage. The original configuration snapshot and earlier historical runs remain recorded. Custom pipelines retain opaque parameters; existing queue/frontier storage identities cannot be replaced by a configuration edit.
+
+Per-host concurrency accepts integers from 1 through 8192, default 2. The effective limit is the stricter of the crawl and workspace shared host ceilings.
+
+### Workspace configuration and extension exclusions
+
+Shared process concurrency, host concurrency, and host delay are configured under
+**Workspace configuration**. Crawl editors retain local limits and display the
+shared host ceiling. Fixed fetch mode hides controls used only by adaptive mode.
+
+**URL filters → Excluded file extensions** accepts comma-separated suffixes with
+optional leading dots, for example `zip, .PDF, tar.gz`. Matching ignores case,
+query strings, and fragments and uses the URL's decoded filename. `.zip` matches
+`archive.ZIP?download=1`, but does not match `archive.zip.html`. Empty input disables
+extension exclusions. Custom pipelines use `config.http_client.excluded_extensions`
+as an array; frontier resources may additionally declare local admission exclusions. Global
+HTTP exclusions are inherited at execution rather than copied into saved resource
+parameters.
+Robots-policy retrieval is auxiliary traffic and remains available when `.txt`
+is excluded; its proxy and hostname restrictions still apply.
+Exclusions apply to crawl documents before network access, including redirects and previously queued
+requests. Excluded records count as policy skips, not fetch failures or successful
+visits. Removing a rule permits subsequent rediscovery of those URLs.
+
+Frontier selection continues through bounded index windows when leading records
+are cooling. Fetch metrics include the selection reason and inspected, cooling,
+eligible, and published counts. BFS/DFS priority applies to eligible work; a cooled
+prefix does not prevent other destinations from being scheduled.

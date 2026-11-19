@@ -2,15 +2,18 @@ package frontier
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/dgraph-io/badger/v3"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
+	"github.com/iakinsey/delver/util"
 	"math"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -24,6 +27,7 @@ var ErrCapacity = errors.New("frontier capacity reached")
 var ErrCooling = errors.New("origin cooling")
 
 type StoreParams struct {
+	ExcludedExtensions  []string       `json:"excluded_extensions,omitempty"`
 	Retry               *RetryPolicy   `json:"retry,omitempty"`
 	RevisitAfter        Lifetime       `json:"revisit_after"`
 	MaxDispatches       int64          `json:"max_dispatches"`
@@ -39,13 +43,14 @@ type StoreParams struct {
 	MaxPending          int            `json:"max_pending"`
 }
 type Candidate struct {
-	NextAttempt int64                  `json:"next_attempt,omitempty"`
-	LastFailure string                 `json:"last_failure,omitempty"`
-	Discovered  int64                  `json:"discovered"`
-	Request     message.FetcherRequest `json:"request"`
-	State       string                 `json:"state"`
-	Sequence    int64                  `json:"sequence"`
-	Terminal    int64                  `json:"terminal,omitempty"`
+	ExclusionPolicy string                 `json:"exclusion_policy,omitempty"`
+	NextAttempt     int64                  `json:"next_attempt,omitempty"`
+	LastFailure     string                 `json:"last_failure,omitempty"`
+	Discovered      int64                  `json:"discovered"`
+	Request         message.FetcherRequest `json:"request"`
+	State           string                 `json:"state"`
+	Sequence        int64                  `json:"sequence"`
+	Terminal        int64                  `json:"terminal,omitempty"`
 }
 type RewardPolicy interface {
 	Reward(message.FetcherResponse, bool) float64
@@ -64,14 +69,15 @@ func (HTMLReward) Reward(r message.FetcherResponse, unique bool) float64 {
 }
 
 type Store struct {
-	controller   atomic.Value
-	RewardPolicy RewardPolicy
-	patterns     map[string]*regexp.Regexp
-	db           *badger.DB
-	mu           sync.Mutex
-	params       StoreParams
-	healthMu     sync.Mutex
-	lastError    string
+	exclusionPolicy string
+	controller      atomic.Value
+	RewardPolicy    RewardPolicy
+	patterns        map[string]*regexp.Regexp
+	db              *badger.DB
+	mu              sync.Mutex
+	params          StoreParams
+	healthMu        sync.Mutex
+	lastError       string
 }
 
 func Normalize(raw, base string) (string, error) {
@@ -104,6 +110,11 @@ func Normalize(raw, base string) (string, error) {
 	return u.String(), nil
 }
 func OpenStore(p StoreParams) (*Store, error) {
+	extensions, err := util.NormalizeExtensions(strings.Join(p.ExcludedExtensions, ","))
+	if err != nil {
+		return nil, err
+	}
+	p.ExcludedExtensions = extensions
 	if p.Retry != nil {
 		if err := p.Retry.Validate(); err != nil {
 			return nil, err
@@ -158,7 +169,10 @@ func OpenStore(p StoreParams) (*Store, error) {
 	for pattern := range p.PatternBudgets {
 		patterns[pattern] = regexp.MustCompile(pattern)
 	}
-	store := &Store{db: db, params: p, patterns: patterns, RewardPolicy: HTMLReward{}}
+	policy := append([]string(nil), p.ExcludedExtensions...)
+	sort.Strings(policy)
+	policyID := sha256.Sum256([]byte(strings.Join(policy, ",")))
+	store := &Store{db: db, params: p, patterns: patterns, RewardPolicy: HTMLReward{}, exclusionPolicy: fmt.Sprintf("%x", policyID)}
 	if err := store.ensureFreshIndexes(); err != nil {
 		db.Close()
 		return nil, err
@@ -181,27 +195,66 @@ func write(tx *badger.Txn, key string, v interface{}) error {
 	return tx.Set([]byte(key), b)
 }
 func index(c Candidate) string { return fmt.Sprintf("p/%020d/%s", c.Sequence, c.Request.URI) }
+
+// DispatchedRequest supplies the current identity for startup delivery repair.
+// It is a point lookup; completed history and pending reservations are excluded.
+func (s *Store) DispatchedRequest(uri string) (message.FetcherRequest, bool, error) {
+	var request message.FetcherRequest
+	found := false
+	uri, err := Normalize(uri, "")
+	if err != nil {
+		return request, false, err
+	}
+	err = s.view(func(tx *badger.Txn) error {
+		var c Candidate
+		if err := read(tx, "u/"+uri, &c); err == badger.ErrKeyNotFound {
+			return nil
+		} else if err != nil {
+			return err
+		}
+		if c.State == "dispatched" && c.Terminal == 0 {
+			request, found = c.Request, true
+		}
+		return nil
+	})
+	return request, found, err
+}
+
 func (s *Store) Admit(ctx context.Context, r message.FetcherRequest) error {
+	_, err := s.admit(ctx, r)
+	return err
+}
+
+// admit reports whether the committed transaction consumed pending capacity.
+// The transaction remains authoritative when concurrent callers share a snapshot.
+func (s *Store) admit(ctx context.Context, r message.FetcherRequest) (bool, error) {
 	if err := ctx.Err(); err != nil {
-		return err
+		return false, err
 	}
 	if r.Depth < 0 || r.Hops < 0 {
-		return fmt.Errorf("negative traversal depth")
+		return false, fmt.Errorf("negative traversal depth")
 	}
 	uri, err := Normalize(r.URI, "")
 	if err != nil {
-		return err
+		return false, err
 	}
 	r.URI = uri
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.checkDisk(); err != nil {
-		return err
+	if util.URLFileExcluded(uri, s.params.ExcludedExtensions) {
+		return false, s.update(func(tx *badger.Txn) error { return increment(tx, "meta/policy_skips", 1) })
 	}
-	return s.update(func(tx *badger.Txn) error {
+	if err := s.checkDisk(); err != nil {
+		return false, err
+	}
+	usedSlot := false
+	err = s.update(func(tx *badger.Txn) error {
 		var existing Candidate
 		if e := read(tx, "u/"+uri, &existing); e == nil {
-			if !r.BetterTraversalThan(existing.Request) || existing.State == "dedup" || existing.State == "failed" {
+			if existing.State == "excluded" && existing.ExclusionPolicy == s.exclusionPolicy {
+				return nil
+			}
+			if existing.State != "excluded" && (!r.BetterTraversalThan(existing.Request) || existing.State == "dedup" || existing.State == "failed") {
 				return nil
 			}
 			if existing.State == "retry_wait" {
@@ -249,6 +302,21 @@ func (s *Store) Admit(ctx context.Context, r message.FetcherRequest) error {
 				if err := increment(tx, "origin/"+existing.Request.Host, 1); err != nil {
 					return err
 				}
+				usedSlot = true
+			}
+			if existing.State == "excluded" {
+				host := existing.Request.Host
+				existing.Request = r
+				existing.Request.URI = uri
+				existing.Request.Host = host
+				existing.Request.Protocol = types.ProtocolHTTP
+				existing.Request.RequestID = types.NewV4()
+				existing.Request.FrontierGeneration = existing.Request.RequestID
+				existing.Request.Attempt = 0
+				existing.ExclusionPolicy = ""
+				existing.LastFailure = ""
+				existing.NextAttempt = 0
+				existing.Discovered = time.Now().UnixNano()
 			}
 			existing.Request.Depth = r.Depth
 			existing.Request.Hops = r.Hops
@@ -328,8 +396,10 @@ func (s *Store) Admit(ctx context.Context, r message.FetcherRequest) error {
 		if err := write(tx, "meta/sequence", seq); err != nil {
 			return err
 		}
+		usedSlot = true
 		return write(tx, "meta/pending", n+1)
 	})
+	return usedSlot && err == nil, err
 }
 
 // Pending resumes strictly after a key. Deleting that key does not invalidate the cursor.
@@ -451,6 +521,9 @@ func (s *Store) Published(c Candidate) error {
 }
 func expiry(t int64, kind, uri string) string { return fmt.Sprintf("e/%020d/%s/%s", t, kind, uri) }
 func (s *Store) Outcome(r message.FetcherResponse) error {
+	if r.FailureClass == "excluded" {
+		r.Retryable = false
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	uri, err := Normalize(r.URI, "")
@@ -541,14 +614,21 @@ func (s *Store) Outcome(r message.FetcherResponse) error {
 			return err
 		}
 		c.Terminal = time.Now().UnixNano()
-		if s.params.RevisitAfter > 0 {
+		if s.params.RevisitAfter > 0 && r.FailureClass != "excluded" {
 			if err := write(tx, revisitKey(retentionDeadline(c.Terminal, s.params.RevisitAfter), c.Request.URI), c.Request); err != nil {
 				return err
 			}
 		}
 		c.State = "completed"
 		life := s.params.Retention.CompletedFor
-		if !r.Success || r.HTTPCode >= 400 {
+		if r.FailureClass == "excluded" {
+			c.State = "excluded"
+			c.ExclusionPolicy = s.exclusionPolicy
+			life = s.params.Retention.CompletedFor
+			if err := increment(tx, "meta/policy_skips", 1); err != nil {
+				return err
+			}
+		} else if !r.Success || r.HTTPCode >= 400 {
 			c.State = "failed"
 			if err := increment(tx, "meta/failed_fetches", 1); err != nil {
 				return err
@@ -606,7 +686,11 @@ func (s *Store) Cleanup(ctx context.Context, now time.Time) (int, error) {
 			if c.Terminal == 0 {
 				return 0, fmt.Errorf("expiration references active work")
 			}
-			if strings.Contains(key, "/detail/") {
+			if c.State == "excluded" {
+				if err := tx.Delete([]byte("u/" + uri)); err != nil {
+					return 0, err
+				}
+			} else if strings.Contains(key, "/detail/") {
 				c.Request = message.FetcherRequest{URI: uri, RequestID: c.Request.RequestID}
 				c.State = "dedup"
 				if err := write(tx, "u/"+uri, c); err != nil {
@@ -665,7 +749,7 @@ func (s *Store) Scores(cs []Candidate) (map[string]float64, error) {
 func (s *Store) Counts() (map[string]int64, error) {
 	out := map[string]int64{}
 	err := s.view(func(tx *badger.Txn) error {
-		for field, key := range map[string]string{"retry_pending": "meta/retry_pending", "retries_scheduled": "meta/retries_scheduled", "host_cooldowns": "meta/host_cooldowns", "pending_and_active": "meta/pending", "deferred_discoveries": "meta/staged", "budget_rejected": "meta/budget_rejected", "capacity_deferrals": "meta/capacity_deferrals", "unique_html": "meta/unique_html", "failed_fetches": "meta/failed_fetches", "dispatched": "meta/dispatched", "reserved": "meta/reserved", "admitted": "meta/sequence", "terminal_outcomes": "meta/outcomes", "cleaned": "meta/cleaned"} {
+		for field, key := range map[string]string{"policy_skips": "meta/policy_skips", "retry_pending": "meta/retry_pending", "retries_scheduled": "meta/retries_scheduled", "host_cooldowns": "meta/host_cooldowns", "pending_and_active": "meta/pending", "deferred_discoveries": "meta/staged", "budget_rejected": "meta/budget_rejected", "capacity_deferrals": "meta/capacity_deferrals", "unique_html": "meta/unique_html", "failed_fetches": "meta/failed_fetches", "dispatched": "meta/dispatched", "reserved": "meta/reserved", "admitted": "meta/sequence", "terminal_outcomes": "meta/outcomes", "cleaned": "meta/cleaned"} {
 			var value int64
 			if err := read(tx, key, &value); err != nil && err != badger.ErrKeyNotFound {
 				return err

@@ -28,7 +28,15 @@ for (const mode of ["fixed", "adaptive"])
         exact: true,
       })
       .check();
-    for (const group of new Set(options.map((o) => o.group))) {
+    for (const group of new Set(
+      options
+        .filter(
+          (o) =>
+            mode === "adaptive" ||
+            !(o.group.startsWith("Adaptive") || o.key.startsWith("cpu_")),
+        )
+        .map((o) => o.group),
+    )) {
       const details = page.locator(".fetch-settings details").filter({
         has: page.locator("summary", { hasText: new RegExp(`^${group}$`) }),
       });

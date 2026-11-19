@@ -178,7 +178,7 @@ for (const required of [false, true])
           }),
         ).toBeChecked({ checked: isolate });
       });
-test("SOCKS labels survive resume and rotate for a new run", async ({
+test("SOCKS labels survive resume and restart in the same run", async ({
   page,
   request,
 }) => {
@@ -232,7 +232,7 @@ test("SOCKS labels survive resume and rotate for a new run", async ({
             .id,
         { timeout: 15000 },
       )
-      .not.toBe(run);
+      .toBe(run);
     await expect
       .poll(
         async () =>
@@ -243,7 +243,7 @@ test("SOCKS labels survive resume and rotate for a new run", async ({
           ).size,
         { timeout: 15000 },
       )
-      .toBe(2);
+      .toBe(1);
   } finally {
     await cleanup(request, record);
   }
@@ -397,7 +397,11 @@ test("request timeout changes take effect for slow destinations", async ({
   expect(
     (await api(request, "results", { crawl_id: record.id })).rows[0].error,
   ).toMatch(/deadline|timeout/i);
+  const before = await api(request, "detail", { crawl_id: record.id });
   await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page
+    .getByLabel("Seed URLs", { exact: true })
+    .fill(`${fixture.source}/slow?updated=${crypto.randomUUID()}`);
   await page.getByText("Requests", { exact: true }).click();
   await page.getByLabel("Request timeout", { exact: true }).fill("2s");
   await page
@@ -412,10 +416,12 @@ test("request timeout changes take effect for slow destinations", async ({
   await expect(page.locator(".crawl-state")).toHaveText("completed", {
     timeout: 15000,
   });
-  expect(
-    (await api(request, "results", { crawl_id: record.id })).rows[0]
-      .http_status,
-  ).toBe(200);
+  const rows = (await api(request, "results", { crawl_id: record.id })).rows;
+  expect(rows.some((r) => r.http_status === 200)).toBe(true);
+  expect(rows.some((r) => /deadline|timeout/i.test(r.error || ""))).toBe(true);
+  const after = await api(request, "detail", { crawl_id: record.id });
+  expect(after.runs).toHaveLength(1);
+  expect(after.runs[0].id).toBe(before.runs[0].id);
 });
 for (const retries of [0, 2])
   test(`retry count and backoff execute with ${retries} retries`, async ({
