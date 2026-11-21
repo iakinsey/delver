@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/iakinsey/delver/flow"
+	"github.com/iakinsey/delver/report"
 	"io"
 	"net"
 	"net/http"
@@ -32,6 +33,7 @@ type DelverHTTPClient interface {
 }
 
 type delverHTTPClient struct {
+	Reporter                  report.Writer
 	Flow                      *flow.Controller
 	BodyTimeout               time.Duration
 	configError               error
@@ -158,7 +160,7 @@ func NewHTTPClientWithConfig(params config.HTTPClientConfig) DelverHTTPClient {
 	client.Transport = transport
 
 	return &delverHTTPClient{
-		Flow: params.Flow, BodyTimeout: params.BodyTimeout,
+		Reporter: params.Reporter, Flow: params.Flow, BodyTimeout: params.BodyTimeout,
 		configError: configError, HostSuffixes: suffixes, ExcludedExtensions: extensions,
 		RetryDelay: params.RetryDelay, RetryMaxDelay: params.RetryMaxDelay,
 		HTTP:           client,
@@ -421,7 +423,25 @@ func (s *limitedTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	req = req.Clone(networkCtx)
 	priorRelease := release
 	release = func() { cancelBody(); priorRelease() }
+	if s.owner.Reporter != nil && flow.IsFetchAttempt(req.Context()) && req.Response != nil && req.Response.Request != nil {
+		if e := s.owner.Reporter.Discover(req.Context(), []report.URL{{URI: req.URL.String(), Origin: req.Response.Request.URL.String()}}); e != nil {
+			release()
+			return nil, fmt.Errorf("report storage: %w", e)
+		}
+	}
 	response, err := s.base.RoundTrip(req)
+	if response != nil && s.owner.Reporter != nil && flow.IsFetchAttempt(req.Context()) {
+		receiptCtx, cancelReceipt := context.WithTimeout(context.WithoutCancel(req.Context()), 5*time.Second)
+		defer cancelReceipt()
+		if e := s.owner.Reporter.Response(receiptCtx, req.URL.String(), response.StatusCode); e != nil {
+			if response.Body != nil {
+				response.Body.Close()
+			}
+			release()
+			return nil, fmt.Errorf("report storage: %w", e)
+		}
+
+	}
 	if err != nil {
 		release()
 		return response, err

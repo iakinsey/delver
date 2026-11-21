@@ -17,7 +17,9 @@ import (
 // The same self-contained benchmark runs against the checkpoint and final code.
 // Each response is unique HTML; all pipeline stages, durable queues, and JSONL
 // output execute. No competing workload should run during comparisons.
-func BenchmarkWorkspaceCapacity(b *testing.B) {
+func BenchmarkWorkspaceCapacity(b *testing.B)           { benchmarkWorkspaceCapacity(b, false) }
+func BenchmarkWorkspaceCapacityWithReport(b *testing.B) { benchmarkWorkspaceCapacity(b, true) }
+func benchmarkWorkspaceCapacity(b *testing.B, showReport bool) {
 	const pages = 128
 	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
@@ -75,8 +77,12 @@ func BenchmarkWorkspaceCapacity(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
+
 			encoded, _ = json.Marshal(value)
 			var state struct {
+				Runtime struct {
+					Runtime *RuntimeSnapshot `json:"runtime"`
+				} `json:"runtime"`
 				Runs []struct {
 					State   string           `json:"state"`
 					Summary *RuntimeSnapshot `json:"summary"`
@@ -84,6 +90,17 @@ func BenchmarkWorkspaceCapacity(b *testing.B) {
 			}
 			if err = json.Unmarshal(encoded, &state); err != nil {
 				b.Fatal(err)
+			}
+
+			if showReport && len(state.Runs) > 0 && (state.Runs[0].State == "completed" || state.Runtime.Runtime != nil && state.Runtime.Runtime.Fetch != nil) {
+				rawReport, _ := json.Marshal(map[string]interface{}{"crawl_id": record.ID})
+				if _, err = w.HandleCrawls(context.Background(), "report", rawReport); err != nil {
+					b.Fatal(err)
+				}
+				rawGraph, _ := json.Marshal(map[string]interface{}{"crawl_id": record.ID, "host": "benchmark-0.invalid", "depth": 2})
+				if _, err = w.HandleCrawls(context.Background(), "host_graph", rawGraph); err != nil {
+					b.Fatal(err)
+				}
 			}
 			if len(state.Runs) == 1 && state.Runs[0].State == "completed" {
 				last = state.Runs[0].Summary

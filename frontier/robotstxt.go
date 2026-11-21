@@ -47,6 +47,7 @@ func NewMemoryRobotsWithConfig(c config.Config) ClosableFilter {
 	// Robots metadata is not a crawl document. Keep network restrictions while
 	// allowing its mandatory .txt policy request.
 	clientConf.ExcludedExtensions = nil
+	clientConf.Reporter = nil
 
 	job := &memoryRobots{
 		done:              make(chan struct{}),

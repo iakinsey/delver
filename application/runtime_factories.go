@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"github.com/armon/go-metrics"
 	"github.com/iakinsey/delver/config"
+	"github.com/iakinsey/delver/report"
 	"github.com/iakinsey/delver/worker"
 )
 
 // RuntimeDependencies are scoped to a single crawl. Factories should capture
 // these settings rather than consulting process-wide config during execution.
 type RuntimeDependencies struct {
+	Reporter      report.Writer
 	Configuration config.Config
 	Metrics       metrics.MetricSink
 }
@@ -40,5 +42,9 @@ func (p *preparedApplication) dependencies() RuntimeDependencies {
 	if sink == nil {
 		sink = &metrics.BlackholeSink{}
 	}
-	return RuntimeDependencies{Configuration: p.app.Config, Metrics: sink}
+	var reporter report.Writer
+	if p.reporting != nil {
+		reporter = p.reporting
+	}
+	return RuntimeDependencies{Reporter: reporter, Configuration: p.app.Config, Metrics: sink}
 }

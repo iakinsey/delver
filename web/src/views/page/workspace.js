@@ -386,6 +386,11 @@ export default function Workspace({ defaults }) {
         <>
           <section className="crawl-panel">
             <div className="crawl-heading">
+              <button
+                onClick={() => history.push(`/crawls/${selected}/report`)}
+              >
+                Report
+              </button>
               <div>
                 <span role="status" className={`crawl-state ${state}`}>
                   {words(state)}
@@ -795,7 +800,13 @@ export default function Workspace({ defaults }) {
             resultsRun={resultsRun}
             setResultsRun={setResultsRun}
           />
-          <RunHistory runs={detail.runs} onView={setResultsRun} />
+          <RunHistory
+            runs={detail.runs}
+            onView={setResultsRun}
+            onReport={(id) =>
+              history.push(`/crawls/${selected}/report?run_id=${id}`)
+            }
+          />
         </>
       ) : !selected ? (
         <>

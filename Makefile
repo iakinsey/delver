@@ -56,9 +56,20 @@ test-storage-scale:
 test-elasticsearch:
 	@test -n "$(ES_URL)" || (echo 'ES_URL must identify an isolated test Elasticsearch instance'; exit 1)
 	DELVER_ES_URL="$(ES_URL)" go test -race ./gateway -run 'Test(LiveElasticsearch|LiveCrawlLogDeletionIsolation|Delete)' -count=1 -v
-	DELVER_ES_URL="$(ES_URL)" go test -race ./application -run '^TestLiveWorkspaceLogDeletionOptions$$' -count=1 -v
+	DELVER_ES_URL="$(ES_URL)" go test -race ./application -run '^TestLive(WorkspaceLogDeletionOptions|ReportIndexedHistory)$$' -count=1 -v
 test-tor:
 	@test -f "$(TOR_CONFIG)" || (echo 'TOR_CONFIG must identify a private crawl definition containing test seeds'; exit 1)
 	DELVER_TOR_LIVE=1 DELVER_TOR_CONFIG="$(TOR_CONFIG)" DELVER_TOR_PROXY="$(TOR_PROXY)" DELVER_VALIDATION_ROOT="$(VALIDATION_ROOT)/tor" go test ./application -run '^TestLiveTor$$' -count=1 -timeout=40m -v
 validate-local: build test test-race test-static test-ui test-benchmark test-soak test-million test-million-disk test-storage-scale test-elasticsearch
 validate: validate-local test-tor
+
+.PHONY: test-report-million test-report-million-disk test-report-graph
+test-report-million:
+	@test -d /dev/shm && test "$$(stat -f -c %T /dev/shm)" = tmpfs || (echo 'Report scale test requires tmpfs at /dev/shm'; exit 1)
+	DELVER_REPORT_MILLION=1 DELVER_REPORT_SCALE_ROOT=/dev/shm DELVER_VALIDATION_ROOT="$(VALIDATION_ROOT)/report-million-tmpfs" go test ./report -run '^TestReportMillionURLs$$' -count=1 -timeout=20m -v
+test-report-million-disk:
+	@mkdir -p "$(DISK_ROOT)"
+	@test "$$(stat -f -c %T "$(DISK_ROOT)")" != tmpfs || (echo 'DISK_ROOT must be persistent storage'; exit 1)
+	DELVER_REPORT_MILLION=1 DELVER_REPORT_SCALE_ROOT="$(DISK_ROOT)" DELVER_VALIDATION_ROOT="$(VALIDATION_ROOT)/report-million-disk" go test ./report -run '^TestReportMillionURLs$$' -count=1 -timeout=20m -v
+test-report-graph:
+	DELVER_REPORT_GRAPH_SCALE=1 DELVER_REPORT_SCALE_ROOT="$(DISK_ROOT)" DELVER_VALIDATION_ROOT="$(VALIDATION_ROOT)/report-graph" go test ./report -run '^TestReportHundredThousandHostGraph$$' -count=1 -timeout=20m -v

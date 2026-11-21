@@ -10,6 +10,7 @@ import (
 	"github.com/iakinsey/delver/flow"
 	"github.com/iakinsey/delver/instrument"
 	"github.com/iakinsey/delver/queue"
+	"github.com/iakinsey/delver/report"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/worker"
 	"io"
@@ -250,6 +251,9 @@ func Run(ctx context.Context, app config.Application) (err error) {
 			err = fmt.Errorf("application construction: %v", recovered)
 		}
 		if err != nil && !shutdownStarted {
+			if prepared.reporting != nil {
+				defer prepared.reporting.Close()
+			}
 			for _, m := range prepared.workers {
 				m.Stop()
 			}
@@ -265,6 +269,22 @@ func Run(ctx context.Context, app config.Application) (err error) {
 			}
 		}
 	}()
+	if path := app.Config.API.OperationsPath; path != "" {
+		partial := false
+		if _, e := os.Stat(path + ".report.sqlite"); os.IsNotExist(e) {
+			_, old := os.Stat(path + ".fetch.json")
+			partial = old == nil
+		}
+		prepared.reporting, err = report.Open(path+".report.sqlite", partial)
+		if err != nil {
+			return err
+		}
+		prepared.app.Config.HTTPClient.Reporter = prepared.reporting
+		if err = seedReport(ctx, prepared); err != nil {
+			return err
+		}
+	}
+
 	for _, r := range app.Resources {
 		CreateResource(r, prepared)
 	}
@@ -469,6 +489,9 @@ func Run(ctx context.Context, app config.Application) (err error) {
 		// cancellation. Join the sampler before closing its databases.
 		if prepared.flow != nil {
 			shutdownErrors.run("fetch controller", func() error { prepared.flow.Close(); return nil })
+		}
+		if prepared.reporting != nil {
+			shutdownErrors.run("report", prepared.reporting.Close)
 		}
 		for name, resource := range prepared.resources {
 			if _, ok := resource.(queue.Queue); ok {

@@ -48,7 +48,7 @@ export function ResultsPanel({ results, resultsRun, setResultsRun }) {
     </section>
   );
 }
-export function RunHistory({ runs, onView }) {
+export function RunHistory({ runs, onView, onReport }) {
   return (
     <section className="crawl-panel">
       <h2>Run history</h2>
@@ -59,6 +59,7 @@ export function RunHistory({ runs, onView }) {
             · {words(r.state)}
             {r.continued > 0 ? ` · continued ${r.continued} time(s)` : ""}{" "}
             <button onClick={() => onView(r.id)}>View</button>
+            {onReport && <button onClick={() => onReport(r.id)}>Report</button>}
             <details>
               <summary>Configuration</summary>
               <pre>

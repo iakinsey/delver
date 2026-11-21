@@ -64,6 +64,7 @@ type crawlSlot struct {
 	clockRunning bool
 }
 type Workspace struct {
+	reportImports    map[string]bool
 	settings         WorkspaceSettings
 	broker           *flow.Broker
 	dirty            bool
@@ -606,6 +607,9 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 			return map[string]interface{}{"deleted": true}, nil
 		}
 		return nil, errs.NewRequestError("crawl ID required")
+	}
+	if action == "report" || action == "hosts" || action == "host_graph" {
+		return w.handleReport(ctx, r, slot, action, raw)
 	}
 	if action == "delete" {
 		return w.acceptDeletion(r, slot, req.Revision, req.ID, req.Confirm, req.PreserveLogs)

@@ -3,8 +3,8 @@ export const crawlAPI = (action, data = {}) =>
   apiRequest(`crawls/${action}`, data);
 export const workspaceAPI = (action, data = {}) =>
   apiRequest(`workspace/${action}`, data);
-export async function apiRequest(path, data = {}) {
-  const r = await request(path, data);
+export async function apiRequest(path, data = {}, options = {}) {
+  const r = await request(path, data, options);
   if (!r.success) {
     const error = Error(r.error || "Request failed");
     throw error;

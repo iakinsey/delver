@@ -34,6 +34,7 @@ Custom Go components are demonstrated in [examples/custom](examples/custom/main.
 ## Documentation
 
 - [Crawl workspace](docs/workspace.md)
+- [Crawl reports and host explorer](docs/crawl-report.md)
 - [Frontier strategies and storage](docs/frontier.md)
 - [Fetch throughput and validation](docs/fetch-throughput.md)
 - [Configuration reference](docs/configuration.md)

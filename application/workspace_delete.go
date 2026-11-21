@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/iakinsey/delver/gateway"
+	"github.com/iakinsey/delver/report"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/errs"
 	"os"
@@ -23,7 +24,7 @@ func (w *Workspace) deletionPaths(r *CrawlRecord) ([]string, error) {
 		if run.Legacy && run.Expert != nil {
 			paths = append(paths, pipelinePaths(*run.Expert)...)
 			if path := run.Expert.Config.API.OperationsPath; path != "" {
-				paths = append(paths, path, path+".lock", path+".tmp", path+".fetch.json", path+".fetch.json.tmp")
+				paths = append(paths, path, path+".lock", path+".tmp", path+".fetch.json", path+".fetch.json.tmp", path+".report.sqlite", path+".report.sqlite-wal", path+".report.sqlite-shm")
 			}
 		}
 	}
@@ -52,7 +53,7 @@ func (w *Workspace) deletionPaths(r *CrawlRecord) ([]string, error) {
 				break
 			}
 		}
-		legacyState := absolute == filepath.Join(w.root, "state.json") || absolute == filepath.Join(w.root, "state.json.lock") || absolute == filepath.Join(w.root, "state.json.tmp") || absolute == filepath.Join(w.root, "state.json.fetch.json") || absolute == filepath.Join(w.root, "state.json.fetch.json.tmp")
+		legacyState := absolute == filepath.Join(w.root, "state.json") || absolute == filepath.Join(w.root, "state.json.lock") || absolute == filepath.Join(w.root, "state.json.tmp") || absolute == filepath.Join(w.root, "state.json.fetch.json") || absolute == filepath.Join(w.root, "state.json.fetch.json.tmp") || absolute == filepath.Join(w.root, "state.json.report.sqlite") || absolute == filepath.Join(w.root, "state.json.report.sqlite-wal") || absolute == filepath.Join(w.root, "state.json.report.sqlite-shm")
 
 		if absolute == filepath.VolumeName(absolute)+string(filepath.Separator) || overlapStorage(absolute, w.root) && !strings.HasPrefix(absolute, w.root+string(filepath.Separator)+"crawls"+string(filepath.Separator)+r.ID+string(filepath.Separator)) && absolute != paths[0] && !legacyState {
 			return nil, fmt.Errorf("storage path overlaps workspace: %s", absolute)
@@ -200,6 +201,7 @@ func (w *Workspace) acceptDeletion(r *CrawlRecord, slot *crawlSlot, revision uin
 				if err = os.RemoveAll(path); err != nil {
 					break
 				}
+				report.Forget(path)
 			}
 		}
 		w.mu.Lock()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/iakinsey/delver/flow"
+	"github.com/iakinsey/delver/report"
 	"io/fs"
 	"log"
 	"runtime"
@@ -22,6 +23,7 @@ type HTTPGate interface {
 	Acquire(context.Context, string, int, time.Duration) (func(), error)
 }
 type HTTPClientConfig struct {
+	Reporter             report.Writer    `json:"-"`
 	ExcludedExtensions   []string         `json:"excluded_extensions,omitempty"`
 	Flow                 *flow.Controller `json:"-"`
 	ConnectTimeout       time.Duration    `json:"connect_timeout"`

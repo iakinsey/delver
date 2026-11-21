@@ -701,6 +701,22 @@
     {
       "file": "workspace.spec.js",
       "title": "monitoring crawls remain independent and the editor works on mobile"
+    },
+    {
+      "file": "workspace-report.spec.js",
+      "title": "report metrics search importance and graph controls desktop"
+    },
+    {
+      "file": "workspace-report.spec.js",
+      "title": "report metrics search importance and graph controls mobile"
+    },
+    {
+      "file": "workspace-report.spec.js",
+      "title": "report keyboard search invalid depth stale requests and navigation"
+    },
+    {
+      "file": "workspace-report.spec.js",
+      "title": "report reconnect restart and retained run identity"
     }
   ]
 }

@@ -1,6 +1,6 @@
 module github.com/iakinsey/delver
 
-go 1.17
+go 1.23.0
 
 require (
 	github.com/RoaringBitmap/roaring v0.9.4

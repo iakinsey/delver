@@ -661,3 +661,5 @@ func (c *Controller) ReportDispatch(inspected, cooling, eligible, published int,
 		c.counters["selection_sweeps"]++
 	}
 }
+
+func IsFetchAttempt(ctx context.Context) bool { return ctx.Value(fetchAttemptKey{}) == true }

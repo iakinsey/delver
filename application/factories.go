@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/armon/go-metrics"
 	"github.com/iakinsey/delver/flow"
+	"github.com/iakinsey/delver/report"
 	"reflect"
 	"sync"
 	"time"
@@ -29,6 +30,7 @@ import (
 var resourceKeyLookupError = errors.New("failed to find resource key")
 
 type preparedApplication struct {
+	reporting     *report.Store
 	pressurePaths []string
 	pressureMu    sync.Mutex
 	pressureTime  time.Time
@@ -104,6 +106,9 @@ func CreateWorker(wc config.Worker, preparedApp *preparedApplication) {
 		}
 	}
 
+	if target, ok := w.(interface{ SetReporter(report.Writer) }); ok && preparedApp.reporting != nil {
+		target.SetReporter(preparedApp.reporting)
+	}
 	if wc.Once {
 		store, ok := preparedApp.resources["source_progress"].(maps.Map)
 		if !ok {

@@ -407,11 +407,15 @@ test("combined adaptive proxy workflow recovers in the same run and survives app
     const blockedPause = await api(request, "detail", { crawl_id: a });
     expect(blockedPause.runtime.runtime.fetch.active).toBe(0);
     expect(blockedPause.runtime.runtime.fetch.process_active).toBe(0);
+    // Pending durable work can remain in the frontier while downstream queues
+    // drain under the admission gate; both locations survive pause/resume.
     expect(
       Object.values(blockedPause.runtime.runtime.queues).reduce(
         (sum, count) => sum + count,
         0,
-      ),
+      ) +
+        (blockedPause.runtime.runtime.frontier?.pending_and_active || 0) +
+        (blockedPause.runtime.runtime.frontier?.deferred_discoveries || 0),
     ).toBeGreaterThan(0);
     await page.reload();
     await page.getByRole("button", { name: "Resume", exact: true }).click();

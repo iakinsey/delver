@@ -17,7 +17,10 @@ export function routeTo(url) {
 export async function request(url, data, options = {}) {
   const requestUrl = `${API_SERVER}/${url}`;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const timeout = setTimeout(
+    () => controller.abort(),
+    options.timeoutMs || 15000,
+  );
   const forwardAbort = () => controller.abort();
   if (options.signal?.aborted) controller.abort();
   options.signal?.addEventListener("abort", forwardAbort, { once: true });

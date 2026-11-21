@@ -11,6 +11,7 @@ import (
 	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/instrument"
 	"github.com/iakinsey/delver/queue"
+	"github.com/iakinsey/delver/report"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
@@ -41,7 +42,8 @@ type Params struct {
 	Window              int                    `json:"window"`
 }
 type Worker struct {
-	metrics metrics.MetricSink
+	Reporter report.Writer
+	metrics  metrics.MetricSink
 	Params
 	Kind        string
 	lastHost    string
@@ -52,6 +54,8 @@ type Worker struct {
 	nextCleanup time.Time
 	Filters     []frontier.Filter
 }
+
+func (w *Worker) SetReporter(r report.Writer) { w.Reporter = r }
 
 func New(p Params, kind string) (*Worker, error) {
 	suffixes, err := util.NormalizeHostSuffixes(p.AllowedHostSuffixes)
@@ -205,6 +209,17 @@ func (w *Worker) OnMessageContext(ctx context.Context, m types.Message) (interfa
 			continue
 		}
 		discoveries = append(discoveries, message.FetcherRequest{URI: uri, Origin: c.URI, Depth: depth, Hops: hops, ScopeRoot: c.ScopeRoot})
+	}
+	if w.Reporter != nil {
+		records := []report.URL{}
+		for _, r := range discoveries {
+			if !util.URLFileExcluded(r.URI, admissionExtensions(w.Store)) {
+				records = append(records, report.URL{URI: r.URI, Origin: base})
+			}
+		}
+		if err := w.Reporter.Discover(ctx, records); err != nil {
+			return nil, err
+		}
 	}
 	id := fmt.Sprintf("%s:%s:%d:%d:%s", c.RequestID, c.URI, c.Depth, c.Hops, m.ID)
 	if err := w.Store.StageDiscovery(ctx, id, discoveries); err != nil {

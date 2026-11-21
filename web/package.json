@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "graphology": "0.26.0",
+    "graphology-layout-forceatlas2": "0.10.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^5.2.0"
+    "react-router-dom": "^5.2.0",
+    "sigma": "3.0.2"
   },
   "scripts": {
     "start": "vite --host 0.0.0.0",
@@ -27,13 +30,13 @@
     ]
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.65.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.3",
+    "jsdom": "^26.1.0",
     "prettier": "^3.10.1",
     "vite": "^6.4.0",
-    "vitest": "^4.1.12",
-    "@testing-library/react": "^16.3.3",
-    "@testing-library/jest-dom": "^6.9.1",
-    "jsdom": "^26.1.0",
-    "@playwright/test": "^1.65.1",
-    "@axe-core/playwright": "^4.13.0"
+    "vitest": "^4.1.12"
   }
 }

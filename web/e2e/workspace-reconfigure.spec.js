@@ -129,7 +129,7 @@ for (const state of ["paused", "stopped"])
                     `${base}/fixture/request-events?user_agent=updated-${token}`,
                   )
                 ).json()
-              ).length,
+              )?.length || 0,
           )
           .toBeGreaterThan(0);
         const compiled = await api(request, "pipeline", {
@@ -138,6 +138,15 @@ for (const state of ["paused", "stopped"])
         expect(
           compiled.configuration.config.http_client.per_origin_concurrency,
         ).toBe(4);
+        // A server arrival precedes its delayed response. Wait for a completed
+        // response before stopping; Stop legitimately cancels in-flight work.
+        await expect
+          .poll(
+            async () =>
+              (await api(request, "detail", { crawl_id: record.id })).runtime
+                .runtime.fetch.totals.successes,
+          )
+          .toBeGreaterThan(checkpoint.fetch.totals.successes);
         await page.getByRole("button", { name: "Stop", exact: true }).click();
         await expect(page.locator(".crawl-state")).toHaveText("stopped");
         const final = await api(request, "detail", { crawl_id: record.id });

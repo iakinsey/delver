@@ -90,6 +90,52 @@ func main() {
 			}
 			return
 		}
+		if r.URL.Path == "/report-root" {
+			w.Header().Set("Content-Type", "text/html")
+			fmt.Fprint(w, "<title>Host report root</title>")
+			for _, group := range []string{"a", "b"} {
+				for i := 0; i < 30; i++ {
+					fmt.Fprintf(w, `<a href="http://report-%s%02d.test/report-node">Host</a>`, group, i)
+				}
+			}
+			fmt.Fprint(w, `<a href="http://deep-0.test/report-deep">Deep</a>`)
+			return
+		}
+		if r.URL.Path == "/report-node" {
+			w.Header().Set("Content-Type", "text/html")
+			fmt.Fprintf(w, "<title>%s</title>", html.EscapeString(r.Host))
+			var group string
+			var n int
+			if strings.HasPrefix(r.Host, "report-a") {
+				group = "a"
+			} else {
+				group = "b"
+			}
+			fmt.Sscanf(strings.TrimPrefix(r.Host, "report-"+group), "%d", &n)
+			for _, step := range []int{1, 2, 3} {
+				fmt.Fprintf(w, `<a href="http://report-%s%02d.test/report-node">Neighbor</a>`, group, (n+step)%30)
+			}
+			if group == "a" && n == 0 {
+				fmt.Fprint(w, `<a href="http://bridge.test/report-bridge">Bridge</a>`)
+			}
+			return
+		}
+		if r.URL.Path == "/report-bridge" {
+			w.Header().Set("Content-Type", "text/html")
+			fmt.Fprint(w, `<title>Bridge</title><a href="http://report-b00.test/report-node">Region B</a>`)
+			return
+		}
+		if r.URL.Path == "/report-deep" {
+			w.Header().Set("Content-Type", "text/html")
+			var n int
+			fmt.Sscanf(strings.TrimPrefix(r.Host, "deep-"), "%d", &n)
+			fmt.Fprintf(w, "<title>Depth %d</title>", n)
+			if n < 7 {
+				fmt.Fprintf(w, `<a href="http://deep-%d.test/report-deep">Next</a>`, n+1)
+			}
+			return
+		}
+
 		if r.URL.Path == "/retry" {
 			if attempt <= 2 {
 				w.WriteHeader(503)

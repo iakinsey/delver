@@ -825,3 +825,7 @@ func frontierOptions(path string, budgetMB int) badger.Options {
 	opts.TableSizeMultiplier = 1
 	return opts.WithNumCompactors(2)
 }
+
+func (s *Store) ExcludedFileExtensions() []string {
+	return append([]string(nil), s.params.ExcludedExtensions...)
+}

@@ -254,7 +254,7 @@ func classifyResponse(r *message.FetcherResponse) {
 			r.Retryable = true
 		case strings.Contains(text, "store object failure"):
 			r.FailureClass = "storage"
-			if strings.Contains(text, "eof") || strings.Contains(text, "read tcp") {
+			if strings.Contains(text, "eof") || strings.Contains(text, "read tcp") || strings.Contains(text, "gzip:") || strings.Contains(text, "flate:") {
 				r.FailureClass = "body"
 				r.Retryable = true
 			}
