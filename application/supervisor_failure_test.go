@@ -205,7 +205,7 @@ func serviceStartupFailure(t *testing.T, explicit bool) {
 	require.NoError(t, err)
 	app.Config.API.Address = listener.Addr().String()
 	listener.Close()
-	RegisterResource("startup_failure_fixture", func(json.RawMessage) (interface{}, error) { return nil, fmt.Errorf("injected startup failure") })
+	RegisterResource("startup_failure_fixture", func(json.RawMessage) (interface{}, error) { return nil, fmt.Errorf("injected startup failure") }, ProtectionMetadataOnly)
 	defer RegisterResource("startup_failure_fixture", nil)
 	app.Resources = []config.Resource{{Name: "failure", Type: "startup_failure_fixture", Parameters: json.RawMessage(`{}`)}}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -284,4 +284,39 @@ func TestStatusPollingDuringRepeatedRuntimeReplacement(t *testing.T) {
 		require.Equal(t, "completed", runCommand(t, s, fmt.Sprintf("start-%d", i), "start").State)
 		require.Equal(t, "completed", runCommand(t, s, fmt.Sprintf("stop-%d", i), "stop").State)
 	}
+}
+
+func TestStartupDeadlineIsIndependentOfShutdownDeadline(t *testing.T) {
+	s := testSupervisor(t)
+	s.state.Active.Config.ShutdownTimeout = 10 * time.Millisecond
+	s.startupTimeout = time.Second
+	entered, release := make(chan struct{}), make(chan struct{})
+	RegisterResource("startup_deadline_fixture", func(json.RawMessage) (interface{}, error) { close(entered); <-release; return struct{}{}, nil })
+	defer RegisterResource("startup_deadline_fixture", nil)
+	s.state.Active.Resources = []config.Resource{{Name: "slow", Type: "startup_deadline_fixture", Parameters: json.RawMessage(`{}`)}}
+	result := make(chan error, 1)
+	go func() { result <- s.Execute(context.Background(), "start", "", "") }()
+	<-entered
+	select {
+	case e := <-result:
+		t.Fatalf("startup used shutdown deadline: %v", e)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	require.NoError(t, <-result)
+}
+func TestExplicitStartupDeadlineStillExpires(t *testing.T) {
+	s := testSupervisor(t)
+	s.startupTimeout = 30 * time.Millisecond
+	entered, release := make(chan struct{}), make(chan struct{})
+	RegisterResource("startup_expires_fixture", func(json.RawMessage) (interface{}, error) { close(entered); <-release; return struct{}{}, nil })
+	defer RegisterResource("startup_expires_fixture", nil)
+	s.state.Active.Resources = []config.Resource{{Name: "slow", Type: "startup_expires_fixture", Parameters: json.RawMessage(`{}`)}}
+	result := make(chan error, 1)
+	go func() { result <- s.Execute(context.Background(), "start", "", "") }()
+	<-entered
+	e := <-result
+	require.Error(t, e)
+	require.Contains(t, e.Error(), "startup timeout")
+	close(release)
 }

@@ -59,6 +59,9 @@ func NewServerWithOperations(conf config.APIConfig, operations Operations) (*htt
 	if workspace, ok := operations.(interface {
 		HandleWorkspace(context.Context, string, json.RawMessage) (interface{}, error)
 	}); ok {
+		routes["/workspace/protection"] = func(ctx context.Context, raw json.RawMessage) (interface{}, error) {
+			return workspace.HandleWorkspace(ctx, "protection", raw)
+		}
 		routes["/workspace/settings"] = func(ctx context.Context, raw json.RawMessage) (interface{}, error) {
 			return workspace.HandleWorkspace(ctx, "settings", raw)
 		}
@@ -68,7 +71,7 @@ func NewServerWithOperations(conf config.APIConfig, operations Operations) (*htt
 		if multi, ok := operations.(interface {
 			HandleCrawls(context.Context, string, json.RawMessage) (interface{}, error)
 		}); ok {
-			for _, name := range []string{"report", "hosts", "host_graph", "defaults", "patch_fetch", "preview", "results", "list", "create", "detail", "validate", "draft", "activate", "start_run", "continue_run", "duplicate", "delete", "archive", "restore", "command", "status", "operations", "failed", "log", "pipeline"} {
+			for _, name := range []string{"trap_decisions", "trap_restore", "atlas_tile", "atlas_pick", "atlas_generate", "atlas_cancel", "atlas_status", "atlas_view", "atlas_host", "atlas_search", "report", "hosts", "host_graph", "defaults", "patch_fetch", "preview", "results", "list", "create", "detail", "validate", "draft", "activate", "start_run", "continue_run", "duplicate", "delete", "archive", "restore", "command", "status", "operations", "failed", "log", "pipeline"} {
 				action := name
 				routes["/crawls/"+action] = func(ctx context.Context, raw json.RawMessage) (interface{}, error) {
 					return multi.HandleCrawls(ctx, action, raw)
@@ -82,6 +85,21 @@ func NewServerWithOperations(conf config.APIConfig, operations Operations) (*htt
 		if strings.HasPrefix(r.URL.Path, "/crawler/") || strings.HasPrefix(r.URL.Path, "/dashboard/") {
 			http.NotFound(w, r)
 			return
+		}
+		if r.Method == http.MethodGet && r.URL.Path == "/workspace/protection/report" {
+			if export, ok := operations.(interface {
+				ProtectionReport(context.Context, string) (interface{}, error)
+			}); ok {
+				value, e := export.ProtectionReport(r.Context(), r.URL.Query().Get("id"))
+				if e != nil {
+					http.Error(w, e.Error(), 404)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Content-Disposition", `attachment; filename="protection-report.json"`)
+				_ = json.NewEncoder(w).Encode(value)
+				return
+			}
 		}
 		if conf.StaticFiles != nil && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
 			if _, known := routes[r.URL.Path]; !known {

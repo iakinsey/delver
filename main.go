@@ -8,11 +8,13 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 func main() {
 	options := application.Options{}
 	flag.StringVar(&options.Address, "listen", "", "Workspace listen address (default 127.0.0.1:8080)")
+	flag.DurationVar(&options.StartupTimeout, "startup-timeout", 5*time.Minute, "Crawl runtime startup timeout")
 	flag.Parse()
 	if flag.NArg() > 1 {
 		fmt.Fprintln(os.Stderr, "usage: delver [-listen ADDRESS] [CONFIG.json]")

@@ -7,6 +7,7 @@ import (
 	"github.com/iakinsey/delver/flow"
 	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/queue"
+	"github.com/iakinsey/delver/trap"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
@@ -331,4 +332,35 @@ func TestRediscoveredPolicySkipGetsNewQueueGeneration(t *testing.T) {
 	require.Zero(t, counts["pending_and_active"])
 	require.EqualValues(t, 1, counts["policy_skips"])
 	require.EqualValues(t, 2, counts["terminal_outcomes"])
+}
+
+type decisiveTrapStore struct {
+	frontier.FrontierStore
+	events      []string
+	discoveries []message.FetcherRequest
+}
+
+func (s *decisiveTrapStore) Outcome(message.FetcherResponse) error { return nil }
+func (s *decisiveTrapStore) ObserveTrap(context.Context, trap.Observation) (bool, error) {
+	s.events = append(s.events, "decision")
+	return true, nil
+}
+func (s *decisiveTrapStore) DrainDiscovery(context.Context, int) (int, error) { return 0, nil }
+func (s *decisiveTrapStore) StageDiscovery(_ context.Context, _ string, requests []message.FetcherRequest) error {
+	s.events = append(s.events, "discoveries")
+	s.discoveries = append(s.discoveries, requests...)
+	return nil
+}
+func TestTrapDecisionPrecedesDiscoveriesWithoutDiscardingIndependentDestinations(t *testing.T) {
+	store := &decisiveTrapStore{}
+	w, e := New(Params{Store: store, Scope: "open_web", MaxDepth: 10, MaxHops: 10}, "accumulator")
+	require.NoError(t, e)
+	c := message.CompositeAnalysis{FetcherResponse: message.FetcherResponse{FetcherRequest: message.FetcherRequest{URI: "http://source.test/", RequestID: types.NewV4()}, Success: true, HTTPCode: 200}, Features: map[string]interface{}{features.UrlField: features.URIs{"http://independent.test/page"}, features.AdversarialField: features.Adversarial{Structure: &trap.Observation{Site: "source.test", URI: "http://source.test/"}}}}
+	raw, e := json.Marshal(c)
+	require.NoError(t, e)
+	_, e = w.OnMessageContext(context.Background(), types.Message{Message: raw})
+	require.NoError(t, e)
+	require.Equal(t, []string{"decision", "discoveries"}, store.events)
+	require.Len(t, store.discoveries, 1)
+	require.Equal(t, "http://independent.test/page", store.discoveries[0].URI)
 }

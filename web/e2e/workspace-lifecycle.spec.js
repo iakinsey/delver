@@ -51,7 +51,7 @@ test("archiving one live crawl preserves another and restore does not start it",
     expect(
       (await api(request, "detail", { crawl_id: first.id })).runtime.state,
     ).toBe("running");
-    await page.getByRole("button", { name: /Crawls/ }).click();
+    await page.getByRole("link", { name: "Delver", exact: true }).click();
     await expect(
       page.getByRole("button", { name: "archive live copy", exact: true }),
     ).toHaveCount(0);

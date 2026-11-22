@@ -21,6 +21,7 @@ test("legacy workspace limits and adaptive controls migrate into editable UI set
     await page
       .getByRole("button", { name: "Migrated crawl", exact: true })
       .click();
+    await page.getByRole("link", { name: "Delver", exact: true }).click();
     await page
       .getByRole("button", { name: "Workspace configuration", exact: true })
       .click();

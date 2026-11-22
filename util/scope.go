@@ -2,23 +2,11 @@ package util
 
 import (
 	"context"
-	"golang.org/x/net/publicsuffix"
-	"net"
 	"net/url"
 	"strings"
 )
 
-func RegistrableDomain(host string) string {
-	host = strings.ToLower(host)
-	if net.ParseIP(host) != nil {
-		return host
-	}
-	d, err := publicsuffix.EffectiveTLDPlusOne(host)
-	if err != nil {
-		return host
-	}
-	return d
-}
+func RegistrableDomain(host string) string { return SiteKey(host) }
 func ScopeAllows(scope, root, target string) bool {
 	a, err := url.Parse(root)
 	if err != nil {

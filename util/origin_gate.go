@@ -136,3 +136,17 @@ var sharedProcessOriginGate = NewOriginGate()
 
 // ProcessOriginGate shares host pacing across all application runtimes.
 func ProcessOriginGate() *OriginGate { return sharedProcessOriginGate }
+
+func (g *OriginGate) PurgeMatching(ctx context.Context, match func(string) bool) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for key, e := range g.entries {
+		if match(key) && e.refs == 0 {
+			if e.idle != nil {
+				g.idle.Remove(e.idle)
+			}
+			delete(g.entries, key)
+		}
+	}
+	return ctx.Err()
+}

@@ -29,14 +29,7 @@ func (w *Workspace) recentResults(r *CrawlRecord, runID string) (interface{}, er
 		return map[string]interface{}{"rows": []interface{}{}, "available": false}, nil
 	}
 	root := w.runRoot(id, run.ID)
-	a, err := CompileCrawl(root, run.ID, run.Definition)
-	if run.Expert != nil {
-		a = relocatePipeline(*run.Expert, root)
-		if run.Legacy {
-			a = *run.Expert
-		}
-		err = nil
-	}
+	a, err := prepareRunPipeline(root, run)
 	if err != nil {
 		return nil, err
 	}
@@ -89,6 +82,9 @@ func (w *Workspace) recentResults(r *CrawlRecord, runID string) (interface{}, er
 	for i := len(lines) - 1; i >= 0 && len(rows) < 50; i-- {
 		var envelope types.Message
 		if json.Unmarshal(lines[i], &envelope) != nil {
+			continue
+		}
+		if w.protection.CheckPayload(envelope.Message) != nil {
 			continue
 		}
 		var c message.CompositeAnalysis

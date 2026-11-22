@@ -1,10 +1,12 @@
 # Crawl report
 
-Open **Report** from a crawl or its run history. Reports belong to runs; changing the selected run changes its counters and graph.
+Open **Reports** from a crawl or its run history. Reports belong to runs; changing the selected run changes its counters and graph.
 
 - **Requests/s** counts completed attempts, including failures and retries. A running run uses the existing rolling 60-second rate. A finished run uses attempts divided by running time, excluding paused time.
 - **URLs visited** counts distinct canonical URLs that returned an HTTP response, including redirects, HTTP errors, and responses whose bodies failed. Retries do not increase this count.
 - **URLs not visited** is discovered URLs minus visited URLs. It includes pending URLs and terminal connection failures. Frontier expiration does not erase report counts.
+
+Crawl, Reports, and Graph share the same navigation. **Graph** opens the [server-generated whole-network explorer](host-network.md); **Interactive network** on Reports opens the same interface.
 
 ## Host explorer
 

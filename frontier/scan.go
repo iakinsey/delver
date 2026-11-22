@@ -17,6 +17,7 @@ type ScanCursor struct {
 	Done  [3]bool
 }
 type CandidatePage struct {
+	Trapped            []Candidate
 	Excluded           []Candidate
 	Candidates         []Candidate
 	Cursor             ScanCursor
@@ -38,7 +39,7 @@ func (s *Store) ScanCandidates(ctx context.Context, strategy string, cursor Scan
 		if strategy == "depth_first" {
 			prefix = "d/"
 		} else if diverse {
-			prefix = "h/"
+			prefix = "hs/"
 		}
 		if s.params.Retry != nil {
 			prefix = "f" + prefix
@@ -81,6 +82,12 @@ func (s *Store) ScanCandidates(ctx context.Context, strategy string, cursor Scan
 					return err
 				}
 				if !seen[uri] && (stream == 0 && c.State == "reserved" || stream != 0 && c.State == "pending") {
+					if s.trapBlocked(tx, c.Request.URI) {
+						page.Trapped = append(page.Trapped, c)
+						seen[uri] = true
+						it.Next()
+						continue
+					}
 					if util.URLFileExcluded(c.Request.URI, s.params.ExcludedExtensions) {
 						page.Excluded = append(page.Excluded, c)
 						seen[uri] = true

@@ -5,6 +5,7 @@ import (
 	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/flow"
 	"github.com/iakinsey/delver/frontier"
+	"github.com/iakinsey/delver/trap"
 	"github.com/iakinsey/delver/types/errs"
 	"github.com/iakinsey/delver/util"
 	"net/url"
@@ -23,32 +24,36 @@ type ProxySettings struct {
 	URL  string `json:"url"`
 }
 type CrawlDefinition struct {
-	ExcludedExtensions string             `json:"excluded_extensions,omitempty"`
-	Fetch              *flow.Policy       `json:"fetch,omitempty"`
-	Network            NetworkSettings    `json:"network"`
-	Proxy              ProxySettings      `json:"proxy"`
-	Name               string             `json:"name"`
-	Seeds              []string           `json:"seeds"`
-	Feeds              []string           `json:"feeds"`
-	Scope              string             `json:"scope"`
-	Strategy           string             `json:"strategy"`
-	MaxDepth           int                `json:"max_depth"`
-	MaxHops            int                `json:"max_hops"`
-	AllowPattern       string             `json:"allow_pattern"`
-	DenyPattern        string             `json:"deny_pattern"`
-	RequestDelay       string             `json:"request_delay"`
-	Concurrency        int                `json:"concurrency"`
-	Revisit            string             `json:"revisit"`
-	Retention          frontier.Retention `json:"retention"`
-	Termination        Termination        `json:"termination"`
+	Traps                *trap.Settings     `json:"traps,omitempty"`
+	RestrictedPurgeDepth int                `json:"restricted_purge_depth"`
+	ExcludedExtensions   string             `json:"excluded_extensions,omitempty"`
+	Fetch                *flow.Policy       `json:"fetch,omitempty"`
+	Network              NetworkSettings    `json:"network"`
+	Proxy                ProxySettings      `json:"proxy"`
+	Name                 string             `json:"name"`
+	Seeds                []string           `json:"seeds"`
+	Feeds                []string           `json:"feeds"`
+	Scope                string             `json:"scope"`
+	Strategy             string             `json:"strategy"`
+	MaxDepth             int                `json:"max_depth"`
+	MaxHops              int                `json:"max_hops"`
+	AllowPattern         string             `json:"allow_pattern"`
+	DenyPattern          string             `json:"deny_pattern"`
+	RequestDelay         string             `json:"request_delay"`
+	Concurrency          int                `json:"concurrency"`
+	Revisit              string             `json:"revisit"`
+	Retention            frontier.Retention `json:"retention"`
+	Termination          Termination        `json:"termination"`
 }
 
 func DefaultCrawlDefinition() CrawlDefinition {
 	p := flow.Default()
-	return CrawlDefinition{Fetch: &p, Network: DefaultNetworkSettings(), Name: "Untitled crawl", Seeds: []string{}, Feeds: []string{}, Scope: "same_domain", Strategy: "host_diverse", MaxDepth: 10, MaxHops: 3, RequestDelay: "100ms", Concurrency: 2, Revisit: "24h", Retention: frontier.DefaultRetention()}
+	traps := trap.Default()
+	return CrawlDefinition{Traps: &traps, Fetch: &p, Network: DefaultNetworkSettings(), Name: "Untitled crawl", Seeds: []string{}, Feeds: []string{}, Scope: "same_domain", Strategy: "host_diverse", MaxDepth: 10, MaxHops: 3, RequestDelay: "100ms", Concurrency: 2, Revisit: "24h", Retention: frontier.DefaultRetention()}
 }
 func decodeDefinition(raw json.RawMessage) (CrawlDefinition, error) {
 	d := DefaultCrawlDefinition()
+	d.Traps = nil // Omitted protection settings retain existing pipelines.
 	d.Fetch = nil // Omitted settings preserve existing four-worker definitions.
 	if err := decodeParameters(raw, &d); err != nil {
 		return d, errs.NewRequestError(err.Error())
@@ -61,7 +66,10 @@ func decodeDefinition(raw json.RawMessage) (CrawlDefinition, error) {
 	return d, nil
 }
 func CompileCrawl(root, runID string, d CrawlDefinition) (config.Application, error) {
-	if strings.TrimSpace(d.Name) == "" || len(d.Seeds)+len(d.Feeds) == 0 {
+	return compileCrawl(root, runID, d, false)
+}
+func compileCrawl(root, runID string, d CrawlDefinition, allowEmpty bool) (config.Application, error) {
+	if strings.TrimSpace(d.Name) == "" || !allowEmpty && len(d.Seeds)+len(d.Feeds) == 0 {
 		return config.Application{}, errs.NewRequestError("name and at least one seed URL or feed required")
 	}
 	for _, raw := range append(append([]string{}, d.Seeds...), d.Feeds...) {
@@ -69,6 +77,9 @@ func CompileCrawl(root, runID string, d CrawlDefinition) (config.Application, er
 		if err != nil || u.Hostname() == "" || u.User != nil || (u.Scheme != "http" && u.Scheme != "https") {
 			return config.Application{}, errs.NewRequestError("seed URLs must use HTTP or HTTPS without credentials")
 		}
+	}
+	if d.RestrictedPurgeDepth < 0 {
+		return config.Application{}, errs.NewRequestError("restricted-content purge depth must be nonnegative")
 	}
 	if d.MaxDepth < 1 || d.MaxHops < 1 || d.Concurrency < 1 || d.Concurrency > 8192 {
 		return config.Application{}, errs.NewRequestError("depth and hop limits must be positive; per-host concurrency must be between 1 and 8192")
@@ -98,6 +109,12 @@ func CompileCrawl(root, runID string, d CrawlDefinition) (config.Application, er
 		return a, err
 	}
 	c := &a.Config
+	if d.Traps != nil {
+		if err := d.Traps.Validate(); err != nil {
+			return a, err
+		}
+		c.Traps = d.Traps
+	}
 	policy := flow.Legacy()
 	if d.Fetch != nil {
 		policy = *d.Fetch
@@ -137,6 +154,7 @@ func CompileCrawl(root, runID string, d CrawlDefinition) (config.Application, er
 		return a, errs.NewRequestError(err.Error())
 	}
 	c.HTTPClient.ExcludedExtensions = extensions
+	c.HTTPClient.RestrictedPurgeDepth = d.RestrictedPurgeDepth
 	c.HTTPClient.Scope = d.Scope
 	c.HTTPClient.AllowPattern = d.AllowPattern
 	c.HTTPClient.DenyPattern = d.DenyPattern
@@ -167,7 +185,7 @@ func CompileCrawl(root, runID string, d CrawlDefinition) (config.Application, er
 	}
 	resource("objects", "filesystem_object_store", map[string]string{"path": filepath.Join(root, "objects")})
 	resource("source_progress", "persistent_map", map[string]string{"path": filepath.Join(root, "source_progress")})
-	fp := frontier.StoreParams{OriginDelay: frontier.Lifetime(delay), Retry: &frontier.RetryPolicy{Share: policy.RetryShare, Limit: c.HTTPClient.MaxRetries, Base: flow.Duration(c.HTTPClient.RetryDelay), Maximum: flow.Duration(c.HTTPClient.RetryMaxDelay), FailureThreshold: policy.FailureThreshold, HostCooldown: policy.HostCooldown, HostCooldownMax: policy.HostCooldownMax, ProbeInterval: policy.RecoveryProbeInterval}, Path: filepath.Join(root, "frontier"), Retention: d.Retention, MaxDispatches: d.Termination.MaxRequests, CacheBudgetMB: 64}
+	fp := frontier.StoreParams{Traps: d.Traps, OriginDelay: frontier.Lifetime(delay), Retry: &frontier.RetryPolicy{Share: policy.RetryShare, Limit: c.HTTPClient.MaxRetries, Base: flow.Duration(c.HTTPClient.RetryDelay), Maximum: flow.Duration(c.HTTPClient.RetryMaxDelay), FailureThreshold: policy.FailureThreshold, HostCooldown: policy.HostCooldown, HostCooldownMax: policy.HostCooldownMax, ProbeInterval: policy.RecoveryProbeInterval}, Path: filepath.Join(root, "frontier"), Retention: d.Retention, MaxDispatches: d.Termination.MaxRequests, CacheBudgetMB: 64}
 	if !d.Termination.WhenDrained {
 		fp.RevisitAfter = frontier.Lifetime(revisit)
 	}
@@ -184,7 +202,11 @@ func CompileCrawl(root, runID string, d CrawlDefinition) (config.Application, er
 	}
 	worker("admit_seeds", "frontier_admission", "seeds", "", map[string]interface{}{"frontier_store": "frontier", "allowed_host_suffixes": c.HTTPClient.AllowedHostSuffixes}, false, 0, false)
 	worker("fetch", "http_fetcher", "requests", "fetched", map[string]string{"object_store": "objects"}, false, 0, false)
-	worker("extract", "composite_extractor", "fetched", "analyzed", map[string]interface{}{"object_store": "objects", "transformer_queue": "results", "enabled": []string{"url", "text", "title"}}, false, 0, false)
+	enabledExtractors := []string{"url", "text", "title"}
+	if d.Traps != nil && d.Traps.Enabled {
+		enabledExtractors = append(enabledExtractors, "adversarial")
+	}
+	worker("extract", "composite_extractor", "fetched", "analyzed", map[string]interface{}{"object_store": "objects", "transformer_queue": "results", "enabled": enabledExtractors}, false, 0, false)
 	worker("discover", "frontier_accumulator", "analyzed", "", map[string]interface{}{"frontier_store": "frontier", "scope": d.Scope, "allowed_host_suffixes": c.HTTPClient.AllowedHostSuffixes, "max_depth": d.MaxDepth, "max_hops": d.MaxHops, "allow_pattern": d.AllowPattern, "deny_pattern": d.DenyPattern}, false, 0, false)
 	worker("save", "jsonl_sink", "results", "", map[string]string{"path": filepath.Join(root, "results.jsonl")}, false, 0, false)
 	worker("publish", "frontier_publisher", "", "", map[string]interface{}{"frontier_store": "frontier", "output_queue": "requests", "strategy": d.Strategy}, true, 100*time.Millisecond, false)

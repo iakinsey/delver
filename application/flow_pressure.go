@@ -12,7 +12,7 @@ import (
 
 func (p *preparedApplication) pressure() flow.Pressure {
 	pressure := flow.Pressure{Queues: map[string]int64{}, OldestSeconds: map[string]float64{}, MemoryMB: flow.HeapMB()}
-	for _, w := range p.app.Workers {
+	for _, w := range p.workerDefinitions() {
 		if w.Type != "composite_extractor" && w.Type != "frontier_accumulator" && w.Type != "jsonl_sink" && w.Type != "transformer" {
 			continue
 		}
@@ -67,7 +67,7 @@ func (p *preparedApplication) pressure() flow.Pressure {
 		p.pressureMu.Unlock()
 	}
 	seen := map[string]bool{}
-	for _, worker := range p.app.Workers {
+	for _, worker := range p.workerDefinitions() {
 		if worker.Type != "http_fetcher" || seen[worker.Inbox] {
 			continue
 		}
@@ -101,6 +101,9 @@ func (p *preparedApplication) pressure() flow.Pressure {
 				pressure.Health = e
 			}
 		}
+	}
+	if h := p.app.Config.HTTPClient.Protection.Health(); h != "" {
+		pressure.Health = h
 	}
 	return pressure
 }

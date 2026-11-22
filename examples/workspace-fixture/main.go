@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -77,6 +78,41 @@ func main() {
 			requestEvents.Rows = append([]map[string]string(nil), requestEvents.Rows[len(requestEvents.Rows)-32768:]...)
 		}
 		requestEvents.Unlock()
+		if strings.HasPrefix(r.URL.Path, "/protection/") {
+			switch r.URL.Path {
+			case "/protection/list":
+				w.Header().Set("Content-Type", "text/plain")
+				domain := r.URL.Query().Get("domain")
+				if domain == "" {
+					domain = "blocked-protection.test"
+				}
+				fmt.Fprintf(w, "# synthetic feed\n%s\n", domain)
+			case "/protection/invalid-list":
+				fmt.Fprint(w, "example.test\n*.invalid.test\n")
+			case "/protection/unavailable-list":
+				http.Error(w, "controlled feed failure", 503)
+
+			case "/protection/trap":
+				w.Header().Set("Content-Type", "text/html")
+				family := r.URL.Query().Get("family")
+				n, _ := strconv.ParseInt(r.URL.Query().Get("n"), 10, 64)
+				if n < 1 {
+					n = 1
+				}
+				fmt.Fprintf(w, `<html><head><title>Fixture %d</title></head><body><header><nav>Directory</nav></header><main><article><h1>Entry %d</h1><p>Distinct words</p><ul>`, n, n)
+				for j := int64(0); j < 12; j++ {
+					fmt.Fprintf(w, `<li><a data-generated="%d" href="http://%s-%d.invalid/protection/trap?family=%s&amp;n=%d">Entry</a></li>`, n+j, family, j%3, family, n*12+j+1)
+				}
+				fmt.Fprintf(w, `</ul><a href="http://outside-%s.invalid/protection/good">Outside</a></article></main><footer>Footer</footer></body></html>`, family)
+			case "/protection/restricted":
+				w.Header().Set("Content-Type", "text/html")
+				fmt.Fprint(w, "<html><body>synthetic restricted marker</body></html>")
+			default:
+				w.Header().Set("Content-Type", "text/html")
+				fmt.Fprint(w, "<html><title>Protection fixture</title><body>Unrelated material.</body></html>")
+			}
+			return
+		}
 		if strings.HasPrefix(r.URL.Path, "/extension-test/") {
 			if strings.HasSuffix(r.URL.Path, "/redirect") {
 				http.Redirect(w, r, "archive.PDF?download=1", 302)
@@ -88,6 +124,15 @@ func main() {
 			} else {
 				fmt.Fprintf(w, `<title>%s</title><p>Extension fixture</p>`, html.EscapeString(r.URL.Path))
 			}
+			return
+		}
+		if r.URL.Path == "/network-small" {
+			target := sourceURL
+			if strings.HasPrefix(r.Host, "127.0.0.1") {
+				target = strings.Replace(sourceURL, "127.0.0.1", "localhost", 1)
+			}
+			w.Header().Set("Content-Type", "text/html")
+			fmt.Fprintf(w, `<title>Small network</title><a href="%s/network-small">Neighbor</a>`, target)
 			return
 		}
 		if r.URL.Path == "/report-root" {
@@ -329,6 +374,8 @@ func main() {
 	}
 	defer cleanup()
 	mux := http.NewServeMux()
+	mux.HandleFunc("/fixture/atlas-seed", atlasFixture(root, workspace))
+	mux.HandleFunc("/fixture/protection-fault", protectionFault(root, workspace))
 	mux.HandleFunc("/fixture/info", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"source": source.URL, "tls_source": tlsSource.URL, "https_proxy": tlsProxy.URL, "socks": "socks5://operator:browser-proxy-secret@" + socks.Addr().String(), "proxy": proxy.URL, "proxy_username": "operator", "proxy_password": "browser-proxy-secret"})
 	})

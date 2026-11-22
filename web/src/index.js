@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import "./theme.css";
 import Header from "./views/header";
+import NetworkGraph from "./views/page/networkGraph";
 import CrawlReport from "./views/page/crawlReport";
 import { WorkspaceLanding } from "./views/page/workspace";
 import {
@@ -15,6 +16,9 @@ createRoot(document.getElementById("root")).render(
   <Router>
     <Header />
     <Switch>
+      <Route exact path="/crawls/:crawlId/network">
+        <NetworkGraph />
+      </Route>
       <Route exact path="/crawls/:crawlId/report">
         <CrawlReport />
       </Route>

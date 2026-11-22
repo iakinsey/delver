@@ -377,3 +377,15 @@
   overflow-wrap: anywhere;
   max-width: 100%;
 }
+
+nav.crawl-actions button[aria-current="page"] {
+  border-color: #8bbfff;
+  font-weight: 700;
+}
+
+.protection-controls {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}

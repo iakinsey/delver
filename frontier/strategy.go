@@ -3,6 +3,7 @@ package frontier
 import (
 	"context"
 	"github.com/iakinsey/delver/types/message"
+	"github.com/iakinsey/delver/util"
 	"math"
 	"sort"
 	"time"
@@ -36,7 +37,7 @@ func (s Strategy) Select(cs []Candidate, last string, step uint64, scores map[st
 	if s == "host_diverse" || (s == "adaptive" && step%5 == 4) {
 		hosts := map[string]bool{}
 		for _, c := range cs {
-			hosts[c.Request.Host] = true
+			hosts[util.SiteKey(c.Request.Host)] = true
 		}
 		keys := make([]string, 0, len(hosts))
 		for h := range hosts {
@@ -52,7 +53,7 @@ func (s Strategy) Select(cs []Candidate, last string, step uint64, scores map[st
 		}
 		best := -1
 		for i, c := range cs {
-			if c.Request.Host == chosen && (best < 0 || c.Request.Depth < cs[best].Request.Depth) {
+			if util.SiteKey(c.Request.Host) == chosen && (best < 0 || c.Request.Depth < cs[best].Request.Depth) {
 				best = i
 			}
 		}

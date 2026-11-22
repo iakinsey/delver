@@ -1,0 +1,118 @@
+.network-controls,
+.network-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+.network-controls label,
+.network-toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.network-controls input[type="number"],
+.network-toolbar input[type="number"] {
+  width: 130px;
+}
+.network-generation {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.network-generation details {
+  flex-basis: 100%;
+}
+.network-generation summary {
+  cursor: pointer;
+  padding: 8px 0;
+}
+.network-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 16px;
+  margin-top: 16px;
+}
+.network-layout > section {
+  min-width: 0;
+}
+.network-canvas {
+  display: block;
+  width: 100%;
+  height: 70vh;
+  min-height: 380px;
+  max-height: 1200px;
+  background: #090f19;
+  touch-action: none;
+  cursor: grab;
+}
+.network-canvas:active {
+  cursor: grabbing;
+}
+.network-canvas:focus-visible {
+  outline: 2px solid #47b8ff;
+}
+.network-inspector {
+  max-height: 80vh;
+  overflow: auto;
+}
+.network-inspector dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.network-inspector dd {
+  margin: 0;
+  text-align: right;
+}
+.network-hostname,
+.network-inspector button {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.network-inspector ul,
+.network-matches {
+  padding-left: 16px;
+  list-style: none;
+}
+.network-inspector li {
+  margin: 5px 0;
+}
+.network-meta,
+.network-legend {
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+.network-toolbar input {
+  max-width: 100%;
+}
+@media (max-width: 800px) {
+  .network-layout {
+    grid-template-columns: 1fr;
+  }
+  .network-inspector {
+    max-height: 450px;
+  }
+  .network-canvas {
+    height: 65vh;
+  }
+  .network-toolbar {
+    align-items: stretch;
+  }
+  .network-controls input[type="number"] {
+    width: 100%;
+  }
+}
+
+.network-controls label:has(input[type="checkbox"]) {
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+}
+.network-inspector label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+}

@@ -1,3 +1,4 @@
+import CrawlNavigation from "./crawlNavigation";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useHistory, useLocation, useParams } from "react-router-dom";
 import { apiRequest } from "./crawlApi";
@@ -176,11 +177,16 @@ export default function CrawlReport() {
   return (
     <main className="crawl-workspace crawl-report">
       <header className="crawl-heading">
-        <h1>Report</h1>
-        <button onClick={() => history.push(`/crawls/${crawlId}`)}>
-          Crawl
-        </button>
+        <h1>Reports</h1>
+        <CrawlNavigation crawlId={crawlId} active="Reports" />
       </header>
+      <button
+        onClick={() =>
+          history.push(`/crawls/${crawlId}/network${location.search}`)
+        }
+      >
+        Interactive network
+      </button>
       {error && (
         <p role="alert" className="crawl-error">
           {error}

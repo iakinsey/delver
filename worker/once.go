@@ -64,3 +64,21 @@ func (w *OnceWorker) Health() string {
 	defer w.healthMu.RUnlock()
 	return w.lastError
 }
+
+func (w *OnceWorker) PurgeMatching(ctx context.Context, match func(string) bool) error {
+	if p, ok := w.Worker.(interface {
+		PurgeMatching(context.Context, func(string) bool) error
+	}); ok {
+		return p.PurgeMatching(ctx, match)
+	}
+	return nil
+}
+
+func (w *OnceWorker) VerifyNoMatches(ctx context.Context, match func(string) bool) error {
+	if v, ok := w.Worker.(interface {
+		VerifyNoMatches(context.Context, func(string) bool) error
+	}); ok {
+		return v.VerifyNoMatches(ctx, match)
+	}
+	return nil
+}

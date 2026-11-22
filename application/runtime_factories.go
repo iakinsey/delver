@@ -19,22 +19,28 @@ type RuntimeDependencies struct {
 type RuntimeResourceFactory func(context.Context, json.RawMessage, RuntimeDependencies) (interface{}, error)
 type RuntimeWorkerFactory func(context.Context, json.RawMessage, map[string]interface{}, RuntimeDependencies) (worker.Worker, error)
 
-func RegisterResourceWithRuntime(name string, factory RuntimeResourceFactory) {
+func RegisterResourceWithRuntime(name string, factory RuntimeResourceFactory, capabilities ...ProtectionCapability) {
 	registryMutex.Lock()
 	defer registryMutex.Unlock()
 	if factory == nil {
 		delete(resourceFactories, name)
+		delete(resourceProtection, name)
+		delete(resourceProtectionCleaners, name)
 	} else {
 		resourceFactories[name] = factory
+		resourceProtection[name], resourceProtectionCleaners[name] = declaredProtection(capabilities)
 	}
 }
-func RegisterWorkerWithRuntime(name string, factory RuntimeWorkerFactory) {
+func RegisterWorkerWithRuntime(name string, factory RuntimeWorkerFactory, capabilities ...ProtectionCapability) {
 	registryMutex.Lock()
 	defer registryMutex.Unlock()
 	if factory == nil {
 		delete(workerFactories, name)
+		delete(workerProtection, name)
+		delete(workerProtectionCleaners, name)
 	} else {
 		workerFactories[name] = factory
+		workerProtection[name], workerProtectionCleaners[name] = declaredProtection(capabilities)
 	}
 }
 func (p *preparedApplication) dependencies() RuntimeDependencies {

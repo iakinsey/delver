@@ -72,3 +72,7 @@
 **/.env*
 /web/test-results/
 /web/playwright-report/
+
+# Runnable standalone validation scripts.
+!scripts/*.py
+**/__pycache__/

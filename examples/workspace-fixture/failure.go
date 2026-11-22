@@ -41,7 +41,7 @@ func init() {
 			return nil, fmt.Errorf("fixture failure token required")
 		}
 		return &fixtureFailureWorker{flag: failureFlag(p.Token)}, nil
-	})
+	}, application.ProtectionMetadataOnly)
 }
 
 var fixturePressure sync.Map
@@ -71,5 +71,5 @@ func init() {
 			return nil, fmt.Errorf("pressure token required")
 		}
 		return &fixturePressureResource{pressureFlag(p.Token)}, nil
-	})
+	}, application.ProtectionMetadataOnly)
 }

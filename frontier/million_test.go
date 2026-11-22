@@ -20,6 +20,8 @@ import (
 
 	"github.com/dgraph-io/badger/v3"
 	"github.com/iakinsey/delver/flow"
+	"github.com/iakinsey/delver/protection"
+	"github.com/iakinsey/delver/site"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +30,7 @@ func millionParams(path string, n int) StoreParams {
 	return StoreParams{Path: path, CacheBudgetMB: 64, MaxPending: n + 1000, MaxPendingPerOrigin: n + 1000, OriginDelay: Lifetime(time.Nanosecond), Retention: Retention{CompletedFor: Lifetime(time.Second), FailedFor: Lifetime(time.Second), DedupFor: Lifetime(2 * time.Second), CleanupInterval: Lifetime(time.Second), CleanupBatchSize: 4096}, Retry: &RetryPolicy{Share: .2, Limit: 1, Base: flow.Duration(100 * time.Millisecond), Maximum: flow.Duration(time.Second), FailureThreshold: 1000, HostCooldown: flow.Duration(time.Second), HostCooldownMax: flow.Duration(time.Minute), ProbeInterval: flow.Duration(time.Millisecond)}}
 }
 func millionURI(i int) string {
-	return fmt.Sprintf("http://host-%05d.scale.invalid/page/%08d", i%10000, i)
+	return fmt.Sprintf("http://host-%05d.scale-%05d.invalid/page/%08d", i%10000, i%10000, i)
 }
 func millionCandidate(t *testing.T, s *Store, uri string) Candidate {
 	t.Helper()
@@ -179,7 +181,7 @@ func TestFrontierMillionURLs(t *testing.T) {
 		require.Equal(t, int64(startAt), millionCandidate(t, s, millionURI(startAt-1)).Sequence)
 		emit("resumed_admission", map[string]interface{}{"previously_admitted": startAt})
 	}
-	batch := n / 10
+	batch := min(n/10, 10000) // Keep long disk workloads observable without changing assertions.
 	admissionStart := time.Now()
 	for i := startAt; i < n; i++ {
 		require.NoError(t, s.Admit(ctx, message.FetcherRequest{URI: millionURI(i)}))
@@ -374,6 +376,34 @@ func TestFrontierMillionURLs(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		require.Equal(t, "pending", millionCandidate(t, s, fmt.Sprintf("http://crash.scale.invalid/%d", i)).State)
 	}
+
+	// Purge an entire canonical site while the real million-record history and
+	// pending cohort are present. Cumulative counters remain cumulative; only
+	// the target site's active work is subtracted from the later cohort checks.
+	protectedSite := site.Key(millionURI(n - 1))
+	purgedActive, purgedTerminal := 0, 0
+	for index := (n - 1) % 10000; index < n; index += 10000 {
+		c := millionCandidate(t, s, millionURI(index))
+		if c.Terminal == 0 {
+			purgedActive++
+		} else {
+			purgedTerminal++
+		}
+	}
+	policy, e := protection.Open(filepath.Join(root, "protection.sqlite"))
+	require.NoError(t, e)
+	defer policy.Close()
+	incident, e := policy.Trigger(millionURI(n-1), "synthetic-scale", "scale", "scale", 0)
+	require.ErrorIs(t, e, protection.ErrBlocked)
+	s.SetProtection(policy)
+	matcher := protection.NewMatcher(nil, incident.Targets)
+	purgeStart := time.Now()
+	require.NoError(t, s.PurgeMatching(ctx, matcher.Matches))
+	require.NoError(t, s.VerifyNoMatches(ctx, matcher.Matches))
+	require.NoError(t, s.StageDiscovery(ctx, "blocked-rediscovery", []message.FetcherRequest{{URI: millionURI(n - 1)}}))
+	require.NoError(t, s.VerifyNoMatches(ctx, matcher.Matches))
+	emit("protection_purge", map[string]interface{}{"canonical_site": protectedSite, "removed_active": purgedActive, "removed_terminal": purgedTerminal, "seconds": time.Since(purgeStart).Seconds()})
+	probe("after_protection_purge")
 	// Cleanup must leave retries and every other active URL intact.
 	_, err = s.Cleanup(ctx, time.Now().Add(time.Hour))
 	require.NoError(t, err)
@@ -409,8 +439,8 @@ func TestFrontierMillionURLs(t *testing.T) {
 	counts, err = s.Counts()
 	require.NoError(t, err)
 	require.Equal(t, int64(0), counts["retry_pending"])
-	require.Equal(t, int64(n+100-terminal), counts["pending_and_active"])
-	require.Equal(t, n+100-terminal, millionKeys(t, s, "u/"))
+	require.Equal(t, int64(n+100-terminal-purgedActive), counts["pending_and_active"])
+	require.Equal(t, n+100-terminal-purgedActive, millionKeys(t, s, "u/"))
 	require.Zero(t, millionKeys(t, s, "e/"))
 	after, _, err := s.Pending(ctx, cursor, 128)
 	require.NoError(t, err)
@@ -432,6 +462,7 @@ func TestFrontierMillionURLs(t *testing.T) {
 	params.Retention.DedupFor = 0
 	s, err = OpenStore(params)
 	require.NoError(t, err)
+	s.SetProtection(policy)
 	permanent := "http://permanent.scale.invalid/"
 	require.NoError(t, s.Admit(ctx, message.FetcherRequest{URI: permanent}))
 	c := millionCandidate(t, s, permanent)

@@ -13,12 +13,16 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
 // Report requests use their own compact endpoints, never the full status/source
 // response. Existing run ownership and storage paths remain authoritative.
 func (w *Workspace) handleReport(ctx context.Context, r *CrawlRecord, slot *crawlSlot, action string, raw json.RawMessage) (interface{}, error) {
+	if (action == "hosts" || action == "host_graph") && w.protection.HasUnfinished() {
+		return nil, fmt.Errorf("protection cleanup pending")
+	}
 	var req struct {
 		RunID string `json:"run_id"`
 		Query string `json:"query"`
@@ -56,12 +60,22 @@ func (w *Workspace) handleReport(ctx context.Context, r *CrawlRecord, slot *craw
 		return nil, e
 	}
 	path := a.Config.API.OperationsPath + ".report.sqlite"
+	if strings.HasPrefix(action, "atlas_") {
+		if action == "atlas_generate" {
+			defer slot.mu.Unlock()
+			return w.handleAtlas(ctx, path, action, raw)
+		}
+		slot.mu.Unlock()
+		return w.handleAtlas(ctx, path, action, raw)
+	}
 	_, statErr := os.Stat(path)
 	store, e := report.Open(path, os.IsNotExist(statErr))
 	if e != nil {
 		slot.mu.Unlock()
 		return nil, e
 	}
+
+	store.SetProtection(w.protection)
 	// Existing legacy data is imported once in a background job. It never holds
 	// the crawl slot during a whole scan or invents missing historical links.
 	counts, e := store.Counts(ctx)
@@ -138,6 +152,7 @@ func (w *Workspace) backfillReport(crawlID, runID, path, statePath string, slot 
 		return
 	}
 	defer s.Close()
+	s.SetProtection(w.protection)
 	w.mu.Lock()
 	var run CrawlRun
 	for _, candidate := range r.Runs {

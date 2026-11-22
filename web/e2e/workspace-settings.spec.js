@@ -26,6 +26,8 @@ async function settings(request) {
   ).data;
 }
 async function editor(page) {
+  if (new URL(page.url()).pathname.startsWith("/crawls/"))
+    await page.getByRole("link", { name: "Delver", exact: true }).click();
   if (!new URL(page.url()).pathname.endsWith("/workspace/configuration"))
     await page
       .getByRole("button", { name: "Workspace configuration", exact: true })
@@ -450,6 +452,7 @@ test("combined adaptive proxy workflow recovers in the same run and survives app
     expect(events.some((row) => row.path === "/feed")).toBe(true);
     expect(events.some((row) => row.path === "/robots.txt")).toBe(false);
     // An independent fixed crawl drains while the adaptive crawl is paused/resumed.
+    await page.getByRole("link", { name: "Delver", exact: true }).click();
     await page
       .getByRole("button", { name: "＋ Create crawl", exact: true })
       .click();

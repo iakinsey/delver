@@ -15,7 +15,7 @@ func (s *Store) measure(start time.Time, err error) {
 		c.Counter("storage_operations", 1)
 		if errors.Is(err, badger.ErrConflict) {
 			c.Counter("storage_conflicts", 1)
-		} else if err != nil && !errors.Is(err, badger.ErrTxnTooBig) && err != ErrCooling && err != ErrCapacity && err != ErrRejected && err != ErrDispatchBudget {
+		} else if err != nil && !errors.Is(err, badger.ErrTxnTooBig) && err != ErrCooling && err != ErrCapacity && err != ErrRejected && err != ErrDispatchBudget && err != ErrTrapExcluded {
 			c.Counter("storage_failures", 1)
 		}
 	}

@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/dgraph-io/badger/v3"
+	"github.com/iakinsey/delver/protection"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"log"
@@ -30,6 +32,7 @@ type crawlRecord struct {
 	Attempts int
 }
 type crawlQueue struct {
+	policy *protection.Policy
 	admission
 	db                             *badger.DB
 	params                         CrawlQueueParams
@@ -96,7 +99,20 @@ func (s *crawlQueue) key(msg types.Message) ([]byte, error) {
 func (s *crawlQueue) Put(msg types.Message, priority int) error {
 	return s.PutContext(context.Background(), msg, priority)
 }
+func (s *crawlQueue) SetProtection(p *protection.Policy) { s.policy = p }
 func (s *crawlQueue) PutContext(ctx context.Context, msg types.Message, priority int) error {
+	return s.policy.GuardPayload(msg.Message, func() error { return s.putProtected(ctx, msg, priority) })
+}
+func (s *crawlQueue) putProtected(ctx context.Context, msg types.Message, priority int) error {
+	clean, e := s.policy.SanitizePayload(msg.Message)
+	if e != nil {
+		return e
+	}
+	if clean == nil && len(msg.Message) > 0 {
+		return nil
+	}
+	msg.Message = clean
+
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -391,6 +407,9 @@ func (s *crawlQueue) EndTransaction(msg types.Message, success bool) error {
 	}
 	return s.update(context.Background(), func(txn *badger.Txn) error {
 		item, err := txn.Get(key)
+		if err == badger.ErrKeyNotFound && s.policy != nil && errors.Is(s.policy.CheckPayload(msg.Message), protection.ErrBlocked) {
+			return nil
+		}
 		if err != nil {
 			return err
 		}
@@ -491,6 +510,22 @@ func (s *crawlQueue) LoadOutputs(msg types.Message) ([]types.Message, bool, erro
 	return outputs, err == nil, err
 }
 func (s *crawlQueue) SaveOutputs(msg types.Message, outputs []types.Message) error {
+	return s.policy.GuardPayload(msg.Message, func() error { return s.saveProtectedOutputs(msg, outputs) })
+}
+func (s *crawlQueue) saveProtectedOutputs(msg types.Message, outputs []types.Message) error {
+	kept := []types.Message{}
+	for _, m := range outputs {
+		clean, e := s.policy.SanitizePayload(m.Message)
+		if e != nil {
+			return e
+		}
+		if clean != nil || len(m.Message) == 0 {
+			m.Message = clean
+			kept = append(kept, m)
+		}
+	}
+	outputs = kept
+
 	key, err := s.key(msg)
 	if err != nil {
 		return err

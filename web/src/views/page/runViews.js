@@ -59,7 +59,9 @@ export function RunHistory({ runs, onView, onReport }) {
             · {words(r.state)}
             {r.continued > 0 ? ` · continued ${r.continued} time(s)` : ""}{" "}
             <button onClick={() => onView(r.id)}>View</button>
-            {onReport && <button onClick={() => onReport(r.id)}>Report</button>}
+            {onReport && (
+              <button onClick={() => onReport(r.id)}>Reports</button>
+            )}
             <details>
               <summary>Configuration</summary>
               <pre>

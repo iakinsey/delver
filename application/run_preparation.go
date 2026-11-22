@@ -10,7 +10,7 @@ import (
 // Both input forms converge here before a run is opened or continued.
 func prepareRunPipeline(root string, run CrawlRun) (config.Application, error) {
 	if run.Expert == nil {
-		app, err := CompileCrawl(root, run.ID, run.Definition)
+		app, err := compileCrawl(root, run.ID, run.Definition, true)
 		if err != nil {
 			return app, err
 		}
@@ -71,5 +71,15 @@ func prepareApplication(app config.Application) (config.Application, error) {
 			app.Resources[i].Parameters, _ = json.Marshal(fields)
 		}
 	}
+	return app, Validate(app)
+}
+
+// Workspace previews and saves apply the same protection bounds as startup.
+func (w *Workspace) compileCrawl(root, runID string, d CrawlDefinition) (config.Application, error) {
+	app, e := CompileCrawl(root, runID, d)
+	if e != nil {
+		return app, e
+	}
+	app.Config.HTTPClient.Protection = w.protection
 	return app, Validate(app)
 }

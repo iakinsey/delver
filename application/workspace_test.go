@@ -364,7 +364,7 @@ func TestWorkspaceActiveClockExcludesPausedTime(t *testing.T) {
 	}
 }
 func TestWorkspaceExpertTextPreservesLargeNumericParameters(t *testing.T) {
-	RegisterResource("numeric_fixture", func(json.RawMessage) (interface{}, error) { return struct{}{}, nil })
+	RegisterResource("numeric_fixture", func(json.RawMessage) (interface{}, error) { return struct{}{}, nil }, ProtectionMetadataOnly)
 	defer RegisterResource("numeric_fixture", nil)
 	w, err := NewWorkspace(context.Background(), Options{DataDirectory: t.TempDir()})
 	if err != nil {

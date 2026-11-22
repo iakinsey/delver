@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -18,11 +19,12 @@ import (
 	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/flow"
 	"github.com/iakinsey/delver/frontier"
+	"github.com/iakinsey/delver/protection"
 	"github.com/iakinsey/delver/worker"
 	"github.com/stretchr/testify/require"
 )
 
-type soakPressureResource struct{ flag *int32 }
+type soakPressureResource struct{ flag, purgeFailure *int32 }
 
 var _ worker.HealthSource = soakPressureResource{}
 
@@ -32,6 +34,15 @@ func (r soakPressureResource) Health() string {
 	}
 	return ""
 }
+
+func (r soakPressureResource) SetProtection(*protection.Policy) {}
+func (r soakPressureResource) PurgeMatching(context.Context, func(string) bool) error {
+	if r.purgeFailure != nil && atomic.LoadInt32(r.purgeFailure) != 0 {
+		return fmt.Errorf("injected soak purge failure")
+	}
+	return nil
+}
+func (r soakPressureResource) VerifyNoMatches(context.Context, func(string) bool) error { return nil }
 
 // Opt-in real-clock, full worker-pipeline endurance test. Every destination is
 // served by an isolated local HTTP proxy; it never contacts the public network.
@@ -71,9 +82,12 @@ func TestWorkspaceSoak(t *testing.T) {
 		require.NoError(t, report.Sync())
 	}
 	baselineGoroutines := runtime.NumGoroutine()
-	var hits, badUA, robots, timeouts, overloads, truncated int64
+	var hits, badUA, robots, timeouts, overloads, truncated, protectedSiteHits int64
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n := atomic.AddInt64(&hits, 1)
+		if strings.HasSuffix(r.URL.Hostname(), ".soak-7.invalid") {
+			atomic.AddInt64(&protectedSiteHits, 1)
+		}
 		if r.UserAgent() != "DelverSoak/1.0" {
 			atomic.AddInt64(&badUA, 1)
 		}
@@ -124,8 +138,20 @@ func TestWorkspaceSoak(t *testing.T) {
 			require.NoError(t, workspace.Close())
 		}
 	}()
+	// Capture live stacks before closing resources when an endurance assertion
+	// fails; shutdown otherwise removes the evidence needed to diagnose a stall.
+	defer func() {
+		if !t.Failed() {
+			return
+		}
+		if f, e := os.Create(filepath.Join(root, "failure-goroutines.txt")); e == nil {
+			_ = pprof.Lookup("goroutine").WriteTo(f, 2)
+			_ = f.Close()
+		}
+	}()
 	_, err = workspace.HandleWorkspace(context.Background(), "settings", json.RawMessage(`{"revision":1,"execution":{"concurrency":10,"host_concurrency":2,"host_delay":"0s"}}`))
 	require.NoError(t, err)
+	purgeFailure := new(int32)
 	pressureFlags := map[string]*int32{"fixed": new(int32), "adaptive": new(int32)}
 	RegisterResource("soak_pressure_fixture", func(raw json.RawMessage) (interface{}, error) {
 		var p struct {
@@ -138,8 +164,8 @@ func TestWorkspaceSoak(t *testing.T) {
 		if flag == nil {
 			return nil, fmt.Errorf("invalid soak pressure mode")
 		}
-		return soakPressureResource{flag}, nil
-	})
+		return soakPressureResource{flag: flag, purgeFailure: purgeFailure}, nil
+	}, ProtectionSupport{Configuration: func(raw json.RawMessage, _ func(string) bool) (json.RawMessage, error) { return raw, nil }})
 	defer RegisterResource("soak_pressure_fixture", nil)
 	ids := []string{}
 	runIDs := map[string]string{}
@@ -152,7 +178,7 @@ func TestWorkspaceSoak(t *testing.T) {
 		d.Revisit = "4s"
 		d.MaxDepth = 1000
 		for host := 0; host < 8; host++ {
-			d.Seeds = append(d.Seeds, fmt.Sprintf("http://%s-%d.soak.invalid/page/0", mode, host))
+			d.Seeds = append(d.Seeds, fmt.Sprintf("http://%s-%d.soak-%d.invalid/page/0", mode, host, host))
 		}
 		d.Proxy = ProxySettings{Mode: "http", URL: proxy.URL}
 		no := false
@@ -236,6 +262,11 @@ func TestWorkspaceSoak(t *testing.T) {
 		}
 	}
 	started := time.Now()
+	purgeDone := false
+	// Physical cleanup scans accumulated results under the race detector. The
+	// retained ten-minute fixture takes about 47 seconds to rewrite and verify;
+	// this deadline is separate from immediate blocking and request cancellation.
+	const purgeDeadline = 2 * time.Minute
 	nextRestart := duration / 4
 	nextPressure := duration / 8
 	pressurePulses := 0
@@ -247,6 +278,39 @@ func TestWorkspaceSoak(t *testing.T) {
 	capacityPeaks := map[string]int64{}
 	hostDeferrals := map[string]int64{}
 	for time.Since(started) < duration {
+		if !purgeDone && time.Since(started) >= duration/6 {
+			atomic.StoreInt32(purgeFailure, 1)
+			incident, e := workspace.protection.Trigger("http://fixed-7.soak-7.invalid/page/0", "synthetic-soak", ids[0], runIDs[ids[0]], 0)
+			require.ErrorIs(t, e, protection.ErrBlocked)
+			require.Eventually(t, func() bool {
+				i, e := workspace.protection.PrivateIncident(incident.ID)
+				return e == nil && i.State == "failed"
+			}, purgeDeadline, 20*time.Millisecond)
+			failed, e := workspace.protection.PrivateIncident(incident.ID)
+			require.NoError(t, e)
+			require.Contains(t, failed.Error, "injected soak purge failure")
+			atomic.StoreInt32(purgeFailure, 0)
+			retry, _ := json.Marshal(map[string]string{"action": "retry", "id": incident.ID})
+			_, e = workspace.HandleWorkspace(context.Background(), "protection", retry)
+			require.NoError(t, e)
+			require.Eventually(t, func() bool {
+				i, e := workspace.protection.PrivateIncident(incident.ID)
+				return e == nil && (i.State == "completed" || i.State == "failed")
+			}, purgeDeadline, 20*time.Millisecond)
+			completed, e := workspace.protection.PrivateIncident(incident.ID)
+			require.NoError(t, e)
+			require.Equal(t, "completed", completed.State, completed.Error)
+			require.Equal(t, failed.Targets, completed.Targets)
+			requests := atomic.LoadInt64(&protectedSiteHits)
+			time.Sleep(300 * time.Millisecond)
+			require.Equal(t, requests, atomic.LoadInt64(&protectedSiteHits), "purged site continued receiving requests")
+			registry, e := os.ReadFile(filepath.Join(root, "crawls.json"))
+			require.NoError(t, e)
+			require.NotContains(t, string(registry), "soak-7.invalid")
+			purgeDone = true
+			t.Logf("SOAK protection incident=%s failed visibly and retried; shared site removed across both crawls", incident.ID)
+		}
+
 		if time.Since(started) >= nextRestart && restarts < 3 {
 			closeAndVerify()
 			workspace = nil
@@ -380,6 +444,7 @@ func TestWorkspaceSoak(t *testing.T) {
 	workspace = nil
 	require.Eventually(t, func() bool { return runtime.NumGoroutine() <= baselineGoroutines+100 }, 10*time.Second, 100*time.Millisecond)
 	require.Equal(t, 3, restarts, "soak must exercise all three workspace restarts")
+	require.True(t, purgeDone, "soak did not exercise purge and retry")
 	require.Greater(t, pressurePulses, 0)
 	require.Zero(t, atomic.LoadInt64(&badUA))
 	require.Zero(t, atomic.LoadInt64(&robots))
@@ -391,5 +456,5 @@ func TestWorkspaceSoak(t *testing.T) {
 		require.EqualValues(t, 12, capacityPeaks[id], "soak never reached global frontier capacity")
 		require.Greater(t, hostDeferrals[id], int64(0), "soak never exercised blocked-host discovery")
 	}
-	emit(map[string]interface{}{"complete": true, "duration_seconds": time.Since(started).Seconds(), "requests": atomic.LoadInt64(&hits), "timeouts_injected": atomic.LoadInt64(&timeouts), "overload_responses_injected": atomic.LoadInt64(&overloads), "truncated_bodies_injected": atomic.LoadInt64(&truncated), "maximum_sampled_live_heap_bytes": maximumHeap, "peak_goroutines": peakGoroutines, "restarts": restarts, "samples": samples, "pressure_pulses": pressurePulses, "frontier_capacity_peaks": capacityPeaks, "host_capacity_deferrals": hostDeferrals})
+	emit(map[string]interface{}{"complete": true, "duration_seconds": time.Since(started).Seconds(), "requests": atomic.LoadInt64(&hits), "timeouts_injected": atomic.LoadInt64(&timeouts), "overload_responses_injected": atomic.LoadInt64(&overloads), "truncated_bodies_injected": atomic.LoadInt64(&truncated), "maximum_sampled_live_heap_bytes": maximumHeap, "peak_goroutines": peakGoroutines, "restarts": restarts, "samples": samples, "pressure_pulses": pressurePulses, "protection_purge_and_retry": purgeDone, "frontier_capacity_peaks": capacityPeaks, "host_capacity_deferrals": hostDeferrals})
 }

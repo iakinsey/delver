@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/iakinsey/delver/protection"
 	"io/fs"
 	"io/ioutil"
 	"math/rand"
@@ -33,6 +34,7 @@ const identifierRegex = `^\d+-\d+-\d+-` + nameRegex + "$"
 var errQueueEmpty = errors.New("queue is empty")
 
 type fileQueue struct {
+	policy *protection.Policy
 	admission
 	failures       chan error
 	healthMu       sync.Mutex
@@ -165,7 +167,20 @@ func (s *fileQueue) GetChannel() chan types.Message {
 	return s.channel
 }
 
+func (s *fileQueue) SetProtection(p *protection.Policy) { s.policy = p }
 func (s *fileQueue) Put(message types.Message, priority int) error {
+	return s.policy.GuardPayload(message.Message, func() error { return s.putProtected(message, priority) })
+}
+func (s *fileQueue) putProtected(message types.Message, priority int) error {
+	clean, e := s.policy.SanitizePayload(message.Message)
+	if e != nil {
+		return e
+	}
+	if clean == nil && len(message.Message) > 0 {
+		return nil
+	}
+	message.Message = clean
+
 	s.putLock.Lock()
 	defer s.putLock.Unlock()
 	select {
@@ -260,7 +275,7 @@ func (s *fileQueue) EndTransaction(message types.Message, success bool) error {
 	messagePath := filepath.Join(s.path, delivery) + claimedSuffix
 
 	if success {
-		if err := os.Remove(messagePath); err != nil {
+		if err := os.Remove(messagePath); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 		os.Remove(messagePath + ".outputs")
@@ -492,6 +507,22 @@ func (s *fileQueue) LoadOutputs(msg types.Message) ([]types.Message, bool, error
 	return outputs, true, err
 }
 func (s *fileQueue) SaveOutputs(msg types.Message, outputs []types.Message) error {
+	return s.policy.GuardPayload(msg.Message, func() error { return s.saveProtectedOutputs(msg, outputs) })
+}
+func (s *fileQueue) saveProtectedOutputs(msg types.Message, outputs []types.Message) error {
+	kept := []types.Message{}
+	for _, m := range outputs {
+		clean, e := s.policy.SanitizePayload(m.Message)
+		if e != nil {
+			return e
+		}
+		if clean != nil || len(m.Message) == 0 {
+			m.Message = clean
+			kept = append(kept, m)
+		}
+	}
+	outputs = kept
+
 	data, err := json.Marshal(outputs)
 	if err != nil {
 		return err

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/dgraph-io/badger/v3"
+	"github.com/iakinsey/delver/protection"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
 	"net/url"
@@ -27,7 +28,27 @@ func (s *Store) StageDiscovery(ctx context.Context, id string, requests []messag
 		if end > len(requests) {
 			end = len(requests)
 		}
-		err := func() error {
+		if e := s.policy.HealthError(); e != nil {
+			return e
+		}
+		blocked := map[int]bool{}
+		uris := []string{}
+		for i := start; i < end; i++ {
+			if requests[i].Depth < 0 || requests[i].Hops < 0 {
+				return fmt.Errorf("negative traversal depth")
+			}
+			if _, e := Normalize(requests[i].URI, ""); e != nil {
+				return e
+			}
+			blocked[i] = errors.Is(s.policy.Check(requests[i].URI), protection.ErrBlocked)
+			if !blocked[i] {
+				uris = append(uris, requests[i].URI)
+				if requests[i].Origin != "" {
+					uris = append(uris, requests[i].Origin)
+				}
+			}
+		}
+		err := s.policy.GuardMany(uris, func() error {
 			s.mu.Lock()
 			defer s.mu.Unlock()
 			if err := s.checkDisk(); err != nil {
@@ -42,7 +63,7 @@ func (s *Store) StageDiscovery(ctx context.Context, id string, requests []messag
 				}
 				remaining, skipped := 0, 0
 				for i := start; i < end; i++ {
-					if len(s.params.ExcludedExtensions) > 0 && util.URLFileExcluded(requests[i].URI, s.params.ExcludedExtensions) {
+					if s.trapBlocked(tx, requests[i].URI) || blocked[i] || len(s.params.ExcludedExtensions) > 0 && util.URLFileExcluded(requests[i].URI, s.params.ExcludedExtensions) {
 						// Preserve admission validation before accepting an excluded input.
 						if requests[i].Depth < 0 || requests[i].Hops < 0 {
 							return fmt.Errorf("negative traversal depth")
@@ -72,7 +93,10 @@ func (s *Store) StageDiscovery(ctx context.Context, id string, requests []messag
 				}
 				return write(tx, marker, remaining)
 			})
-		}()
+		})
+		if errors.Is(err, protection.ErrBlocked) {
+			return protection.ErrChanged
+		}
 		if err != nil {
 			return s.storageError(err)
 		}
@@ -129,10 +153,10 @@ func (s *Store) DrainDiscovery(ctx context.Context, limit int) (int, error) {
 				}
 				request.URI = uri
 				u, _ := url.Parse(uri)
-				host := u.Host
+				host := util.SiteKey(u.Host)
 				if _, ok := hosts[host]; !ok {
 					var n int
-					if err := read(tx, "origin/"+host, &n); err != nil && err != badger.ErrKeyNotFound {
+					if err := read(tx, "site_pending/"+host, &n); err != nil && err != badger.ErrKeyNotFound {
 						return err
 					}
 					hosts[host] = s.params.MaxPendingPerOrigin - n
@@ -179,7 +203,11 @@ func (s *Store) DrainDiscovery(ctx context.Context, limit int) (int, error) {
 		last = e.key
 		// Old staged records may predate this policy. Count and remove them in
 		// the same acknowledgment transaction, never through per-record admit.
-		if len(s.params.ExcludedExtensions) > 0 && util.URLFileExcluded(e.request.URI, s.params.ExcludedExtensions) {
+		policyError := s.policy.Check(e.request.URI)
+		if policyError != nil && !errors.Is(policyError, protection.ErrBlocked) {
+			return consumed, policyError
+		}
+		if errors.Is(policyError, protection.ErrBlocked) || len(s.params.ExcludedExtensions) > 0 && util.URLFileExcluded(e.request.URI, s.params.ExcludedExtensions) {
 			if e.request.Depth < 0 || e.request.Hops < 0 {
 				return consumed, fmt.Errorf("negative traversal depth")
 			}
@@ -202,6 +230,10 @@ func (s *Store) DrainDiscovery(ctx context.Context, limit int) (int, error) {
 			}
 			consumed++
 			completed = append(completed, e)
+		} else if errors.Is(result, ErrTrapExcluded) {
+			e.parked = true
+			completed = append(completed, e)
+			consumed++
 		} else if errors.Is(result, ErrRejected) {
 			e.rejected = true
 			completed = append(completed, e)
@@ -213,7 +245,7 @@ func (s *Store) DrainDiscovery(ctx context.Context, limit int) (int, error) {
 				if err := read(tx, "meta/pending", &pending); err != nil && err != badger.ErrKeyNotFound {
 					return err
 				}
-				if err := read(tx, "origin/"+e.host, &host); err != nil && err != badger.ErrKeyNotFound {
+				if err := read(tx, "site_pending/"+e.host, &host); err != nil && err != badger.ErrKeyNotFound {
 					return err
 				}
 				available = s.params.MaxPending - pending
@@ -233,11 +265,13 @@ func (s *Store) DrainDiscovery(ctx context.Context, limit int) (int, error) {
 }
 
 type discoveryEntry struct {
-	key      string
-	request  message.FetcherRequest
-	host     string
-	rejected bool
-	excluded bool
+	key          string
+	request      message.FetcherRequest
+	host         string
+	rejected     bool
+	excluded     bool
+	parked       bool
+	purgeReceipt bool
 }
 
 // Admission and staging cleanup deliberately remain separate transactions.
@@ -317,6 +351,19 @@ func (s *Store) ackDiscovery(tx *badger.Txn, e discoveryEntry) (bool, error) {
 	} else if err != nil {
 		return false, err
 	}
+	if e.parked {
+		key := "trap/staged/" + util.SiteKey(e.request.URI) + "/" + e.key
+		if err := write(tx, key, e.request); err != nil {
+			return false, err
+		}
+		if err := tx.Delete([]byte(e.key)); err != nil {
+			return false, err
+		}
+		if err := increment(tx, "meta/trap_parked", 1); err != nil {
+			return false, err
+		}
+		return false, increment(tx, "meta/staged", -1)
+	}
 	if e.rejected {
 		if err := increment(tx, "meta/budget_rejected", 1); err != nil {
 			return false, err
@@ -325,26 +372,39 @@ func (s *Store) ackDiscovery(tx *badger.Txn, e discoveryEntry) (bool, error) {
 	if err := tx.Delete([]byte(e.key)); err != nil {
 		return false, err
 	}
-	parts := strings.Split(e.key, "/")
+	if err := s.finishDiscoveryReceipt(tx, e.key, e.purgeReceipt); err != nil {
+		return false, err
+	}
+	return e.excluded, increment(tx, "meta/staged", -1)
+}
+
+func (s *Store) finishDiscoveryReceipt(tx *badger.Txn, key string, deleteEmpty bool) error {
+	parts := strings.Split(key, "/")
+	if len(parts) != 3 || parts[0] != "staged" || parts[1] == "" {
+		return fmt.Errorf("invalid discovery key")
+	}
 	index, err := strconv.Atoi(parts[2])
 	if err != nil {
-		return false, err
+		return err
 	}
 	marker := fmt.Sprintf("discovery/%s/%08d", parts[1], index/128*128)
 	var remaining int
 	if err := read(tx, marker, &remaining); err != nil {
-		return false, err
+		return err
 	}
 	remaining--
 	if remaining < 0 {
-		return false, fmt.Errorf("invalid discovery chunk count")
+		return fmt.Errorf("invalid discovery chunk count")
 	}
 	if remaining == 0 {
+		if deleteEmpty {
+			return tx.Delete([]byte(marker))
+		}
 		if err := writeTTL(tx, marker, 0, time.Duration(s.params.Retention.DedupFor)); err != nil {
-			return false, err
+			return err
 		}
 	} else if err := write(tx, marker, remaining); err != nil {
-		return false, err
+		return err
 	}
-	return e.excluded, increment(tx, "meta/staged", -1)
+	return nil
 }

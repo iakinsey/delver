@@ -22,6 +22,19 @@ func (s *Store) DrainRecrawls(ctx context.Context, limit int) error {
 	}
 	entries := []due{}
 	err := s.view(func(tx *badger.Txn) error {
+		var pending int
+		if err := read(tx, "meta/pending", &pending); err != nil && err != badger.ErrKeyNotFound {
+			return err
+		}
+		// Revisit ownership stays durable while capacity is full. Reading the
+		// entire due window here would delay dispatch of already pending work.
+		available := s.params.MaxPending - pending
+		if available <= 0 {
+			return nil
+		}
+		if limit > available {
+			limit = available
+		}
 		opts := badger.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := tx.NewIterator(opts)

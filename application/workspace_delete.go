@@ -24,7 +24,7 @@ func (w *Workspace) deletionPaths(r *CrawlRecord) ([]string, error) {
 		if run.Legacy && run.Expert != nil {
 			paths = append(paths, pipelinePaths(*run.Expert)...)
 			if path := run.Expert.Config.API.OperationsPath; path != "" {
-				paths = append(paths, path, path+".lock", path+".tmp", path+".fetch.json", path+".fetch.json.tmp", path+".report.sqlite", path+".report.sqlite-wal", path+".report.sqlite-shm")
+				paths = append(paths, path, path+".lock", path+".tmp", path+".fetch.json", path+".fetch.json.tmp", path+".report.sqlite", path+".report.sqlite-wal", path+".report.sqlite-shm", path+".report.sqlite.atlas.sqlite")
 			}
 		}
 	}
@@ -53,7 +53,7 @@ func (w *Workspace) deletionPaths(r *CrawlRecord) ([]string, error) {
 				break
 			}
 		}
-		legacyState := absolute == filepath.Join(w.root, "state.json") || absolute == filepath.Join(w.root, "state.json.lock") || absolute == filepath.Join(w.root, "state.json.tmp") || absolute == filepath.Join(w.root, "state.json.fetch.json") || absolute == filepath.Join(w.root, "state.json.fetch.json.tmp") || absolute == filepath.Join(w.root, "state.json.report.sqlite") || absolute == filepath.Join(w.root, "state.json.report.sqlite-wal") || absolute == filepath.Join(w.root, "state.json.report.sqlite-shm")
+		legacyState := absolute == filepath.Join(w.root, "state.json") || absolute == filepath.Join(w.root, "state.json.lock") || absolute == filepath.Join(w.root, "state.json.tmp") || absolute == filepath.Join(w.root, "state.json.fetch.json") || absolute == filepath.Join(w.root, "state.json.fetch.json.tmp") || absolute == filepath.Join(w.root, "state.json.report.sqlite") || absolute == filepath.Join(w.root, "state.json.report.sqlite-wal") || absolute == filepath.Join(w.root, "state.json.report.sqlite-shm") || absolute == filepath.Join(w.root, "state.json.report.sqlite.atlas.sqlite")
 
 		if absolute == filepath.VolumeName(absolute)+string(filepath.Separator) || overlapStorage(absolute, w.root) && !strings.HasPrefix(absolute, w.root+string(filepath.Separator)+"crawls"+string(filepath.Separator)+r.ID+string(filepath.Separator)) && absolute != paths[0] && !legacyState {
 			return nil, fmt.Errorf("storage path overlaps workspace: %s", absolute)
@@ -145,6 +145,9 @@ func (w *Workspace) acceptDeletion(r *CrawlRecord, slot *crawlSlot, revision uin
 	if revision != r.Revision {
 		return nil, errs.NewRequestError("crawl revision conflict")
 	}
+	if w.protection.NeedsGraph(r.ID) {
+		return nil, errs.NewRequestError("restricted-content target capture pending")
+	}
 	paths, err := w.deletionPaths(r)
 	if err != nil {
 		return nil, err
@@ -186,6 +189,9 @@ func (w *Workspace) acceptDeletion(r *CrawlRecord, slot *crawlSlot, revision uin
 				slot.setSupervisor(nil)
 			}
 		}
+		if err == nil && w.protection.NeedsGraph(r.ID) {
+			err = fmt.Errorf("restricted-content target capture pending; retry deletion")
+		}
 		if err == nil {
 			for _, addresses := range endpoints {
 				ctx, cancel := context.WithTimeout(w.ctx, 2*time.Minute)
@@ -198,6 +204,7 @@ func (w *Workspace) acceptDeletion(r *CrawlRecord, slot *crawlSlot, revision uin
 		}
 		if err == nil {
 			for _, path := range paths {
+				w.cancelAtlases(path)
 				if err = os.RemoveAll(path); err != nil {
 					break
 				}

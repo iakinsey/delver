@@ -1,12 +1,14 @@
 package fetcher
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/flow"
 	"github.com/iakinsey/delver/frontier"
+	"github.com/iakinsey/delver/protection"
 	"io"
 	"net/http"
 	"net/url"
@@ -22,7 +24,7 @@ import (
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
 	"github.com/iakinsey/delver/worker"
-	"github.com/pkg/errors"
+	errorspkg "github.com/pkg/errors"
 )
 
 type HttpFetcherParams struct {
@@ -30,13 +32,16 @@ type HttpFetcherParams struct {
 }
 
 type httpFetcher struct {
-	flow        *flow.Controller
-	scope       string
-	allow, deny *regexp.Regexp
-	maxBytes    int64
-	robots      frontier.ClosableFilter
-	ObjectStore objectstore.ObjectStore
-	Client      util.DelverHTTPClient
+	protection     *protection.Policy
+	crawlID, runID string
+	purgeDepth     int
+	flow           *flow.Controller
+	scope          string
+	allow, deny    *regexp.Regexp
+	maxBytes       int64
+	robots         frontier.ClosableFilter
+	ObjectStore    objectstore.ObjectStore
+	Client         util.DelverHTTPClient
 }
 
 func NewHttpFetcher(args HttpFetcherParams) worker.Worker {
@@ -77,6 +82,7 @@ func NewHttpFetcherWithConfig(args HttpFetcherParams, c config.Config) worker.Wo
 		deny = regexp.MustCompile(conf.DenyPattern)
 	}
 	return &httpFetcher{
+		protection: conf.Protection, crawlID: c.RuntimeCrawlID, runID: c.RuntimeRunID, purgeDepth: conf.RestrictedPurgeDepth,
 		flow:  c.HTTPClient.Flow,
 		allow: allow, deny: deny,
 		ObjectStore: args.ObjectStore,
@@ -94,7 +100,7 @@ func (s *httpFetcher) OnMessageContext(ctx context.Context, msg types.Message) (
 	request := message.FetcherRequest{}
 
 	if err := json.Unmarshal(msg.Message, &request); err != nil {
-		return nil, errors.Wrap(err, "error parsing fetcher request")
+		return nil, errorspkg.Wrap(err, "error parsing fetcher request")
 	}
 
 	if request.ScopeRoot == "" && (s.scope != "" || s.allow != nil || s.deny != nil) {
@@ -157,6 +163,12 @@ func (s *httpFetcher) doHttpRequestWithRetry(ctx context.Context, request messag
 
 	if err != nil {
 		response.Error = err.Error()
+		if errorspkg.Is(err, protection.ErrBlocked) {
+			response.Error = protection.ErrBlocked.Error()
+		}
+		if errorspkg.Is(err, protection.ErrUnavailable) {
+			response.Error = protection.ErrUnavailable.Error()
+		}
 	}
 }
 
@@ -179,7 +191,7 @@ func (s *httpFetcher) doHttpRequest(ctx context.Context, request message.Fetcher
 	}
 
 	if res == nil || res.Body == nil {
-		return key, errors.New("empty HTTP response")
+		return key, errorspkg.New("empty HTTP response")
 	}
 	if res.Request != nil && res.Request.URL != nil {
 		response.EffectiveURI = res.Request.URL.String()
@@ -188,14 +200,36 @@ func (s *httpFetcher) doHttpRequest(ctx context.Context, request message.Fetcher
 	response.Header = res.Header
 	key = types.NewV4()
 
-	log.Printf("GET %d %s", response.HTTPCode, request.URI)
+	if s.protection == nil {
+		log.Printf("GET %d %s", response.HTTPCode, request.URI)
+	}
 
 	limit := s.maxBytes
 	if limit <= 0 {
 		limit = 16 << 20
 	}
 	storageStart := time.Now()
-	hash, err := s.ObjectStore.Put(key, &boundedBody{reader: res.Body, remaining: limit, count: &response.BytesReceived})
+	var hash string
+	var source io.Reader = &boundedBody{reader: res.Body, remaining: limit, count: &response.BytesReceived}
+	if s.protection != nil {
+		releaseMemory, e := s.protection.Reserve(ctx, limit*2+(64<<10))
+		if e != nil {
+			return key, e
+		}
+		defer releaseMemory()
+		raw, readErr := s.readProtected(ctx, request.URI, response.EffectiveURI, source, res.Header.Get("Content-Type"))
+		if readErr != nil {
+			return key, readErr
+		}
+		defer clear(raw)
+		err = s.protection.GuardMany([]string{request.URI, response.EffectiveURI}, func() error {
+			var e error
+			hash, e = s.ObjectStore.Put(key, bytes.NewReader(raw))
+			return e
+		})
+	} else {
+		hash, err = s.ObjectStore.Put(key, source)
+	}
 	if s.flow != nil {
 		s.flow.Measure("storage", time.Since(storageStart))
 	}
@@ -207,7 +241,7 @@ func (s *httpFetcher) doHttpRequest(ctx context.Context, request message.Fetcher
 		response.ContentMD5 = hash
 	}
 
-	return key, errors.Wrap(err, "store object failure")
+	return key, errorspkg.Wrap(err, "store object failure")
 }
 
 type boundedBody struct {
@@ -238,6 +272,15 @@ func (b *boundedBody) Read(p []byte) (int, error) {
 
 func classifyResponse(r *message.FetcherResponse) {
 	if r.Error != "" {
+		if strings.Contains(r.Error, protection.ErrUnavailable.Error()) || strings.Contains(r.Error, "protection inspection memory budget") {
+			r.FailureClass = "storage"
+			return
+		}
+		if strings.Contains(r.Error, protection.ErrBlocked.Error()) {
+			r.FailureClass = "excluded"
+			r.Retryable = false
+			return
+		}
 		text := strings.ToLower(r.Error)
 		switch {
 		case strings.Contains(text, "file extension excluded"):
@@ -278,4 +321,53 @@ func classifyResponse(r *message.FetcherResponse) {
 	} else if when, err := http.ParseTime(value); err == nil && when.After(time.Now()) {
 		r.RetryAfterMS = time.Until(when).Milliseconds()
 	}
+}
+
+func (s *httpFetcher) readProtected(ctx context.Context, original, effective string, r io.Reader, contentType string) ([]byte, error) {
+	if effective == "" {
+		effective = original
+	}
+	if e := s.protection.Check(effective); e != nil {
+		return nil, e
+	}
+	contentType = strings.ToLower(contentType)
+	textual := strings.Contains(contentType, "text/") || strings.Contains(contentType, "html") || strings.Contains(contentType, "xml") || strings.Contains(contentType, "json") || contentType == ""
+	if textual {
+		inspector := s.protection.InspectReader(ctx, r, effective, s.crawlID, s.runID, s.purgeDepth)
+		defer inspector.Close()
+		r = inspector
+	}
+	var out bytes.Buffer
+	buffer := make([]byte, 32<<10)
+	defer clear(buffer)
+	for {
+		if e := ctx.Err(); e != nil {
+			clear(out.Bytes())
+			return nil, e
+		}
+		n, e := r.Read(buffer)
+		if n > 0 {
+			out.Write(buffer[:n])
+		}
+		if e == io.EOF {
+			return out.Bytes(), nil
+		}
+		if e != nil {
+			clear(out.Bytes())
+			return nil, e
+		}
+	}
+}
+
+func (s *httpFetcher) PurgeMatching(ctx context.Context, match func(string) bool) error {
+	for _, resource := range []interface{}{s.robots, s.Client} {
+		if p, ok := resource.(interface {
+			PurgeMatching(context.Context, func(string) bool) error
+		}); ok {
+			if e := p.PurgeMatching(ctx, match); e != nil {
+				return e
+			}
+		}
+	}
+	return nil
 }

@@ -100,7 +100,7 @@ func (w *Workspace) checkRun(id string, slot *crawlSlot) {
 	if slot.draining {
 		control.mu.Lock()
 		if control.prepared != nil {
-			for _, d := range control.prepared.app.Workers {
+			for _, d := range control.prepared.workerDefinitions() {
 				if d.Manager == "job" && d.Type != "frontier_cleanup" {
 					control.prepared.workers[d.Name].(worker.Pausable).Pause(true)
 				}
@@ -117,7 +117,7 @@ func (w *Workspace) checkRun(id string, slot *crawlSlot) {
 		} else {
 			p := control.prepared
 			store, _ := p.resources["source_progress"].(maps.Map)
-			for _, d := range p.app.Workers {
+			for _, d := range p.workerDefinitions() {
 				if d.Once || d.Type == "fixed_seed_publisher" || d.Type == "rss_feed_publisher" || d.Type == "dfs_basic_publisher" {
 					if !d.Once || store == nil {
 						sourceDone = false
@@ -141,7 +141,7 @@ func (w *Workspace) checkRun(id string, slot *crawlSlot) {
 	control.mu.Lock()
 	var definitions []config.Worker
 	if control.prepared != nil {
-		definitions = control.prepared.app.Workers
+		definitions = control.prepared.workerDefinitions()
 	}
 	control.mu.Unlock()
 	idle = idle && crawlWorkersIdle(snapshot.Workers, definitions)

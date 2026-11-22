@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/iakinsey/delver/protection"
 	"reflect"
 	"sync"
 	"time"
@@ -177,6 +178,11 @@ func (s *workerManager) Start() {
 			if observer != nil {
 				observer(message, outputs, err)
 			}
+			if discard, ok := s.worker.(interface {
+				DiscardDelivery(types.Message, []types.Message)
+			}); ok {
+				discard.DiscardDelivery(message, outputs)
+			}
 		case <-s.terminate:
 			s.metrics.IncrCounter([]string{s.workerName, "terminated"}, 1)
 
@@ -336,4 +342,27 @@ func (s *workerManager) Health() string {
 		return source.Health()
 	}
 	return ""
+}
+
+func (s *workerManager) PurgeMatching(ctx context.Context, match func(string) bool) error {
+	s.control.mu.Lock()
+	if protection.References(s.control.activity.LastError, match) {
+		s.control.activity.LastError = ""
+	}
+	s.control.mu.Unlock()
+	if p, ok := s.worker.(interface {
+		PurgeMatching(context.Context, func(string) bool) error
+	}); ok {
+		return p.PurgeMatching(ctx, match)
+	}
+	return nil
+}
+
+func (s *workerManager) VerifyNoMatches(ctx context.Context, match func(string) bool) error {
+	if v, ok := s.worker.(interface {
+		VerifyNoMatches(context.Context, func(string) bool) error
+	}); ok {
+		return v.VerifyNoMatches(ctx, match)
+	}
+	return nil
 }

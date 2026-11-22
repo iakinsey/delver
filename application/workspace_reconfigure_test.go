@@ -35,7 +35,7 @@ func finishWorkspaceOperation(t *testing.T, w *Workspace, id, action string, pay
 }
 
 func TestWorkspaceConfigurationRetainsRunState(t *testing.T) {
-	RegisterResource("reconfigure_metadata", func(json.RawMessage) (interface{}, error) { return struct{}{}, nil })
+	RegisterResource("reconfigure_metadata", func(json.RawMessage) (interface{}, error) { return struct{}{}, nil }, ProtectionMetadataOnly)
 	defer RegisterResource("reconfigure_metadata", nil)
 	for _, tc := range []struct {
 		state, action  string
@@ -297,7 +297,7 @@ func TestWorkspaceRejectsStorageReplacementBeforeStopping(t *testing.T) {
 func TestWorkspaceConfigurationStartupFailureCanBeRepairedInSameRun(t *testing.T) {
 	RegisterResource("reconfigure_failure", func(json.RawMessage) (interface{}, error) {
 		return nil, fmt.Errorf("injected configuration startup failure")
-	})
+	}, ProtectionMetadataOnly)
 	defer RegisterResource("reconfigure_failure", nil)
 	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")

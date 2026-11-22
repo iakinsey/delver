@@ -73,21 +73,60 @@ func (s *filesystemObjectStore) Delete(uuid types.UUID) error {
 }
 
 func (s *filesystemObjectStore) Reconcile(retained map[types.UUID]bool) error {
-	entries, err := os.ReadDir(s.Path)
-	if err != nil {
-		return err
+	dir, e := os.Open(s.Path)
+	if e != nil {
+		return e
 	}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		_, parseErr := uuid.Parse(name)
-		if strings.HasPrefix(name, ".object-") || (parseErr == nil && !retained[types.UUID(name)]) {
-			if err := os.Remove(filepath.Join(s.Path, name)); err != nil {
-				return err
+	defer dir.Close()
+	for {
+		entries, readErr := dir.ReadDir(128)
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			name := entry.Name()
+			_, parseErr := uuid.Parse(name)
+			if strings.HasPrefix(name, ".object-") || parseErr == nil && !retained[types.UUID(name)] {
+				if e = os.Remove(filepath.Join(s.Path, name)); e != nil {
+					return e
+				}
 			}
 		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return readErr
+		}
 	}
-	return nil
+	if e = dir.Sync(); e != nil {
+		return e
+	}
+	return s.VerifyRetained(retained)
+}
+func (s *filesystemObjectStore) VerifyRetained(retained map[types.UUID]bool) error {
+	dir, e := os.Open(s.Path)
+	if e != nil {
+		return e
+	}
+	defer dir.Close()
+	for {
+		entries, readErr := dir.ReadDir(128)
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			name := entry.Name()
+			_, parseErr := uuid.Parse(name)
+			if strings.HasPrefix(name, ".object-") || parseErr == nil && !retained[types.UUID(name)] {
+				return errors.New("unreferenced response object remains")
+			}
+		}
+		if readErr == io.EOF {
+			return nil
+		}
+		if readErr != nil {
+			return readErr
+		}
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/dgraph-io/badger/v3"
+	"github.com/iakinsey/delver/util"
 	"strings"
 )
 
@@ -11,7 +12,7 @@ func schedulingKeys(c Candidate) []string {
 	keys := []string{
 		fmt.Sprintf("b/%010d/%020d/%s", c.Request.Depth, c.Sequence, c.Request.URI),
 		fmt.Sprintf("d/%010d/%020d/%s", int64(2147483647)-int64(c.Request.Depth), int64(9223372036854775807)-c.Sequence, c.Request.URI),
-		fmt.Sprintf("h/%s/%010d/%020d/%s", c.Request.Host, c.Request.Depth, c.Sequence, c.Request.URI),
+		fmt.Sprintf("hs/%s/%010d/%020d/%s", util.SiteKey(c.Request.Host), c.Request.Depth, c.Sequence, c.Request.URI),
 	}
 	if c.Request.Attempt > 0 {
 		keys = append(keys, fmt.Sprintf("retry_ready/%020d/%s", c.Sequence, c.Request.URI))
@@ -101,7 +102,7 @@ func (s *Store) Candidates(ctx context.Context, strategy, lastHost string, limit
 		}
 		diverse := strategy == "host_diverse" || strategy == "adaptive"
 		if diverse {
-			prefix = "h/"
+			prefix = "hs/"
 		}
 		if s.params.Retry != nil {
 			prefix = "f" + prefix
@@ -142,7 +143,7 @@ func (s *Store) Candidates(ctx context.Context, strategy, lastHost string, limit
 		}
 		start := prefix
 		if diverse && lastHost != "" {
-			start = prefix + lastHost + "/\xff"
+			start = prefix + util.SiteKey(lastHost) + "/\xff"
 		}
 		if err := scan(start, ""); err != nil {
 			return err

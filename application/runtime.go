@@ -14,6 +14,7 @@ import (
 
 type runtimeKey struct{}
 type runtimeControl struct {
+	storageMu       sync.RWMutex
 	log             *crawlLog
 	onFinalSnapshot func(RuntimeSnapshot)
 	initialPaused   bool
@@ -84,7 +85,7 @@ func (c *runtimeControl) snapshot() RuntimeSnapshot {
 func durableDispatch(prepared *preparedApplication) []queue.PausableDispatch {
 	var queues []queue.PausableDispatch
 	seen := map[string]bool{}
-	for _, definition := range prepared.app.Workers {
+	for _, definition := range prepared.workerDefinitions() {
 		if definition.Manager == "job" || seen[definition.Inbox] {
 			continue
 		}
@@ -106,7 +107,7 @@ func (c *runtimeControl) pause(ctx context.Context, paused bool) error {
 	}
 	prepared := c.prepared
 	dispatch := durableDispatch(prepared)
-	for _, definition := range prepared.app.Workers {
+	for _, definition := range prepared.workerDefinitions() {
 		if !paused || definition.Manager == "job" {
 			prepared.workers[definition.Name].(worker.Pausable).Pause(paused)
 		}
@@ -139,7 +140,7 @@ func (c *runtimeControl) pause(ctx context.Context, paused bool) error {
 		for _, q := range dispatch {
 			busy = busy || q.DispatchActive() != 0
 		}
-		for _, definition := range prepared.app.Workers {
+		for _, definition := range prepared.workerDefinitions() {
 			if dispatch == nil && definition.Manager != "job" {
 				if count, ok := snapshot.Queues[definition.Inbox]; ok {
 					busy = busy || count != 0

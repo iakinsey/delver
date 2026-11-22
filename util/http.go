@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/iakinsey/delver/config"
+	"github.com/iakinsey/delver/protection"
 
 	"golang.org/x/net/proxy"
 )
@@ -33,22 +34,25 @@ type DelverHTTPClient interface {
 }
 
 type delverHTTPClient struct {
-	Reporter                  report.Writer
-	Flow                      *flow.Controller
-	BodyTimeout               time.Duration
-	configError               error
-	ExcludedExtensions        []string
-	HostSuffixes              []string
-	RetryDelay, RetryMaxDelay time.Duration
-	NetworkTimeout            time.Duration
-	LocalGate, GlobalGate     config.HTTPGate
-	HTTP                      *http.Client
-	UserAgent                 string
-	MaxRetries                int
-	Policy                    func(*url.URL) error
-	PolicyContext             func(context.Context, *url.URL) error
-	Delay                     time.Duration
-	Concurrency               int
+	Protection                     *protection.Policy
+	ProtectionCrawl, ProtectionRun string
+	PurgeDepth                     int
+	Reporter                       report.Writer
+	Flow                           *flow.Controller
+	BodyTimeout                    time.Duration
+	configError                    error
+	ExcludedExtensions             []string
+	HostSuffixes                   []string
+	RetryDelay, RetryMaxDelay      time.Duration
+	NetworkTimeout                 time.Duration
+	LocalGate, GlobalGate          config.HTTPGate
+	HTTP                           *http.Client
+	UserAgent                      string
+	MaxRetries                     int
+	Policy                         func(*url.URL) error
+	PolicyContext                  func(context.Context, *url.URL) error
+	Delay                          time.Duration
+	Concurrency                    int
 }
 
 // TODO use a mocking library if this becomes a common pattern
@@ -160,6 +164,7 @@ func NewHTTPClientWithConfig(params config.HTTPClientConfig) DelverHTTPClient {
 	client.Transport = transport
 
 	return &delverHTTPClient{
+		Protection: params.Protection, ProtectionCrawl: params.ProtectionCrawl, ProtectionRun: params.ProtectionRun, PurgeDepth: params.RestrictedPurgeDepth,
 		Reporter: params.Reporter, Flow: params.Flow, BodyTimeout: params.BodyTimeout,
 		configError: configError, HostSuffixes: suffixes, ExcludedExtensions: extensions,
 		RetryDelay: params.RetryDelay, RetryMaxDelay: params.RetryMaxDelay,
@@ -219,7 +224,7 @@ func (s *delverHTTPClient) PerformContext(ctx context.Context, uri string) (*htt
 		}
 		req.Header.Set("User-Agent", agent)
 		resp, err := client.Do(req)
-		retry := (err != nil && !errors.Is(err, ErrFileExtensionExcluded)) || (resp != nil && (resp.StatusCode == 429 || resp.StatusCode >= 500))
+		retry := (err != nil && !errors.Is(err, ErrFileExtensionExcluded) && !errors.Is(err, protection.ErrBlocked)) || (resp != nil && (resp.StatusCode == 429 || resp.StatusCode >= 500))
 		if !retry || attempt == s.MaxRetries {
 			return resp, err
 		}
@@ -293,7 +298,25 @@ type limitedTransport struct {
 	owner *delverHTTPClient
 }
 
-func (s *limitedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (s *limitedTransport) RoundTrip(req *http.Request) (responseResult *http.Response, resultError error) {
+	if s.owner.Protection != nil {
+		if err := s.owner.Protection.Inspect(req.URL.String(), nil, s.owner.ProtectionCrawl, s.owner.ProtectionRun, s.owner.PurgeDepth); err != nil {
+			return nil, err
+		}
+		ctx, done, err := s.owner.Protection.Begin(req.Context(), req.URL.String())
+		if err != nil {
+			return nil, err
+		}
+		req = req.Clone(ctx)
+		defer func() {
+			if responseResult == nil || responseResult.Body == nil {
+				done()
+			} else {
+				responseResult.Body = &protectionBody{ReadCloser: responseResult.Body, done: done}
+			}
+		}()
+	}
+
 	if ExtensionExcluded(req.URL, s.owner.ExcludedExtensions) {
 		return nil, ErrFileExtensionExcluded
 	}
@@ -510,4 +533,32 @@ func (d proxyEndpointDialer) DialContext(ctx context.Context, network, address s
 		return nil, fmt.Errorf("proxy connection: %w", err)
 	}
 	return connection, nil
+}
+
+// Closing a response releases its registration even on redirects and errors.
+type protectionBody struct {
+	io.ReadCloser
+	done func()
+}
+
+func (b *protectionBody) Close() error { err := b.ReadCloser.Close(); b.done(); return err }
+
+func (s *delverHTTPClient) PurgeMatching(ctx context.Context, match func(string) bool) error {
+	s.HTTP.CloseIdleConnections()
+	originLimits.Range(func(k, v interface{}) bool {
+		if raw, ok := k.(string); ok && match(raw) {
+			originLimits.Delete(k)
+		}
+		return true
+	})
+	for _, g := range []config.HTTPGate{s.LocalGate, s.GlobalGate} {
+		if p, ok := g.(interface {
+			PurgeMatching(context.Context, func(string) bool) error
+		}); ok {
+			if e := p.PurgeMatching(ctx, match); e != nil {
+				return e
+			}
+		}
+	}
+	return ctx.Err()
 }

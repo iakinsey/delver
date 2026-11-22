@@ -249,10 +249,25 @@ test("report keyboard search invalid depth stale requests and navigation", async
   await page.getByRole("button", { name: "Crawl", exact: true }).click();
   await expect(page).toHaveURL(`${base}/crawls/${record.id}`);
   await page
-    .getByRole("button", { name: "Report", exact: true })
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Run history", exact: true }),
+    })
+    .getByRole("button", { name: "Reports", exact: true })
     .last()
     .click();
   await expect(page).toHaveURL(/run_id=/);
+  await expect(page.getByLabel("Run report metrics")).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "Crawl views" })
+    .getByRole("button", { name: "Graph", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/network\?run_id=/);
+  await page
+    .getByRole("navigation", { name: "Crawl views" })
+    .getByRole("button", { name: "Reports", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/report\?run_id=/);
   await expect(page.getByLabel("Run report metrics")).toBeVisible();
 });
 

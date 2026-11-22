@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"context"
 	"github.com/armon/go-metrics"
 	"sync"
 	"time"
@@ -54,4 +55,22 @@ func (s *jobManager) Health() string {
 		return source.Health()
 	}
 	return ""
+}
+
+func (s *jobManager) PurgeMatching(ctx context.Context, match func(string) bool) error {
+	if p, ok := s.manager.(interface {
+		PurgeMatching(context.Context, func(string) bool) error
+	}); ok {
+		return p.PurgeMatching(ctx, match)
+	}
+	return nil
+}
+
+func (s *jobManager) VerifyNoMatches(ctx context.Context, match func(string) bool) error {
+	if v, ok := s.manager.(interface {
+		VerifyNoMatches(context.Context, func(string) bool) error
+	}); ok {
+		return v.VerifyNoMatches(ctx, match)
+	}
+	return nil
 }

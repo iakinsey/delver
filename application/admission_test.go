@@ -35,14 +35,14 @@ func TestAdmissionSaturationTraversal(t *testing.T) {
 					fmt.Fprintf(w, "<title>page %d</title>", page)
 					for _, next := range []int{page + 1, page + 7} {
 						if next < pages {
-							fmt.Fprintf(w, `<a href="http://host-%d.admission.invalid/page/%d">next</a>`, next%4, next)
+							fmt.Fprintf(w, `<a href="http://host-%d.admission-%d.invalid/page/%d">next</a>`, next%4, next%4, next)
 						}
 					}
 				}))
 				defer proxy.Close()
 				d := DefaultCrawlDefinition()
 				d.Name, d.Scope, d.Strategy = "admission regression", "open_web", strategy
-				d.Seeds = []string{"http://host-0.admission.invalid/page/0"}
+				d.Seeds = []string{"http://host-0.admission-0.invalid/page/0"}
 				d.Proxy = ProxySettings{Mode: "http", URL: proxy.URL}
 				no, zero := false, 0
 				d.Network.RespectRobots, d.Network.MaxRetries = &no, &zero
@@ -90,6 +90,10 @@ func TestAdmissionSaturationTraversal(t *testing.T) {
 						break
 					}
 					time.Sleep(10 * time.Millisecond)
+				}
+				if !complete {
+					f := s.control.snapshot()
+					t.Logf("final frontier=%v queues=%v fetch=%+v", f.Frontier, f.Queues, f.Fetch.Totals)
 				}
 				require.True(t, complete, "saturated traversal did not finish")
 				require.NoError(t, s.Close())

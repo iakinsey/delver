@@ -1,6 +1,7 @@
 package publisher
 
 import (
+	"context"
 	"net/url"
 
 	"github.com/iakinsey/delver/types"
@@ -49,3 +50,15 @@ func (s *fixedSeedPublisher) OnMessage(msg types.Message) (interface{}, error) {
 }
 
 func (s *fixedSeedPublisher) OnComplete() {}
+
+func (s *fixedSeedPublisher) PurgeMatching(ctx context.Context, match func(string) bool) error {
+	uris := []string{}
+	for _, u := range s.uris {
+		if !match(u) {
+			uris = append(uris, u)
+		}
+	}
+	clear(s.uris)
+	s.uris = uris
+	return ctx.Err()
+}

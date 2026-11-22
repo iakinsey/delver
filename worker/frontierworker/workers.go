@@ -10,15 +10,15 @@ import (
 	"github.com/iakinsey/delver/flow"
 	"github.com/iakinsey/delver/frontier"
 	"github.com/iakinsey/delver/instrument"
+	"github.com/iakinsey/delver/protection"
 	"github.com/iakinsey/delver/queue"
 	"github.com/iakinsey/delver/report"
+	"github.com/iakinsey/delver/trap"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
-	"golang.org/x/net/publicsuffix"
 	"math"
-	"net"
 	"net/url"
 	"regexp"
 
@@ -42,6 +42,7 @@ type Params struct {
 	Window              int                    `json:"window"`
 }
 type Worker struct {
+	policy   *protection.Policy
 	Reporter report.Writer
 	metrics  metrics.MetricSink
 	Params
@@ -55,7 +56,8 @@ type Worker struct {
 	Filters     []frontier.Filter
 }
 
-func (w *Worker) SetReporter(r report.Writer) { w.Reporter = r }
+func (w *Worker) SetProtection(p *protection.Policy) { w.policy = p }
+func (w *Worker) SetReporter(r report.Writer)        { w.Reporter = r }
 
 func New(p Params, kind string) (*Worker, error) {
 	suffixes, err := util.NormalizeHostSuffixes(p.AllowedHostSuffixes)
@@ -164,8 +166,27 @@ func (w *Worker) OnMessageContext(ctx context.Context, m types.Message) (interfa
 	if err := w.Store.Outcome(c.FetcherResponse); err != nil {
 		return nil, err
 	}
+	var adversarial features.Adversarial
+	if c.LoadPermissive(features.AdversarialField, &adversarial) && adversarial.Structure != nil {
+		if target, ok := w.Store.(interface {
+			ObserveTrap(context.Context, trap.Observation) (bool, error)
+		}); ok {
+			_, e := target.ObserveTrap(ctx, *adversarial.Structure)
+			if e != nil {
+				return nil, e
+			}
+			// The persisted site exclusions filter staging. Independent outward
+			// destinations remain eligible after this page supplies decisive evidence.
+		}
+	}
 	var discoveries []message.FetcherRequest
 	for _, link := range links {
+		if e := w.policy.Check(link); e != nil {
+			if errors.Is(e, protection.ErrBlocked) {
+				continue
+			}
+			return nil, e
+		}
 		uri, err := frontier.Normalize(link, base)
 		if err != nil {
 			continue
@@ -228,17 +249,15 @@ func (w *Worker) OnMessageContext(ctx context.Context, m types.Message) (interfa
 	_, err = w.Store.DrainDiscovery(ctx, w.BatchSize)
 	return nil, err
 }
-func domain(h string) string {
-	if net.ParseIP(h) != nil {
-		return h
-	}
-	d, err := publicsuffix.EffectiveTLDPlusOne(h)
-	if err != nil {
-		return h
-	}
-	return d
-}
+func domain(h string) string { return util.SiteKey(h) }
 func (w *Worker) publish(ctx context.Context) error {
+	if target, ok := w.Store.(interface {
+		DrainParked(context.Context, int) error
+	}); ok {
+		if e := target.DrainParked(ctx, w.BatchSize); e != nil {
+			return e
+		}
+	}
 	if target, ok := w.Store.(interface {
 		DrainRetries(context.Context, int) error
 	}); ok {
@@ -286,6 +305,13 @@ func (w *Worker) publish(ctx context.Context) error {
 		page, e := scanner.ScanCandidates(ctx, w.Strategy, w.scanCursor, w.Window)
 		err = e
 		if err == nil {
+			if target, ok := w.Store.(interface {
+				ParkTraps(context.Context, []frontier.Candidate) error
+			}); ok {
+				if e := target.ParkTraps(ctx, page.Trapped); e != nil {
+					return e
+				}
+			}
 			for _, excluded := range page.Excluded {
 				if e := w.Store.Outcome(message.FetcherResponse{FetcherRequest: excluded.Request, FailureClass: "excluded", Error: "file extension excluded by crawl policy"}); e != nil {
 					return e
@@ -307,6 +333,17 @@ func (w *Worker) publish(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	filtered := candidates[:0]
+	for _, c := range candidates {
+		if e := w.policy.Check(c.Request.URI); e != nil {
+			if errors.Is(e, protection.ErrBlocked) {
+				continue
+			}
+			return e
+		}
+		filtered = append(filtered, c)
+	}
+	candidates = filtered
 	eligible, published := len(candidates), 0
 	reason := "no pending work"
 	defer func() {
@@ -385,7 +422,7 @@ func (w *Worker) publish(ctx context.Context) error {
 		if err := w.Store.Published(c); err != nil {
 			return err
 		}
-		w.lastHost = c.Request.Host
+		w.lastHost = util.SiteKey(c.Request.Host)
 		if w.Strategy == "adaptive" && w.step%5 == 4 {
 			w.metrics.IncrCounter([]string{"frontier", "exploration"}, 1)
 		}

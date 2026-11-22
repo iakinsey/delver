@@ -1,3 +1,4 @@
+import { TrapSettings } from "./trapSettings";
 import { FetchSettings, ExpertFetchSettings } from "./fetchSettings";
 import React, { useState, useRef, useId, useEffect } from "react";
 import { crawlAPI, strategyTitle, words } from "./crawlApi";
@@ -255,6 +256,21 @@ export function CrawlEditor({
             </fieldset>
             <details>
               <summary>URL filters</summary>
+              <Field label="Restricted-content purge depth">
+                <input
+                  required
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={d.restricted_purge_depth ?? 0}
+                  onChange={(e) =>
+                    set({
+                      restricted_purge_depth:
+                        e.target.value === "" ? "" : Number(e.target.value),
+                    })
+                  }
+                />
+              </Field>
               <Field label="Excluded file extensions">
                 <input
                   value={d.excluded_extensions || ""}
@@ -364,6 +380,10 @@ export function CrawlEditor({
                 </Field>
               </div>
             </details>
+            <TrapSettings
+              value={d.traps}
+              onChange={(traps) => set({ traps })}
+            />
             <h3>Traversal strategy</h3>
             <fieldset className="crawl-choices">
               <legend className="sr-only">Traversal strategy</legend>

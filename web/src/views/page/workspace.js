@@ -1,3 +1,6 @@
+import { TrapExclusions } from "./trapExclusions";
+import { ProtectionSettings } from "./protectionSettings";
+import CrawlNavigation from "./crawlNavigation";
 import { ResultsPanel, RunHistory } from "./runViews";
 import { ExecutionLimits } from "./executionLimits";
 import { FetchMetrics } from "./fetchMetrics";
@@ -338,26 +341,31 @@ export default function Workspace({ defaults }) {
             </>
           )}
         </div>
-        <div className="crawl-actions">
-          {(selected || configuration) && (
-            <button onClick={() => open("")}>← Crawls</button>
-          )}
-          {!configuration && (
-            <button
-              disabled={!!editor || locked}
-              onClick={() => history.push("/workspace/configuration")}
-            >
-              Workspace configuration
-            </button>
-          )}
-          <button
-            className="crawl-primary"
-            disabled={locked || !!editor || configuration}
-            onClick={newCrawl}
-          >
-            ＋ Create crawl
-          </button>
-        </div>
+        {selected ? (
+          <CrawlNavigation crawlId={selected} active="Crawl" />
+        ) : (
+          <div className="crawl-actions">
+            {configuration ? (
+              <button onClick={() => open("")}>← Crawls</button>
+            ) : (
+              <>
+                <button
+                  disabled={!!editor || locked}
+                  onClick={() => history.push("/workspace/configuration")}
+                >
+                  Workspace configuration
+                </button>
+                <button
+                  className="crawl-primary"
+                  disabled={locked || !!editor}
+                  onClick={newCrawl}
+                >
+                  ＋ Create crawl
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
       {(error || connectionError) && (
         <p role="alert" className="crawl-error">
@@ -367,7 +375,38 @@ export default function Workspace({ defaults }) {
       {configuration ? (
         <>
           <h1>Workspace configuration</h1>
-          <ExecutionLimits onError={setError} onChange={setExecution} />
+          <nav aria-label="Workspace configuration">
+            {[
+              ["execution", "Execution limits"],
+              ["blocklists", "Blocklists"],
+              ["restricted", "Restricted content"],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                aria-current={
+                  (new URLSearchParams(location.search).get("view") ||
+                    "execution") === key
+                    ? "page"
+                    : undefined
+                }
+                onClick={() =>
+                  history.replace(`/workspace/configuration?view=${key}`)
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          {(new URLSearchParams(location.search).get("view") || "execution") ===
+          "execution" ? (
+            <ExecutionLimits onError={setError} onChange={setExecution} />
+          ) : (
+            <ProtectionSettings
+              key={location.search}
+              section={new URLSearchParams(location.search).get("view")}
+              onError={setError}
+            />
+          )}
         </>
       ) : editor ? (
         <CrawlEditor
@@ -386,11 +425,6 @@ export default function Workspace({ defaults }) {
         <>
           <section className="crawl-panel">
             <div className="crawl-heading">
-              <button
-                onClick={() => history.push(`/crawls/${selected}/report`)}
-              >
-                Report
-              </button>
               <div>
                 <span role="status" className={`crawl-state ${state}`}>
                   {words(state)}
@@ -800,6 +834,7 @@ export default function Workspace({ defaults }) {
             resultsRun={resultsRun}
             setResultsRun={setResultsRun}
           />
+          <TrapExclusions crawlId={selected} onError={setError} />
           <RunHistory
             runs={detail.runs}
             onView={setResultsRun}

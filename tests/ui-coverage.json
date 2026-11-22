@@ -51,6 +51,30 @@
       "title": "lost start_run response does not duplicate a UI-created run"
     },
     {
+      "file": "workspace-atlas.spec.js",
+      "title": "generated network desktop"
+    },
+    {
+      "file": "workspace-atlas.spec.js",
+      "title": "generated network mobile"
+    },
+    {
+      "file": "workspace-atlas.spec.js",
+      "title": "generation controls round-trip, reject invalid bounds, and preserve the previous snapshot"
+    },
+    {
+      "file": "workspace-atlas.spec.js",
+      "title": "million-host network stays bounded through generation, cancellation and navigation"
+    },
+    {
+      "file": "workspace-atlas.spec.js",
+      "title": "two-host network remains legible desktop"
+    },
+    {
+      "file": "workspace-atlas.spec.js",
+      "title": "two-host network remains legible mobile"
+    },
+    {
       "file": "workspace-boundaries.spec.js",
       "title": "feed-only same_domain preview explains unresolved boundaries"
     },
@@ -189,6 +213,10 @@
     {
       "file": "workspace-expert.spec.js",
       "title": "expert finite completion rejects recurring sources without losing edits"
+    },
+    {
+      "file": "workspace-expert.spec.js",
+      "title": "expert protection settings and custom metadata retain exact configuration through execution"
     },
     {
       "file": "workspace-expert.spec.js",
@@ -491,6 +519,58 @@
       "title": "stopping cancels a long-timeout connection without waiting for its deadline"
     },
     {
+      "file": "workspace-protection.spec.js",
+      "title": "crawl detection controls and purge depth persist after editing and initiating execution"
+    },
+    {
+      "file": "workspace-protection.spec.js",
+      "title": "inactive feeds, refresh recovery, preset, keyboard and mobile configuration"
+    },
+    {
+      "file": "workspace-protection.spec.js",
+      "title": "pasted lists preview, activation, matches, edit, toggles and deletion"
+    },
+    {
+      "file": "workspace-protection.spec.js",
+      "title": "protection boundaries and cross-field errors preserve crawl controls"
+    },
+    {
+      "file": "workspace-protection.spec.js",
+      "title": "protection toggles align with labels desktop"
+    },
+    {
+      "file": "workspace-protection.spec.js",
+      "title": "protection toggles align with labels mobile"
+    },
+    {
+      "file": "workspace-protection.spec.js",
+      "title": "purge failure, destination progress and retry remain visible in blocklists"
+    },
+    {
+      "file": "workspace-protection.spec.js",
+      "title": "remote feed and failed refresh preserve active protection"
+    },
+    {
+      "file": "workspace-protection.spec.js",
+      "title": "restricted rules, memory, detection, purge progress and metadata export"
+    },
+    {
+      "file": "workspace-protection.spec.js",
+      "title": "trap network disabled preserves unrelated work and restoration"
+    },
+    {
+      "file": "workspace-protection.spec.js",
+      "title": "trap network exclude preserves unrelated work and restoration"
+    },
+    {
+      "file": "workspace-protection.spec.js",
+      "title": "trap network observe preserves unrelated work and restoration"
+    },
+    {
+      "file": "workspace-protection.spec.js",
+      "title": "two blocklist editors reject revision conflicts without losing entered values"
+    },
+    {
       "file": "workspace-reconfigure.spec.js",
       "title": "configuration paused save-and-restart retains run and pending work"
     },
@@ -517,6 +597,22 @@
     {
       "file": "workspace-recovery.spec.js",
       "title": "workspace reconnects without hiding failed form validation"
+    },
+    {
+      "file": "workspace-report.spec.js",
+      "title": "report keyboard search invalid depth stale requests and navigation"
+    },
+    {
+      "file": "workspace-report.spec.js",
+      "title": "report metrics search importance and graph controls desktop"
+    },
+    {
+      "file": "workspace-report.spec.js",
+      "title": "report metrics search importance and graph controls mobile"
+    },
+    {
+      "file": "workspace-report.spec.js",
+      "title": "report reconnect restart and retained run identity"
     },
     {
       "file": "workspace-robots.spec.js",
@@ -701,22 +797,6 @@
     {
       "file": "workspace.spec.js",
       "title": "monitoring crawls remain independent and the editor works on mobile"
-    },
-    {
-      "file": "workspace-report.spec.js",
-      "title": "report metrics search importance and graph controls desktop"
-    },
-    {
-      "file": "workspace-report.spec.js",
-      "title": "report metrics search importance and graph controls mobile"
-    },
-    {
-      "file": "workspace-report.spec.js",
-      "title": "report keyboard search invalid depth stale requests and navigation"
-    },
-    {
-      "file": "workspace-report.spec.js",
-      "title": "report reconnect restart and retained run identity"
     }
   ]
 }

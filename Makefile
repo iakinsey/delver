@@ -55,8 +55,8 @@ test-storage-scale:
 	DELVER_FRONTIER_SCALE=1 go test ./frontier -run '^TestFrontierScale$$' -count=1 -timeout=20m -v
 test-elasticsearch:
 	@test -n "$(ES_URL)" || (echo 'ES_URL must identify an isolated test Elasticsearch instance'; exit 1)
-	DELVER_ES_URL="$(ES_URL)" go test -race ./gateway -run 'Test(LiveElasticsearch|LiveCrawlLogDeletionIsolation|Delete)' -count=1 -v
-	DELVER_ES_URL="$(ES_URL)" go test -race ./application -run '^TestLive(WorkspaceLogDeletionOptions|ReportIndexedHistory)$$' -count=1 -v
+	DELVER_ES_URL="$(ES_URL)" go test -race ./gateway -run 'Test(LiveElasticsearch|LiveProtection|LiveCrawlLogDeletionIsolation|Delete)' -count=1 -v
+	DELVER_ES_URL="$(ES_URL)" go test -race ./application -run '^TestLive(WorkspaceLogDeletionOptions|ReportIndexedHistory|ProtectionElasticsearchOutageAndRetry)$$' -count=1 -v
 test-tor:
 	@test -f "$(TOR_CONFIG)" || (echo 'TOR_CONFIG must identify a private crawl definition containing test seeds'; exit 1)
 	DELVER_TOR_LIVE=1 DELVER_TOR_CONFIG="$(TOR_CONFIG)" DELVER_TOR_PROXY="$(TOR_PROXY)" DELVER_VALIDATION_ROOT="$(VALIDATION_ROOT)/tor" go test ./application -run '^TestLiveTor$$' -count=1 -timeout=40m -v
@@ -73,3 +73,12 @@ test-report-million-disk:
 	DELVER_REPORT_MILLION=1 DELVER_REPORT_SCALE_ROOT="$(DISK_ROOT)" DELVER_VALIDATION_ROOT="$(VALIDATION_ROOT)/report-million-disk" go test ./report -run '^TestReportMillionURLs$$' -count=1 -timeout=20m -v
 test-report-graph:
 	DELVER_REPORT_GRAPH_SCALE=1 DELVER_REPORT_SCALE_ROOT="$(DISK_ROOT)" DELVER_VALIDATION_ROOT="$(VALIDATION_ROOT)/report-graph" go test ./report -run '^TestReportHundredThousandHostGraph$$' -count=1 -timeout=20m -v
+
+.PHONY: test-network-million
+test-network-million:
+	DELVER_ATLAS_MILLION=1 go test ./report -run '^TestAtlasMillionHosts$$' -count=1 -timeout=20m -v
+
+.PHONY: test-protection-benchmark
+test-protection-benchmark:
+	@test -n "$(BASELINE_BIN)" || (echo 'BASELINE_BIN must identify the pre-change binary'; exit 1)
+	python3 scripts/benchmark-protection.py --baseline "$(BASELINE_BIN)" --final "$(CURDIR)/build/delver" --output "$(VALIDATION_ROOT)/protection-benchmark" --storage-root "$(TMPFS_ROOT)/protection-benchmark"

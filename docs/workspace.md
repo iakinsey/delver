@@ -94,3 +94,11 @@ Frontier selection continues through bounded index windows when leading records
 are cooling. Fetch metrics include the selection reason and inspected, cooling,
 eligible, and published counts. BFS/DFS priority applies to eligible work; a cooled
 prefix does not prevent other destinations from being scheduled.
+
+### Interactive network
+
+Use **Graph** in the shared Crawl / Reports / Graph navigation, or **Reports → Interactive network**, to open the server-generated whole-network explorer. Generation, resource limits, zoom tiers, node metrics, and validation commands are documented in [Generated host network](host-network.md).
+
+Runtime storage recovery has a separate startup deadline, defaulting to five minutes. Set `-startup-timeout 10m` when starting the application to change it. This process setting does not change crawl definitions or the shutdown deadline.
+
+Protection configuration, exclusion and purge behavior: [Crawler protection](crawler-protection.md).

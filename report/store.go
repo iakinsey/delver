@@ -6,7 +6,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"errors"
 	"fmt"
+	"github.com/iakinsey/delver/protection"
+	"github.com/iakinsey/delver/site"
 	"net"
 	"net/url"
 	"os"
@@ -25,6 +28,7 @@ type Writer interface {
 	Response(context.Context, string, int) error
 }
 type Store struct {
+	policy    *protection.Policy
 	db        *sql.DB
 	write     *sync.Mutex
 	path      string
@@ -168,7 +172,7 @@ func Open(path string, partial bool) (*Store, error) {
 	writer.Lock()
 	defer writer.Unlock()
 	u := url.URL{Scheme: "file", Path: path}
-	db, e := sql.Open("sqlite3", u.String()+"?_journal_mode=WAL&_busy_timeout=5000&_synchronous=FULL&_cache_size=-2048&_foreign_keys=on")
+	db, e := sql.Open("sqlite3", u.String()+"?_journal_mode=WAL&_busy_timeout=5000&_synchronous=FULL&_cache_size=-2048&_foreign_keys=on&_secure_delete=on")
 	if e != nil {
 		return nil, e
 	}
@@ -185,6 +189,10 @@ func Open(path string, partial bool) (*Store, error) {
 			_, e = db.Exec("UPDATE meta SET partial=1 WHERE id=1")
 		}
 		if e != nil {
+			db.Close()
+			return nil, e
+		}
+		if e = s.ensureSiteHosts(context.Background()); e != nil {
 			db.Close()
 			return nil, e
 		}
@@ -214,6 +222,10 @@ func Open(path string, partial bool) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
+	if e = s.ensureSiteHosts(context.Background()); e != nil {
+		db.Close()
+		return nil, e
+	}
 	success = true
 	return s, nil
 }
@@ -227,6 +239,9 @@ func hostID(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
 	}
 	var id int64
 	e := tx.QueryRowContext(ctx, "SELECT id FROM hosts WHERE name=?", name).Scan(&id)
+	if e == nil {
+		_, e = tx.ExecContext(ctx, "INSERT OR IGNORE INTO site_hosts(host,site) VALUES(?,?)", id, site.Key(name))
+	}
 	return id, e
 }
 func recordURL(ctx context.Context, tx *sql.Tx, raw string, received bool) (int64, error) {
@@ -247,40 +262,77 @@ func recordURL(ctx context.Context, tx *sql.Tx, raw string, received bool) (int6
 	}
 	return id, e
 }
+func (s *Store) SetProtection(p *protection.Policy) { s.policy = p }
 func (s *Store) Discover(ctx context.Context, urls []URL) error {
+	if e := s.policy.HealthError(); e != nil {
+		return e
+	}
+	filtered := make([]URL, 0, len(urls))
+	for _, u := range urls {
+		blocked := false
+		for _, raw := range []string{u.URI, u.Origin} {
+			if raw == "" {
+				continue
+			}
+			if e := s.policy.Check(raw); e != nil {
+				if errors.Is(e, protection.ErrBlocked) {
+					blocked = true
+				} else {
+					return e
+				}
+			}
+		}
+		if !blocked {
+			filtered = append(filtered, u)
+		}
+	}
+	urls = filtered
+
 	for start := 0; start < len(urls); start += 2048 {
 		end := start + 2048
 		if end > len(urls) {
 			end = len(urls)
 		}
-		if e := s.batch(ctx, func(tx *sql.Tx) error {
-			for _, u := range urls[start:end] {
-				if _, _, e := Normalize(u.URI); e != nil {
-					continue
-				}
-				target, e := recordURL(ctx, tx, u.URI, false)
-				if e != nil {
-					return e
-				}
-				if u.Origin == "" {
-					continue
-				}
-				_, sourceName, e := Normalize(u.Origin)
-				if e != nil {
-					continue
-				}
-				source, e := hostID(ctx, tx, sourceName)
-				if e != nil {
-					return e
-				}
-				if source != target {
-					if _, e = tx.ExecContext(ctx, "INSERT OR IGNORE INTO edges(source,target) VALUES(?,?)", source, target); e != nil {
+		uris := []string{}
+		for _, u := range urls[start:end] {
+			uris = append(uris, u.URI)
+			if u.Origin != "" {
+				uris = append(uris, u.Origin)
+			}
+		}
+		if e := s.policy.GuardMany(uris, func() error {
+			return s.batch(ctx, func(tx *sql.Tx) error {
+				for _, u := range urls[start:end] {
+					if _, _, e := Normalize(u.URI); e != nil {
+						continue
+					}
+					target, e := recordURL(ctx, tx, u.URI, false)
+					if e != nil {
 						return e
 					}
+					if u.Origin == "" {
+						continue
+					}
+					_, sourceName, e := Normalize(u.Origin)
+					if e != nil {
+						continue
+					}
+					source, e := hostID(ctx, tx, sourceName)
+					if e != nil {
+						return e
+					}
+					if source != target {
+						if _, e = tx.ExecContext(ctx, "INSERT OR IGNORE INTO edges(source,target) VALUES(?,?)", source, target); e != nil {
+							return e
+						}
+					}
 				}
-			}
-			return nil
+				return nil
+			})
 		}); e != nil {
+			if errors.Is(e, protection.ErrBlocked) {
+				return protection.ErrChanged
+			}
 			return e
 		}
 	}
@@ -300,10 +352,18 @@ func (s *Store) batch(ctx context.Context, fn func(*sql.Tx) error) error {
 	return tx.Commit()
 }
 func (s *Store) Response(ctx context.Context, uri string, status int) error {
+	if e := s.policy.Check(uri); e != nil {
+		if errors.Is(e, protection.ErrBlocked) {
+			return nil
+		}
+		return e
+	}
 	if status < 100 || status > 599 {
 		return nil
 	}
-	return s.batch(ctx, func(tx *sql.Tx) error { _, e := recordURL(ctx, tx, uri, true); return e })
+	return s.policy.Guard(uri, func() error {
+		return s.batch(ctx, func(tx *sql.Tx) error { _, e := recordURL(ctx, tx, uri, true); return e })
+	})
 }
 func (s *Store) Counts(ctx context.Context) (Counts, error) {
 	var c Counts

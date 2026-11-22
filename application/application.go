@@ -32,23 +32,23 @@ var resourceFactories = map[string]RuntimeResourceFactory{}
 var workerFactories = map[string]RuntimeWorkerFactory{}
 
 // Legacy factory signatures are adapted once, at registration.
-func RegisterResource(name string, factory ResourceFactory) {
+func RegisterResource(name string, factory ResourceFactory, capabilities ...ProtectionCapability) {
 	if factory == nil {
 		RegisterResourceWithRuntime(name, nil)
 		return
 	}
 	RegisterResourceWithRuntime(name, func(_ context.Context, raw json.RawMessage, _ RuntimeDependencies) (interface{}, error) {
 		return factory(raw)
-	})
+	}, capabilities...)
 }
-func RegisterWorker(name string, factory WorkerFactory) {
+func RegisterWorker(name string, factory WorkerFactory, capabilities ...ProtectionCapability) {
 	if factory == nil {
 		RegisterWorkerWithRuntime(name, nil)
 		return
 	}
 	RegisterWorkerWithRuntime(name, func(_ context.Context, raw json.RawMessage, resources map[string]interface{}, _ RuntimeDependencies) (worker.Worker, error) {
 		return factory(raw, resources)
-	})
+	}, capabilities...)
 }
 func Load(path string) (config.Application, error) {
 	f, err := os.Open(path)
@@ -279,6 +279,7 @@ func Run(ctx context.Context, app config.Application) (err error) {
 		if err != nil {
 			return err
 		}
+		prepared.reporting.SetProtection(app.Config.HTTPClient.Protection)
 		prepared.app.Config.HTTPClient.Reporter = prepared.reporting
 		if err = seedReport(ctx, prepared); err != nil {
 			return err
@@ -475,6 +476,10 @@ func Run(ctx context.Context, app config.Application) (err error) {
 		wg.Wait()
 		for _, q := range started {
 			shutdownErrors.run("queue", q.Stop)
+		}
+		if control, ok := ctx.Value(runtimeKey{}).(*runtimeControl); ok {
+			control.storageMu.Lock()
+			defer control.storageMu.Unlock()
 		}
 		if control, ok := ctx.Value(runtimeKey{}).(*runtimeControl); ok {
 			// Workers and admission have settled; storage is still open for counts.

@@ -45,6 +45,7 @@ type executionState struct {
 type runtimeResult struct{ err error }
 
 type Supervisor struct {
+	startupTimeout  time.Duration
 	onDesired       func(string) error
 	crawlID, runID  string
 	onStatus        func(string, time.Time)
@@ -79,6 +80,7 @@ func newSupervisor(ctx context.Context, app config.Application) (*Supervisor, er
 		return nil, err
 	}
 	owned.Config.API.StaticFiles = app.Config.API.StaticFiles
+	owned.Config.HTTPClient.Protection = app.Config.HTTPClient.Protection
 	owned.Config.HTTPClient.LocalGate = app.Config.HTTPClient.LocalGate
 	owned.Config.HTTPClient.GlobalGate = app.Config.HTTPClient.GlobalGate
 	app = owned
@@ -86,7 +88,7 @@ func newSupervisor(ctx context.Context, app config.Application) (*Supervisor, er
 	if path == "" {
 		path = app.Config.API.DashDBPath + ".operations.json"
 	}
-	s := &Supervisor{path: path, ctx: ctx, status: "stopped", state: executionState{Desired: "stopped", Active: app, Version: 1}}
+	s := &Supervisor{startupTimeout: app.Config.ShutdownTimeout, path: path, ctx: ctx, status: "stopped", state: executionState{Desired: "stopped", Active: app, Version: 1}}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
@@ -122,12 +124,13 @@ func (s *Supervisor) start() error {
 	s.result = &runtimeResult{}
 	control, done, app, result := s.control, s.done, s.state.Active, s.result
 	app.Config.RuntimeCrawlID, app.Config.RuntimeRunID = s.crawlID, s.runID
+	app.Config.HTTPClient.ProtectionCrawl, app.Config.HTTPClient.ProtectionRun = s.crawlID, s.runID
 	if s.originGate != nil {
 		app.Config.HTTPClient.GlobalGate = s.originGate
 		app.Config.HTTPClient.LocalGate = util.NewOriginGate()
 	}
 	go func() { result.err = Run(context.WithValue(ctx, runtimeKey{}, control), app); close(done) }()
-	deadline := time.NewTimer(app.Config.ShutdownTimeout)
+	deadline := time.NewTimer(s.startupTimeout)
 	defer deadline.Stop()
 	for {
 		control.mu.Lock()

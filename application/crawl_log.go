@@ -2,6 +2,7 @@ package application
 
 import (
 	"encoding/json"
+	"github.com/iakinsey/delver/protection"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"sync"
@@ -17,6 +18,7 @@ type CrawlEvent struct {
 	Error     string `json:"error,omitempty"`
 }
 type crawlLog struct {
+	policy  *protection.Policy
 	mu      sync.Mutex
 	entries []CrawlEvent
 }
@@ -24,6 +26,9 @@ type crawlLog struct {
 func (log *crawlLog) record(input types.Message, outputs []types.Message, err error) {
 	var request message.FetcherRequest
 	if json.Unmarshal(input.Message, &request) != nil {
+		return
+	}
+	if log.policy.Check(request.URI) != nil {
 		return
 	}
 	event := CrawlEvent{ID: string(types.NewV4()), Timestamp: time.Now().Unix(), URI: request.URI, State: "fetched"}
@@ -43,15 +48,31 @@ func (log *crawlLog) record(input types.Message, outputs []types.Message, err er
 		event.State = "failed"
 		event.Error = err.Error()
 	}
-	log.mu.Lock()
-	defer log.mu.Unlock()
-	log.entries = append(log.entries, event)
-	if len(log.entries) > 500 {
-		log.entries = append([]CrawlEvent(nil), log.entries[len(log.entries)-500:]...)
-	}
+	_ = log.policy.Guard(request.URI, func() error {
+		log.mu.Lock()
+		defer log.mu.Unlock()
+		log.entries = append(log.entries, event)
+		if len(log.entries) > 500 {
+			log.entries = append([]CrawlEvent(nil), log.entries[len(log.entries)-500:]...)
+		}
+		return nil
+	})
 }
 func (log *crawlLog) snapshot() []CrawlEvent {
 	log.mu.Lock()
 	defer log.mu.Unlock()
 	return append([]CrawlEvent{}, log.entries...)
+}
+
+func (log *crawlLog) purge(match func(string) bool) {
+	log.mu.Lock()
+	defer log.mu.Unlock()
+	kept := []CrawlEvent{}
+	for _, e := range log.entries {
+		if !match(e.URI) {
+			kept = append(kept, e)
+		}
+	}
+	clear(log.entries)
+	log.entries = kept
 }

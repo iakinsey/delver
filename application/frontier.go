@@ -39,6 +39,9 @@ func init() {
 		if err := decodeParameters(raw, &p); err != nil {
 			return nil, err
 		}
+		if deps.Configuration.Traps != nil {
+			p.Traps = deps.Configuration.Traps
+		}
 		p.ExcludedExtensions = append(p.ExcludedExtensions, deps.Configuration.HTTPClient.ExcludedExtensions...)
 		return frontier.OpenStore(p)
 	})
@@ -77,6 +80,11 @@ func init() {
 }
 
 func paramsFrontier(p frontier.StoreParams) error {
+	if p.Traps != nil {
+		if err := p.Traps.Validate(); err != nil {
+			return err
+		}
+	}
 	if _, err := util.NormalizeExtensions(strings.Join(p.ExcludedExtensions, ",")); err != nil {
 		return err
 	}

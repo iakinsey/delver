@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/dgraph-io/badger/v3"
+	"github.com/iakinsey/delver/protection"
+	"github.com/iakinsey/delver/trap"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
@@ -25,8 +27,10 @@ var ErrDispatchBudget = errors.New("request budget reached")
 var ErrRejected = errors.New("frontier admission budget exceeded")
 var ErrCapacity = errors.New("frontier capacity reached")
 var ErrCooling = errors.New("origin cooling")
+var ErrTrapExcluded = errors.New("site excluded as crawler trap")
 
 type StoreParams struct {
+	Traps               *trap.Settings `json:"traps,omitempty"`
 	ExcludedExtensions  []string       `json:"excluded_extensions,omitempty"`
 	Retry               *RetryPolicy   `json:"retry,omitempty"`
 	RevisitAfter        Lifetime       `json:"revisit_after"`
@@ -69,6 +73,7 @@ func (HTMLReward) Reward(r message.FetcherResponse, unique bool) float64 {
 }
 
 type Store struct {
+	policy          *protection.Policy
 	exclusionPolicy string
 	controller      atomic.Value
 	RewardPolicy    RewardPolicy
@@ -110,6 +115,11 @@ func Normalize(raw, base string) (string, error) {
 	return u.String(), nil
 }
 func OpenStore(p StoreParams) (*Store, error) {
+	if p.Traps != nil {
+		if err := p.Traps.Validate(); err != nil {
+			return nil, err
+		}
+	}
 	extensions, err := util.NormalizeExtensions(strings.Join(p.ExcludedExtensions, ","))
 	if err != nil {
 		return nil, err
@@ -173,13 +183,22 @@ func OpenStore(p StoreParams) (*Store, error) {
 	sort.Strings(policy)
 	policyID := sha256.Sum256([]byte(strings.Join(policy, ",")))
 	store := &Store{db: db, params: p, patterns: patterns, RewardPolicy: HTMLReward{}, exclusionPolicy: fmt.Sprintf("%x", policyID)}
+	if err := store.ensureSiteIndexes(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := store.ensureSiteRewards(); err != nil {
+		db.Close()
+		return nil, err
+	}
 	if err := store.ensureFreshIndexes(); err != nil {
 		db.Close()
 		return nil, err
 	}
 	return store, nil
 }
-func (s *Store) Close() error { s.mu.Lock(); defer s.mu.Unlock(); return s.db.Close() }
+func (s *Store) SetProtection(p *protection.Policy) { s.policy = p }
+func (s *Store) Close() error                       { s.mu.Lock(); defer s.mu.Unlock(); return s.db.Close() }
 func read(tx *badger.Txn, key string, v interface{}) error {
 	item, err := tx.Get([]byte(key))
 	if err != nil {
@@ -222,12 +241,33 @@ func (s *Store) DispatchedRequest(uri string) (message.FetcherRequest, bool, err
 
 func (s *Store) Admit(ctx context.Context, r message.FetcherRequest) error {
 	_, err := s.admit(ctx, r)
+	if errors.Is(err, ErrTrapExcluded) {
+		return nil
+	}
 	return err
 }
 
 // admit reports whether the committed transaction consumed pending capacity.
 // The transaction remains authoritative when concurrent callers share a snapshot.
-func (s *Store) admit(ctx context.Context, r message.FetcherRequest) (bool, error) {
+func (s *Store) admit(ctx context.Context, r message.FetcherRequest) (used bool, err error) {
+	if e := ctx.Err(); e != nil {
+		return false, e
+	}
+	if r.Depth < 0 || r.Hops < 0 {
+		return false, fmt.Errorf("negative traversal depth")
+	}
+	uri, e := Normalize(r.URI, "")
+	if e != nil {
+		return false, e
+	}
+	r.URI = uri
+	err = s.policy.Guard(uri, func() error { used, err = s.admitGuarded(ctx, r); return err })
+	if errors.Is(err, protection.ErrBlocked) {
+		return false, nil
+	}
+	return used, err
+}
+func (s *Store) admitGuarded(ctx context.Context, r message.FetcherRequest) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -249,6 +289,9 @@ func (s *Store) admit(ctx context.Context, r message.FetcherRequest) (bool, erro
 	}
 	usedSlot := false
 	err = s.update(func(tx *badger.Txn) error {
+		if s.trapBlocked(tx, uri) {
+			return ErrTrapExcluded
+		}
 		var existing Candidate
 		if e := read(tx, "u/"+uri, &existing); e == nil {
 			if existing.State == "excluded" && existing.ExclusionPolicy == s.exclusionPolicy {
@@ -280,7 +323,7 @@ func (s *Store) admit(ctx context.Context, r message.FetcherRequest) (bool, erro
 				if err := read(tx, "meta/pending", &pending); err != nil && err != badger.ErrKeyNotFound {
 					return err
 				}
-				if err := read(tx, "origin/"+existing.Request.Host, &origin); err != nil && err != badger.ErrKeyNotFound {
+				if err := read(tx, "site_pending/"+util.SiteKey(existing.Request.Host), &origin); err != nil && err != badger.ErrKeyNotFound {
 					return err
 				}
 				if pending >= s.params.MaxPending || origin >= s.params.MaxPendingPerOrigin {
@@ -299,7 +342,7 @@ func (s *Store) admit(ctx context.Context, r message.FetcherRequest) (bool, erro
 				if err := increment(tx, "meta/pending", 1); err != nil {
 					return err
 				}
-				if err := increment(tx, "origin/"+existing.Request.Host, 1); err != nil {
+				if err := increment(tx, "site_pending/"+util.SiteKey(existing.Request.Host), 1); err != nil {
 					return err
 				}
 				usedSlot = true
@@ -333,7 +376,7 @@ func (s *Store) admit(ctx context.Context, r message.FetcherRequest) (bool, erro
 			return e
 		}
 		u, _ := url.Parse(uri)
-		budgets := map[string]int{"budget/total": s.params.MaxURLs, "budget/origin/" + u.Host: s.params.MaxURLsPerOrigin}
+		budgets := map[string]int{"budget/total": s.params.MaxURLs, "budget/site/" + util.SiteKey(u.Host): s.params.MaxURLsPerOrigin}
 		for pattern, limit := range s.params.PatternBudgets {
 			if s.patterns[pattern].MatchString(uri) {
 				budgets["budget/pattern/"+pattern] = limit
@@ -374,13 +417,13 @@ func (s *Store) admit(ctx context.Context, r message.FetcherRequest) (bool, erro
 		r.Host = u.Host
 		r.Protocol = types.ProtocolHTTP
 		var originCount int
-		if e := read(tx, "origin/"+r.Host, &originCount); e != nil && e != badger.ErrKeyNotFound {
+		if e := read(tx, "site_pending/"+util.SiteKey(r.Host), &originCount); e != nil && e != badger.ErrKeyNotFound {
 			return e
 		}
 		if originCount >= s.params.MaxPendingPerOrigin {
 			return ErrCapacity
 		}
-		if err := write(tx, "origin/"+r.Host, originCount+1); err != nil {
+		if err := write(tx, "site_pending/"+util.SiteKey(r.Host), originCount+1); err != nil {
 			return err
 		}
 		c := Candidate{Request: r, State: "pending", Sequence: seq, Discovered: time.Now().UnixNano()}
@@ -555,20 +598,20 @@ func (s *Store) Outcome(r message.FetcherResponse) error {
 			return err
 		}
 		var originCount int
-		if err := read(tx, "origin/"+c.Request.Host, &originCount); err != nil {
+		if err := read(tx, "site_pending/"+util.SiteKey(c.Request.Host), &originCount); err != nil {
 			return err
 		}
 		var countErr error
 		if originCount <= 1 {
-			countErr = tx.Delete([]byte("origin/" + c.Request.Host))
+			countErr = tx.Delete([]byte("site_pending/" + util.SiteKey(c.Request.Host)))
 		} else {
-			countErr = write(tx, "origin/"+c.Request.Host, originCount-1)
+			countErr = write(tx, "site_pending/"+util.SiteKey(c.Request.Host), originCount-1)
 		}
 		if err := countErr; err != nil {
 			return err
 		}
 		var score rewardStats
-		if err := read(tx, "reward/"+c.Request.Host, &score); err != nil && err != badger.ErrKeyNotFound {
+		if err := read(tx, "site_reward/"+util.SiteKey(c.Request.Host), &score); err != nil && err != badger.ErrKeyNotFound {
 			return err
 		}
 		reward := 0.0
@@ -607,7 +650,7 @@ func (s *Store) Outcome(r message.FetcherResponse) error {
 			policy = HTMLReward{}
 		}
 		score.Value = 0.8*score.Value + 0.2*policy.Reward(r, reward > 0)
-		if err := writeTTL(tx, "reward/"+c.Request.Host, score, time.Duration(s.params.Retention.DedupFor)); err != nil {
+		if err := writeTTL(tx, "site_reward/"+util.SiteKey(c.Request.Host), score, time.Duration(s.params.Retention.DedupFor)); err != nil {
 			return err
 		}
 		if err := increment(tx, "meta/outcomes", 1); err != nil {
@@ -737,7 +780,7 @@ func (s *Store) Scores(cs []Candidate) (map[string]float64, error) {
 				continue
 			}
 			var r rewardStats
-			if err := read(tx, "reward/"+c.Request.Host, &r); err != nil && err != badger.ErrKeyNotFound {
+			if err := read(tx, "site_reward/"+util.SiteKey(c.Request.Host), &r); err != nil && err != badger.ErrKeyNotFound {
 				return err
 			}
 			scores[c.Request.Host] = r.Value
@@ -749,7 +792,7 @@ func (s *Store) Scores(cs []Candidate) (map[string]float64, error) {
 func (s *Store) Counts() (map[string]int64, error) {
 	out := map[string]int64{}
 	err := s.view(func(tx *badger.Txn) error {
-		for field, key := range map[string]string{"policy_skips": "meta/policy_skips", "retry_pending": "meta/retry_pending", "retries_scheduled": "meta/retries_scheduled", "host_cooldowns": "meta/host_cooldowns", "pending_and_active": "meta/pending", "deferred_discoveries": "meta/staged", "budget_rejected": "meta/budget_rejected", "capacity_deferrals": "meta/capacity_deferrals", "unique_html": "meta/unique_html", "failed_fetches": "meta/failed_fetches", "dispatched": "meta/dispatched", "reserved": "meta/reserved", "admitted": "meta/sequence", "terminal_outcomes": "meta/outcomes", "cleaned": "meta/cleaned"} {
+		for field, key := range map[string]string{"trap_parked": "meta/trap_parked", "policy_skips": "meta/policy_skips", "retry_pending": "meta/retry_pending", "retries_scheduled": "meta/retries_scheduled", "host_cooldowns": "meta/host_cooldowns", "pending_and_active": "meta/pending", "deferred_discoveries": "meta/staged", "budget_rejected": "meta/budget_rejected", "capacity_deferrals": "meta/capacity_deferrals", "unique_html": "meta/unique_html", "failed_fetches": "meta/failed_fetches", "dispatched": "meta/dispatched", "reserved": "meta/reserved", "admitted": "meta/sequence", "terminal_outcomes": "meta/outcomes", "cleaned": "meta/cleaned"} {
 			var value int64
 			if err := read(tx, key, &value); err != nil && err != badger.ErrKeyNotFound {
 				return err

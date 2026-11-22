@@ -237,3 +237,47 @@ test("initialization failure is visible and a corrected pipeline starts independ
     });
   }
 });
+
+test("expert protection settings and custom metadata retain exact configuration through execution", async ({
+  page,
+  request,
+}) => {
+  const { record, editor, pipeline } = await expert(page, request, {
+    connection: "http",
+    path: "protection/good",
+  });
+  pipeline.config.http_client.restricted_purge_depth = 3;
+  pipeline.config.traps = {
+    ...pipeline.config.traps,
+    automatic: false,
+    site_window: 24,
+    cross_site_links: 0.6,
+  };
+  pipeline.resources.push({
+    name: "protection-metadata",
+    type: "fixture_pressure",
+    parameters: { token: "protection-metadata", opaque: "EXACT_INTEGER" },
+  });
+  const text = JSON.stringify(pipeline, null, 2).replace(
+    '"EXACT_INTEGER"',
+    "9007199254740993123",
+  );
+  await editor.fill(text);
+  await page
+    .getByRole("button", { name: "Save and restart", exact: true })
+    .click();
+  await expect(page.locator(".crawl-state")).toHaveText("completed", {
+    timeout: 30000,
+  });
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  const saved = page.getByLabel("Worker pipeline JSON", { exact: true });
+  await expect(saved).toHaveValue(/9007199254740993123/);
+  const raw = await saved.inputValue(),
+    compiled = JSON.parse(raw);
+  expect(compiled.config.http_client.restricted_purge_depth).toBe(3);
+  expect(compiled.config.traps.automatic).toBe(false);
+  expect(compiled.config.traps.site_window).toBe(24);
+  expect(compiled.config.traps.cross_site_links).toBe(0.6);
+  const roundtrip = await api(request, "pipeline", { crawl_id: record.id });
+  expect(roundtrip.configuration_json).toContain("9007199254740993123");
+});

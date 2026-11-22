@@ -1,5 +1,8 @@
 import { expect } from "../test";
-export const base = process.env.DELVER_E2E_BASE_URL;
+export let base = process.env.DELVER_E2E_BASE_URL;
+export function setWorkspaceBase(value) {
+  base = value;
+}
 export const strategies = [
   "host_diverse",
   "breadth_first",

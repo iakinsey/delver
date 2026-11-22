@@ -34,12 +34,27 @@ func decodeParameters(raw json.RawMessage, target interface{}) error {
 	return decoder.Decode(target)
 }
 func validateParameters(app config.Application, resources map[string]config.Resource) error {
+	if e := validateProtection(app); e != nil {
+		return e
+	}
+	if app.Config.HTTPClient.RestrictedPurgeDepth < 0 {
+		return fmt.Errorf("restricted-content purge depth must be nonnegative")
+	}
+	if app.Config.Traps != nil {
+		if e := app.Config.Traps.Validate(); e != nil {
+			return e
+		}
+	}
+
 	if app.Config.Fetch != nil {
 		if err := app.Config.Fetch.Validate(); err != nil {
 			return err
 		}
 	}
 	http := app.Config.HTTPClient
+	if !http.Protection.CanInspect(http.MaxResponseBytes) {
+		return fmt.Errorf("response limit exceeds protection inspection memory budget")
+	}
 	if http.ConnectTimeout < 0 || http.TLSTimeout < 0 || http.HeaderTimeout < 0 || http.BodyTimeout < 0 {
 		return fmt.Errorf("network phase timeouts must be nonnegative; zero inherits the overall timeout")
 	}

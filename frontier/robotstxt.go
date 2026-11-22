@@ -200,3 +200,14 @@ func (s *memoryRobots) Close() error {
 	})
 	return nil
 }
+
+func (s *memoryRobots) PurgeMatching(ctx context.Context, match func(string) bool) error {
+	s.mapMutex.Lock()
+	defer s.mapMutex.Unlock()
+	for key := range s.robotsMap {
+		if match(key) {
+			delete(s.robotsMap, key)
+		}
+	}
+	return ctx.Err()
+}

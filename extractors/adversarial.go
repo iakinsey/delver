@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/iakinsey/delver/config"
+	"github.com/iakinsey/delver/trap"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/iakinsey/delver/util"
@@ -65,7 +66,19 @@ func (s *adversarialExtractor) PerformContext(ctx context.Context, f *os.File, c
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return features.Adversarial{
+	var structure *trap.Observation
+	if f != nil {
+		if _, err := f.Seek(0, 0); err != nil {
+			return nil, err
+		}
+		observation, err := trap.Observe(ctx, f, composite.URI, uris)
+		if err != nil {
+			return nil, err
+		}
+		structure = &observation
+	}
+
+	return features.Adversarial{Structure: structure,
 		Enumeration:        &enumeration,
 		SubdomainExplosion: &subdomainExplosion,
 	}, nil

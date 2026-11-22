@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/flow"
+	"github.com/iakinsey/delver/protection"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/errs"
 	"github.com/iakinsey/delver/util"
@@ -64,24 +65,27 @@ type crawlSlot struct {
 	clockRunning bool
 }
 type Workspace struct {
-	reportImports    map[string]bool
-	settings         WorkspaceSettings
-	broker           *flow.Broker
-	dirty            bool
-	persistenceError string
-	background       sync.WaitGroup
-	closing          bool
-	checks           sync.WaitGroup
-	mu               sync.Mutex
-	ctx              context.Context
-	cancel           context.CancelFunc
-	options          Options
-	root             string
-	records          map[string]*CrawlRecord
-	slots            map[string]*crawlSlot
-	lock             *os.File
-	gate             *util.OriginGate
-	done             chan struct{}
+	protectionPreviews map[string]protectionPreview
+	protection         *protection.Policy
+	atlasJobs          map[string]*atlasJob
+	reportImports      map[string]bool
+	settings           WorkspaceSettings
+	broker             *flow.Broker
+	dirty              bool
+	persistenceError   string
+	background         sync.WaitGroup
+	closing            bool
+	checks             sync.WaitGroup
+	mu                 sync.Mutex
+	ctx                context.Context
+	cancel             context.CancelFunc
+	options            Options
+	root               string
+	records            map[string]*CrawlRecord
+	slots              map[string]*crawlSlot
+	lock               *os.File
+	gate               *util.OriginGate
+	done               chan struct{}
 }
 
 func NewWorkspace(parent context.Context, options Options) (*Workspace, error) {
@@ -103,6 +107,11 @@ func NewWorkspace(parent context.Context, options Options) (*Workspace, error) {
 	}
 	ctx, cancel := context.WithCancel(parent)
 	w := &Workspace{settings: WorkspaceSettings{Revision: 1, Execution: flow.DefaultExecutionLimits()}, ctx: ctx, cancel: cancel, options: options, root: root, records: map[string]*CrawlRecord{}, slots: map[string]*crawlSlot{}, lock: lock, gate: util.NewOriginGate(), done: make(chan struct{})}
+	w.protection, err = protection.Open(filepath.Join(root, "protection.sqlite"))
+	if err != nil {
+		w.CloseWithoutMonitor()
+		return nil, err
+	}
 	b, err := os.ReadFile(filepath.Join(root, "crawls.json"))
 	if err == nil {
 		if err = w.loadRegistry(b); err != nil {
@@ -249,6 +258,8 @@ func NewWorkspace(parent context.Context, options Options) (*Workspace, error) {
 			}
 		}
 	}
+	w.background.Add(1)
+	go w.protectionLoop()
 	go w.monitor()
 	return w, nil
 }
@@ -317,9 +328,14 @@ func (w *Workspace) openSupervisor(r *CrawlRecord, run CrawlRun) (*Supervisor, e
 	a.Config.API.DashDBPath = filepath.Join(root, "dash.db")
 	a.Config.API.Enabled = false
 	a.Config.Streamer.Enabled = false
+	a.Config.HTTPClient.Protection = w.protection
 	s, err := newSupervisor(w.ctx, a)
 	if err != nil {
 		return nil, err
+	}
+	s.startupTimeout = w.options.StartupTimeout
+	if s.startupTimeout == 0 {
+		s.startupTimeout = 5 * time.Minute
 	}
 	s.crawlID, s.runID = r.ID, run.ID
 	s.state.Version = run.Version
@@ -327,10 +343,11 @@ func (w *Workspace) openSupervisor(r *CrawlRecord, run CrawlRun) (*Supervisor, e
 	if s.state.Desired == "" {
 		s.state.Desired = "stopped"
 	}
+	boundRunID := run.ID
 	s.onDesired = func(desired string) error {
 		w.mu.Lock()
 		defer w.mu.Unlock()
-		if len(r.Runs) == 0 || r.Runs[len(r.Runs)-1].ID != run.ID {
+		if len(r.Runs) == 0 || r.Runs[len(r.Runs)-1].ID != boundRunID {
 			return fmt.Errorf("run identity changed")
 		}
 		previous := r.Runs[len(r.Runs)-1].Desired
@@ -342,14 +359,15 @@ func (w *Workspace) openSupervisor(r *CrawlRecord, run CrawlRun) (*Supervisor, e
 		return nil
 	}
 	s.originGate = w.gate
+	s.log.policy = w.protection
 	s.onFinalSnapshot = func(snapshot RuntimeSnapshot) {
-		w.saveRunSummary(r.ID, run.ID, sanitizeRuntimeSnapshot(snapshot, s.state.Active))
+		w.saveRunSummary(r.ID, boundRunID, sanitizeRuntimeSnapshot(snapshot, s.state.Active))
 	}
 	s.onStatus = func(state string, now time.Time) {
 		if state == "stopping" && s.control != nil {
-			w.saveRunSummary(r.ID, run.ID, sanitizeRuntimeSnapshot(s.control.snapshot(), s.state.Active))
+			w.saveRunSummary(r.ID, boundRunID, sanitizeRuntimeSnapshot(s.control.snapshot(), s.state.Active))
 		}
-		w.onRunStatus(r.ID, run.ID, state, now)
+		w.onRunStatus(r.ID, boundRunID, state, now)
 	}
 	return s, nil
 }
@@ -397,6 +415,11 @@ func relocatePipeline(a config.Application, root string) config.Application {
 	return clone
 }
 func (w *Workspace) CloseWithoutMonitor() {
+	defer func() {
+		if w.protection != nil {
+			w.protection.Close()
+		}
+	}()
 	w.cancel()
 	for _, slot := range w.slots {
 		if slot.supervisor != nil {
@@ -410,6 +433,11 @@ func (w *Workspace) CloseWithoutMonitor() {
 	}
 }
 func (w *Workspace) Close() error {
+	defer func() {
+		if w.protection != nil {
+			w.protection.Close()
+		}
+	}()
 	w.mu.Lock()
 	w.closing = true
 	w.mu.Unlock()
@@ -553,7 +581,7 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 		if err != nil {
 			return nil, err
 		}
-		a, err := CompileCrawl(filepath.Join(w.root, "preview"), "preview", d)
+		a, err := w.compileCrawl(filepath.Join(w.root, "preview"), "preview", d)
 		if err != nil {
 			return nil, err
 		}
@@ -578,7 +606,7 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 
 		w.records[id] = &CrawlRecord{ID: id, Revision: 1, Definition: d, Runs: []CrawlRun{}, CreationID: req.ID, CreationHash: digest}
 		w.slots[id] = newCrawlSlot()
-		err = w.saveLocked()
+		err = w.saveProtectedRecordLocked(w.records[id])
 		if err != nil {
 			delete(w.records, id)
 			delete(w.slots, id)
@@ -608,7 +636,10 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 		}
 		return nil, errs.NewRequestError("crawl ID required")
 	}
-	if action == "report" || action == "hosts" || action == "host_graph" {
+	if action == "trap_decisions" || action == "trap_restore" {
+		return w.handleTraps(ctx, r, slot, action, raw)
+	}
+	if action == "report" || action == "hosts" || action == "host_graph" || strings.HasPrefix(action, "atlas_") {
 		return w.handleReport(ctx, r, slot, action, raw)
 	}
 	if action == "delete" {
@@ -635,7 +666,7 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 			runID = r.Runs[len(r.Runs)-1].ID
 			root = w.runRoot(r.ID, runID)
 		}
-		a, err := CompileCrawl(root, runID, d)
+		a, err := w.compileCrawl(root, runID, d)
 		if err != nil {
 			return nil, err
 		}
@@ -694,7 +725,7 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 				d = *r.Draft
 			}
 			if r.Expert == nil && r.ExpertDraft == nil {
-				compiled, err := CompileCrawl(filepath.Join(w.root, "preview"), "preview", d)
+				compiled, err := w.compileCrawl(filepath.Join(w.root, "preview"), "preview", d)
 				if err != nil {
 					return nil, err
 				}
@@ -714,6 +745,7 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 			if err != nil {
 				return nil, err
 			}
+			a.Config.HTTPClient.Protection = w.protection
 			if err := Validate(relocatePipeline(a, filepath.Join(w.root, "preview"))); err != nil {
 				return nil, err
 			}
@@ -757,7 +789,7 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 			if err != nil {
 				return nil, err
 			}
-			if _, err := CompileCrawl(filepath.Join(w.root, "preview"), "preview", d); err != nil {
+			if _, err := w.compileCrawl(filepath.Join(w.root, "preview"), "preview", d); err != nil {
 				return nil, err
 			}
 			if r.Expert != nil || r.ExpertDraft != nil {
@@ -767,7 +799,7 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 		}
 		r.DraftID, r.DraftHash = req.ID, digest
 		r.Revision++
-		if err := w.saveLocked(); err != nil {
+		if err := w.saveProtectedRecordLocked(r); err != nil {
 			*r = before
 			return nil, err
 		}
@@ -915,6 +947,7 @@ func (w *Workspace) applyRun(r *CrawlRecord, slot *crawlSlot, action string, rev
 	if err != nil {
 		return nil, err
 	}
+	prepared.Config.HTTPClient.Protection = w.protection
 	if err := Validate(prepared); err != nil {
 		return nil, err
 	}

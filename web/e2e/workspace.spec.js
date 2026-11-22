@@ -56,7 +56,7 @@ test.describe.serial("multi-crawl workspace", () => {
     await expect(
       page.getByText("Runtime offline", { exact: true }),
     ).toBeVisible();
-    await page.getByRole("button", { name: /Crawls/ }).click();
+    await page.getByRole("link", { name: "Delver", exact: true }).click();
     const card = page
       .locator(".crawl-card")
       .filter({ hasText: "Proxied documentation" });

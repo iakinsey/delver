@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/armon/go-metrics"
 	"github.com/iakinsey/delver/flow"
+	"github.com/iakinsey/delver/protection"
 	"github.com/iakinsey/delver/report"
 	"reflect"
 	"sync"
@@ -30,6 +31,7 @@ import (
 var resourceKeyLookupError = errors.New("failed to find resource key")
 
 type preparedApplication struct {
+	configMu      sync.RWMutex
 	reporting     *report.Store
 	pressurePaths []string
 	pressureMu    sync.Mutex
@@ -106,8 +108,15 @@ func CreateWorker(wc config.Worker, preparedApp *preparedApplication) {
 		}
 	}
 
+	if e := checkProtectionParticipant(w, preparedApp.app.Config.HTTPClient.Protection, "worker", wc.Type); e != nil {
+		w.OnComplete()
+		panic(e)
+	}
 	if target, ok := w.(interface{ SetReporter(report.Writer) }); ok && preparedApp.reporting != nil {
 		target.SetReporter(preparedApp.reporting)
+	}
+	if target, ok := w.(interface{ SetProtection(*protection.Policy) }); ok {
+		target.SetProtection(preparedApp.app.Config.HTTPClient.Protection)
 	}
 	if wc.Once {
 		store, ok := preparedApp.resources["source_progress"].(maps.Map)
@@ -123,6 +132,12 @@ func CreateWorker(wc config.Worker, preparedApp *preparedApplication) {
 	}
 	if target, ok := w.(worker.FlowAware); ok && preparedApp.flow != nil {
 		target.SetFlow(preparedApp.flow, *preparedApp.app.Config.Fetch)
+	}
+	if policy := preparedApp.app.Config.HTTPClient.Protection; policy != nil {
+		registryMutex.RLock()
+		aware := workerProtection[wc.Type] == ProtectionAware
+		registryMutex.RUnlock()
+		w = worker.Protect(w, policy, wc.Type == "jsonl_sink" || wc.Type == "transformer" || aware)
 	}
 	m := GetWorkerManager(wc, preparedApp.resources, w)
 	if preparedApp.metrics != nil {
@@ -228,11 +243,18 @@ func CreateResource(c config.Resource, preparedApp *preparedApplication) {
 		}
 	}
 
+	preparedApp.resources[c.Name] = r
+	if e := checkProtectionParticipant(r, preparedApp.app.Config.HTTPClient.Protection, "resource", c.Type); e != nil {
+		panic(e)
+	}
 	// Set metrics value if resoruce is specified
 	if c.Name == config.TransformerQueueName && preparedApp.ctx.Value(runtimeKey{}) == nil {
 		instrument.SetMetrics(r.(queue.Queue))
 	}
 
+	if target, ok := r.(interface{ SetProtection(*protection.Policy) }); ok {
+		target.SetProtection(preparedApp.app.Config.HTTPClient.Protection)
+	}
 	preparedApp.resources[c.Name] = r
 }
 
@@ -341,4 +363,10 @@ func hasDurableRetries(app config.Application, inbox string) bool {
 		}
 	}
 	return false
+}
+
+func (p *preparedApplication) workerDefinitions() []config.Worker {
+	p.configMu.RLock()
+	defer p.configMu.RUnlock()
+	return append([]config.Worker{}, p.app.Workers...)
 }

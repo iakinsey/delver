@@ -20,7 +20,7 @@ func seedReport(ctx context.Context, p *preparedApplication) error {
 	if c.DenyPattern != "" {
 		deny = regexp.MustCompile(c.DenyPattern)
 	}
-	for _, w := range p.app.Workers {
+	for _, w := range p.workerDefinitions() {
 		if w.Type != "fixed_seed_publisher" {
 			continue
 		}

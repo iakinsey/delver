@@ -3,21 +3,26 @@ package application
 import (
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/iakinsey/delver/config"
 )
 
 // Options configures application-level storage and listeners without a pipeline file.
 type Options struct {
-	initial       *config.Application
-	DataDirectory string
-	ImportPath    string
-	Address       string
+	StartupTimeout time.Duration
+	initial        *config.Application
+	DataDirectory  string
+	ImportPath     string
+	Address        string
 }
 
 // DefaultApplication constructs a valid empty workspace. It performs no I/O and
 // creates no publishers, queues, or crawl jobs.
 func DefaultApplication(options Options) (config.Application, error) {
+	if options.StartupTimeout < 0 {
+		return config.Application{}, fmt.Errorf("startup timeout must be nonnegative")
+	}
 	directory := options.DataDirectory
 	if directory == "" {
 		directory = filepath.Join("run-data", "workspace")

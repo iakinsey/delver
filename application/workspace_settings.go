@@ -150,6 +150,9 @@ func (w *Workspace) loadRegistry(data []byte) error {
 	return nil
 }
 func (w *Workspace) HandleWorkspace(ctx context.Context, action string, raw json.RawMessage) (interface{}, error) {
+	if action == "protection" {
+		return w.handleProtection(ctx, raw)
+	}
 	if action != "settings" {
 		return nil, fmt.Errorf("unknown workspace action")
 	}

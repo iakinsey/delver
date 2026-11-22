@@ -7,6 +7,7 @@ import (
 	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/flow"
 	"github.com/iakinsey/delver/frontier"
+	"github.com/iakinsey/delver/protection"
 	"io"
 	"net/http"
 	"net/url"
@@ -22,6 +23,9 @@ import (
 )
 
 type rssFeedPublisher struct {
+	policy              *protection.Policy
+	crawlID, runID      string
+	purgeDepth          int
 	flow                *flow.Controller
 	allowedHostSuffixes []string
 	robots              frontier.ClosableFilter
@@ -58,6 +62,7 @@ func NewRssFeedPublisherWithConfig(params RssFeedPublisherParams, c config.Confi
 		})
 	}
 	return &rssFeedPublisher{
+		policy: c.HTTPClient.Protection, crawlID: c.RuntimeCrawlID, runID: c.RuntimeRunID, purgeDepth: c.HTTPClient.RestrictedPurgeDepth,
 		flow:                c.HTTPClient.Flow,
 		allowedHostSuffixes: suffixes,
 		robots:              robots,
@@ -139,7 +144,7 @@ func (s *rssFeedPublisher) getRssUrlsContext(ctx context.Context, feedUri string
 	}
 
 	if err != nil {
-		if errors.Is(err, util.ErrFileExtensionExcluded) {
+		if errors.Is(err, util.ErrFileExtensionExcluded) || errors.Is(err, protection.ErrBlocked) {
 			if s.flow != nil {
 				s.flow.Counter("feed_policy_skips", 1)
 			}
@@ -164,9 +169,33 @@ func (s *rssFeedPublisher) getRssUrlsContext(ctx context.Context, feedUri string
 	if limit <= 0 {
 		limit = 16 << 20
 	}
-	feed, err := parser.Parse(&feedBody{ctx: ctx, reader: res.Body, remaining: limit})
+	var source io.Reader = &feedBody{ctx: ctx, reader: res.Body, remaining: limit}
+	effective := feedUri
+	if res.Request != nil && res.Request.URL != nil {
+		effective = res.Request.URL.String()
+	}
+	if s.policy != nil {
+		release, e := s.policy.Reserve(ctx, limit*2+(64<<10))
+		if e != nil {
+			failure = e
+			done <- result
+			return
+		}
+		defer release()
+		inspector := s.policy.InspectReader(ctx, source, effective, s.crawlID, s.runID, s.purgeDepth)
+		defer inspector.Close()
+		source = inspector
+	}
+	feed, err := parser.Parse(source)
 
 	if err != nil {
+		if errors.Is(err, protection.ErrBlocked) || errors.Is(s.policy.Check(effective), protection.ErrBlocked) {
+			if s.flow != nil {
+				s.flow.Counter("feed_policy_skips", 1)
+			}
+			done <- result
+			return
+		}
 		failure = err
 		log.Errorf("failed to parse RSS feed: %s", err)
 		done <- result
@@ -244,4 +273,33 @@ func (r *feedBody) Read(buffer []byte) (int, error) {
 	n, err := r.reader.Read(buffer)
 	r.remaining -= int64(n)
 	return n, err
+}
+
+func (s *rssFeedPublisher) PurgeMatching(ctx context.Context, match func(string) bool) error {
+	uris := []string{}
+	for _, u := range s.uris {
+		if !match(u) {
+			uris = append(uris, u)
+		}
+	}
+	clear(s.uris)
+	s.uris = uris
+	s.healthMu.Lock()
+	for key, reason := range s.failures {
+		if match(key) || protection.References(reason, match) {
+			delete(s.failures, key)
+		}
+	}
+	s.healthMu.Unlock()
+
+	for _, resource := range []interface{}{s.robots, s.client} {
+		if p, ok := resource.(interface {
+			PurgeMatching(context.Context, func(string) bool) error
+		}); ok {
+			if e := p.PurgeMatching(ctx, match); e != nil {
+				return e
+			}
+		}
+	}
+	return nil
 }

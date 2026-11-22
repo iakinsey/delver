@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/iakinsey/delver/flow"
+	"github.com/iakinsey/delver/protection"
 	"github.com/iakinsey/delver/report"
+	"github.com/iakinsey/delver/trap"
 	"io/fs"
 	"log"
 	"runtime"
@@ -23,34 +25,38 @@ type HTTPGate interface {
 	Acquire(context.Context, string, int, time.Duration) (func(), error)
 }
 type HTTPClientConfig struct {
-	Reporter             report.Writer    `json:"-"`
-	ExcludedExtensions   []string         `json:"excluded_extensions,omitempty"`
-	Flow                 *flow.Controller `json:"-"`
-	ConnectTimeout       time.Duration    `json:"connect_timeout"`
-	TLSTimeout           time.Duration    `json:"tls_timeout"`
-	HeaderTimeout        time.Duration    `json:"header_timeout"`
-	BodyTimeout          time.Duration    `json:"body_timeout"`
-	RequireProxy         bool             `json:"require_proxy,omitempty"`
-	IsolateProxySessions bool             `json:"isolate_proxy_sessions,omitempty"`
-	ProxySessionKey      string           `json:"-"`
-	AllowedHostSuffixes  []string         `json:"allowed_host_suffixes,omitempty"`
-	RetryDelay           time.Duration    `json:"retry_delay"`
-	RetryMaxDelay        time.Duration    `json:"retry_max_delay"`
-	AllowPattern         string           `json:"allow_pattern,omitempty"`
-	DenyPattern          string           `json:"deny_pattern,omitempty"`
-	Scope                string           `json:"scope,omitempty"`
-	LocalGate            HTTPGate         `json:"-"`
-	GlobalGate           HTTPGate         `json:"-"`
-	MaxResponseBytes     int64            `json:"max_response_bytes"`
-	PerOriginConcurrency int              `json:"per_origin_concurrency"`
-	RequestDelay         time.Duration    `json:"request_delay"`
-	RespectRobots        bool             `json:"respect_robots"`
-	AllowedDomains       []string         `json:"allowed_domains"`
-	Timeout              time.Duration    `json:"timeout"`
-	UserAgent            string           `json:"user_agent"`
-	Socks5Url            string           `json:"socks5_url"`
-	HTTPProxyUrl         string           `json:"http_proxy_url"`
-	MaxRetries           int              `json:"max_retries"`
+	Protection           *protection.Policy `json:"-"`
+	ProtectionCrawl      string             `json:"-"`
+	ProtectionRun        string             `json:"-"`
+	RestrictedPurgeDepth int                `json:"restricted_purge_depth"`
+	Reporter             report.Writer      `json:"-"`
+	ExcludedExtensions   []string           `json:"excluded_extensions,omitempty"`
+	Flow                 *flow.Controller   `json:"-"`
+	ConnectTimeout       time.Duration      `json:"connect_timeout"`
+	TLSTimeout           time.Duration      `json:"tls_timeout"`
+	HeaderTimeout        time.Duration      `json:"header_timeout"`
+	BodyTimeout          time.Duration      `json:"body_timeout"`
+	RequireProxy         bool               `json:"require_proxy,omitempty"`
+	IsolateProxySessions bool               `json:"isolate_proxy_sessions,omitempty"`
+	ProxySessionKey      string             `json:"-"`
+	AllowedHostSuffixes  []string           `json:"allowed_host_suffixes,omitempty"`
+	RetryDelay           time.Duration      `json:"retry_delay"`
+	RetryMaxDelay        time.Duration      `json:"retry_max_delay"`
+	AllowPattern         string             `json:"allow_pattern,omitempty"`
+	DenyPattern          string             `json:"deny_pattern,omitempty"`
+	Scope                string             `json:"scope,omitempty"`
+	LocalGate            HTTPGate           `json:"-"`
+	GlobalGate           HTTPGate           `json:"-"`
+	MaxResponseBytes     int64              `json:"max_response_bytes"`
+	PerOriginConcurrency int                `json:"per_origin_concurrency"`
+	RequestDelay         time.Duration      `json:"request_delay"`
+	RespectRobots        bool               `json:"respect_robots"`
+	AllowedDomains       []string           `json:"allowed_domains"`
+	Timeout              time.Duration      `json:"timeout"`
+	UserAgent            string             `json:"user_agent"`
+	Socks5Url            string             `json:"socks5_url"`
+	HTTPProxyUrl         string             `json:"http_proxy_url"`
+	MaxRetries           int                `json:"max_retries"`
 }
 
 type RobotsConfig struct {
@@ -98,12 +104,13 @@ type WorkersConfig struct {
 }
 
 type Config struct {
-	Fetch           *flow.Policy  `json:"fetch,omitempty"`
-	RuntimeCrawlID  string        `json:"-"`
-	RuntimeRunID    string        `json:"-"`
-	ShutdownTimeout time.Duration `json:"shutdown_timeout"`
-	Workers         WorkersConfig `json:"workers"`
-	Metrics         MetricsConfig `json:"metrics"`
+	Traps           *trap.Settings `json:"traps,omitempty"`
+	Fetch           *flow.Policy   `json:"fetch,omitempty"`
+	RuntimeCrawlID  string         `json:"-"`
+	RuntimeRunID    string         `json:"-"`
+	ShutdownTimeout time.Duration  `json:"shutdown_timeout"`
+	Workers         WorkersConfig  `json:"workers"`
+	Metrics         MetricsConfig  `json:"metrics"`
 	// TODO maybe this should be in the workers/resources mapping instead?
 	DefaultSaveInterval time.Duration       `json:"default_save_interval"`
 	CountriesPath       string              `json:"countries_path"`

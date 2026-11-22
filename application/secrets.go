@@ -117,6 +117,9 @@ func restoreConfiguration(data []byte, base config.Application) ([]byte, error) 
 }
 
 func sanitizeText(text string, applications ...config.Application) string {
+	if text == "" {
+		return ""
+	}
 	var values []string
 	var collect func(interface{}, bool)
 	collect = func(value interface{}, secret bool) {
