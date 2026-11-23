@@ -503,6 +503,88 @@ test.describe("workspace protection", () => {
             { timeout: 45000 },
           )
           .toBe(3);
+        await expect(page.locator(".crawl-state")).toHaveText("completed", {
+          timeout: 45000,
+        });
+        const countsBefore = (
+          await api(request, "report", { crawl_id: record.id })
+        ).counts;
+        await page.goto(`${base}/crawls/${record.id}/report`);
+        const search = page.getByRole("combobox", { name: "Search hosts" });
+        await search.fill(`outside-${family}.invalid`);
+        await search.focus();
+        await page
+          .getByRole("option")
+          .filter({ hasText: `outside-${family}.invalid` })
+          .getByRole("button")
+          .click();
+        const hiddenMessage = page.getByText(
+          "3 trap-excluded hosts hidden in this run",
+          { exact: true },
+        );
+        await expect(hiddenMessage).toBeVisible();
+        const reportFilter = page.getByRole("checkbox", {
+          name: "Hide trap-excluded hosts",
+          exact: true,
+        });
+        await reportFilter.uncheck();
+        await expect(hiddenMessage).toHaveCount(0);
+        await reportFilter.check();
+        await expect(hiddenMessage).toBeVisible();
+        await page
+          .getByRole("navigation", { name: "Crawl views" })
+          .getByRole("button", { name: "Graph", exact: true })
+          .click();
+        await page.getByText("Generation parameters", { exact: true }).click();
+        await page
+          .getByRole("checkbox", { name: "Exclude orphans", exact: true })
+          .uncheck();
+        await page
+          .getByRole("button", { name: "Generate", exact: true })
+          .click();
+        await expect(
+          page.getByRole("button", { name: "Regenerate", exact: true }),
+        ).toBeEnabled();
+        const filtered = (
+          await api(request, "atlas_status", {
+            crawl_id: record.id,
+            hide_traps: true,
+          })
+        ).snapshot;
+        expect(filtered.hosts).toBe(1);
+        expect(filtered.hidden_hosts).toBe(3);
+        const atlasFilter = page.getByRole("checkbox", {
+          name: "Hide trap-excluded hosts",
+          exact: true,
+        });
+        await atlasFilter.uncheck();
+        await expect(
+          page.getByRole("button", { name: "Generate", exact: true }),
+        ).toBeEnabled();
+        await page
+          .getByRole("checkbox", { name: "Exclude orphans", exact: true })
+          .uncheck();
+        await page
+          .getByRole("button", { name: "Generate", exact: true })
+          .click();
+        await expect(
+          page.getByRole("button", { name: "Regenerate", exact: true }),
+        ).toBeEnabled();
+        const full = (
+          await api(request, "atlas_status", {
+            crawl_id: record.id,
+            hide_traps: false,
+          })
+        ).snapshot;
+        expect(full.hosts).toBe(4);
+        expect(full.id).not.toBe(filtered.id);
+        expect(
+          (await api(request, "report", { crawl_id: record.id })).counts,
+        ).toEqual(countsBefore);
+        await page
+          .getByRole("navigation", { name: "Crawl views" })
+          .getByRole("button", { name: "Crawl", exact: true })
+          .click();
         await page.getByText("Trap exclusions", { exact: true }).click();
         await expect(
           page.getByRole("button", {
@@ -528,6 +610,43 @@ test.describe("workspace protection", () => {
                 .length,
           )
           .toBe(2);
+        await page
+          .getByRole("navigation", { name: "Crawl views" })
+          .getByRole("button", { name: "Graph", exact: true })
+          .click();
+        await page
+          .getByRole("button", { name: "Regenerate", exact: true })
+          .click();
+        await expect
+          .poll(
+            async () =>
+              (
+                await api(request, "atlas_status", {
+                  crawl_id: record.id,
+                  hide_traps: true,
+                })
+              ).job?.state,
+          )
+          .toBe("completed");
+        const restored = (
+          await api(request, "atlas_status", {
+            crawl_id: record.id,
+            hide_traps: true,
+          })
+        ).snapshot;
+        expect(restored.hosts).toBe(2);
+        expect(restored.hidden_hosts).toBe(2);
+        expect(
+          (
+            await api(request, "atlas_status", {
+              crawl_id: record.id,
+              hide_traps: false,
+            })
+          ).snapshot.id,
+        ).toBe(full.id);
+        expect(
+          (await api(request, "report", { crawl_id: record.id })).counts,
+        ).toEqual(countsBefore);
       } else {
         await expect(page.locator(".crawl-state")).toHaveText(
           /completed|stopped/,

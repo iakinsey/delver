@@ -166,6 +166,15 @@ func (w *Worker) OnMessageContext(ctx context.Context, m types.Message) (interfa
 	if err := w.Store.Outcome(c.FetcherResponse); err != nil {
 		return nil, err
 	}
+	gatewayBlocked := false
+	if target, ok := w.Store.(interface {
+		ObserveGateway(context.Context, message.CompositeAnalysis, features.URIs) (bool, error)
+	}); ok {
+		gatewayBlocked, err = target.ObserveGateway(ctx, c, links)
+		if err != nil {
+			return nil, err
+		}
+	}
 	var adversarial features.Adversarial
 	if c.LoadPermissive(features.AdversarialField, &adversarial) && adversarial.Structure != nil {
 		if target, ok := w.Store.(interface {
@@ -241,6 +250,9 @@ func (w *Worker) OnMessageContext(ctx context.Context, m types.Message) (interfa
 		if err := w.Reporter.Discover(ctx, records); err != nil {
 			return nil, err
 		}
+	}
+	if gatewayBlocked {
+		discoveries = nil
 	}
 	id := fmt.Sprintf("%s:%s:%d:%d:%s", c.RequestID, c.URI, c.Depth, c.Hops, m.ID)
 	if err := w.Store.StageDiscovery(ctx, id, discoveries); err != nil {
@@ -397,6 +409,17 @@ func (w *Worker) publish(ctx context.Context) error {
 		c := candidates[at]
 		candidates = append(candidates[:at], candidates[at+1:]...)
 		c, err = w.Store.Reserve(ctx, c)
+		if errors.Is(err, frontier.ErrTrapExcluded) {
+			if target, ok := w.Store.(interface {
+				ParkTraps(context.Context, []frontier.Candidate) error
+			}); ok {
+				if err := target.ParkTraps(ctx, []frontier.Candidate{c}); err != nil {
+					return err
+				}
+			}
+			eligible--
+			continue
+		}
 		if errors.Is(err, frontier.ErrDispatchBudget) {
 			reason = "request budget reached"
 			eligible = 0

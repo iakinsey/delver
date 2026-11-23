@@ -32,18 +32,19 @@ type TrapFamily struct {
 	Destinations []string            `json:"destinations"`
 }
 type TrapDecision struct {
-	CrossSiteLinks float64       `json:"cross_site_links"`
-	FreshLinks     float64       `json:"fresh_links"`
-	Site           string        `json:"site"`
-	Family         string        `json:"family"`
-	At             time.Time     `json:"at"`
-	Samples        int           `json:"samples"`
-	Sites          int           `json:"sites"`
-	Similarity     float64       `json:"similarity"`
-	Redundancy     float64       `json:"redundancy"`
-	Novelty        float64       `json:"novelty"`
-	Reason         string        `json:"reason"`
-	Settings       trap.Settings `json:"settings"`
+	Gateway        *GatewayCluster `json:"gateway,omitempty"`
+	CrossSiteLinks float64         `json:"cross_site_links"`
+	FreshLinks     float64         `json:"fresh_links"`
+	Site           string          `json:"site"`
+	Family         string          `json:"family"`
+	At             time.Time       `json:"at"`
+	Samples        int             `json:"samples"`
+	Sites          int             `json:"sites"`
+	Similarity     float64         `json:"similarity"`
+	Redundancy     float64         `json:"redundancy"`
+	Novelty        float64         `json:"novelty"`
+	Reason         string          `json:"reason"`
+	Settings       trap.Settings   `json:"settings"`
 }
 
 func (s *Store) ObserveTrap(ctx context.Context, o trap.Observation) (bool, error) {
@@ -242,6 +243,15 @@ func (s *Store) TrapDecisions(ctx context.Context) ([]TrapDecision, error) {
 			if e := it.Item().Value(func(b []byte) error { return json.Unmarshal(b, &d) }); e != nil {
 				return e
 			}
+			if d.Reason == gatewayReason {
+				var cluster GatewayCluster
+				if err := read(tx, "trap/gateway/"+d.Family, &cluster); err == nil {
+					d.Sites = cluster.Members
+					d.Gateway = &cluster
+				} else if err != badger.ErrKeyNotFound {
+					return err
+				}
+			}
 			out = append(out, d)
 		}
 		return nil
@@ -270,8 +280,16 @@ func (s *Store) ParkTraps(ctx context.Context, cs []Candidate) error {
 			} else if e != nil {
 				return e
 			}
-			if c.State != "pending" || !s.trapBlocked(tx, c.Request.URI) {
+			if (c.State != "pending" && c.State != "reserved") || !s.trapBlocked(tx, c.Request.URI) {
 				return nil
+			}
+			if c.State == "reserved" {
+				if e := tx.Delete([]byte(fmt.Sprintf("reserved/%020d/%s", c.Sequence, c.Request.URI))); e != nil {
+					return e
+				}
+				if e := increment(tx, "meta/reserved", -1); e != nil {
+					return e
+				}
 			}
 			if e := schedule(tx, c, true); e != nil {
 				return e

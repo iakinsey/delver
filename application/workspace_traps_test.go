@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/iakinsey/delver/frontier"
+	"github.com/iakinsey/delver/report"
 	"github.com/iakinsey/delver/trap"
 	"github.com/iakinsey/delver/types/message"
 	"github.com/stretchr/testify/require"
@@ -83,7 +84,21 @@ func TestWorkspaceRestoresParkedDiscoveriesFromCompletedRun(t *testing.T) {
 	workspace.records[id].Runs = append(workspace.records[id].Runs, CrawlRun{ID: runID, Definition: d, State: "completed", Desired: "stopped"})
 	require.NoError(t, workspace.saveLocked())
 	workspace.mu.Unlock()
+	graph, e := report.Open(app.Config.API.OperationsPath+".report.sqlite", false)
+	require.NoError(t, e)
+	require.NoError(t, graph.Discover(ctx, []report.URL{
+		{URI: "https://root.test/"},
+		{URI: d.Seeds[0], Origin: "https://root.test/"},
+	}))
+	require.NoError(t, graph.Close())
+	request := map[string]interface{}{"crawl_id": id, "run_id": runID, "host": "root.test", "hide_traps": true}
+	filtered := workspaceCall(t, workspace, "host_graph", request).(map[string]interface{})
+	require.EqualValues(t, 1, filtered["hidden_hosts"])
+	require.Len(t, filtered["nodes"], 1)
 	workspaceCall(t, workspace, "trap_restore", map[string]interface{}{"crawl_id": id, "site": sites[0]})
+	restored := workspaceCall(t, workspace, "host_graph", request).(map[string]interface{})
+	require.Zero(t, restored["hidden_hosts"])
+	require.Len(t, restored["nodes"], 2)
 	store, e = frontier.OpenStore(params)
 	require.NoError(t, e)
 	counts, e = store.Counts()

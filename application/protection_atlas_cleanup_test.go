@@ -10,7 +10,7 @@ import (
 func TestProtectionRemovesOrphanAndInterruptedAtlasSnapshots(t *testing.T) {
 	dir := t.TempDir()
 	report := filepath.Join(dir, "run.report.sqlite")
-	removed := []string{".atlas.sqlite", ".atlas.sqlite-wal", ".atlas.sqlite-shm", ".atlas.sqlite.job.tmp", ".atlas.sqlite.job.tmp-journal"}
+	removed := []string{".atlas.sqlite.traps", ".atlas.sqlite.traps-wal", ".atlas.sqlite.traps.job.tmp", ".atlas.sqlite", ".atlas.sqlite-wal", ".atlas.sqlite-shm", ".atlas.sqlite.job.tmp", ".atlas.sqlite.job.tmp-journal"}
 	retained := []string{".other", ".atlas.sqlite.other", ".atlas.sqlite-other.tmp"}
 	for _, suffix := range append(removed, retained...) {
 		require.NoError(t, os.WriteFile(report+suffix, []byte("fixture"), 0600))

@@ -32,6 +32,16 @@ export function TrapExclusions({ crawlId, onError }) {
               <dl>
                 {[
                   ["Reason", d.reason],
+                  ...(d.gateway
+                    ? [
+                        ["Shared destination", d.gateway.destination],
+                        [
+                          "Representative hosts",
+                          d.gateway.representatives.join(", "),
+                        ],
+                        ["Suppressed hosts", d.gateway.suppressed_members],
+                      ]
+                    : []),
                   ["Samples", d.samples],
                   ["Sites", d.sites],
                   ["Structure similarity", d.similarity],

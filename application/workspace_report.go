@@ -24,10 +24,11 @@ func (w *Workspace) handleReport(ctx context.Context, r *CrawlRecord, slot *craw
 		return nil, fmt.Errorf("protection cleanup pending")
 	}
 	var req struct {
-		RunID string `json:"run_id"`
-		Query string `json:"query"`
-		After string `json:"after"`
-		Limit int    `json:"limit"`
+		RunID     string `json:"run_id"`
+		HideTraps bool   `json:"hide_traps"`
+		Query     string `json:"query"`
+		After     string `json:"after"`
+		Limit     int    `json:"limit"`
 		report.GraphOptions
 	}
 	req.GraphOptions.Depth = 2
@@ -62,11 +63,27 @@ func (w *Workspace) handleReport(ctx context.Context, r *CrawlRecord, slot *craw
 	path := a.Config.API.OperationsPath + ".report.sqlite"
 	if strings.HasPrefix(action, "atlas_") {
 		if action == "atlas_generate" {
+			var excluded []string
+			if req.HideTraps {
+				slot.mu.Unlock()
+				excluded, e = w.reportTrapSites(ctx, r, slot, run.ID)
+				if e != nil {
+					return nil, e
+				}
+				slot.mu.Lock()
+				w.mu.Lock()
+				available := w.records[r.ID] == r && r.Deletion == nil
+				w.mu.Unlock()
+				if !available {
+					slot.mu.Unlock()
+					return nil, fmt.Errorf("crawl unavailable")
+				}
+			}
 			defer slot.mu.Unlock()
-			return w.handleAtlas(ctx, path, action, raw)
+			return w.handleAtlas(ctx, path, action, raw, req.HideTraps, excluded)
 		}
 		slot.mu.Unlock()
-		return w.handleAtlas(ctx, path, action, raw)
+		return w.handleAtlas(ctx, path, action, raw, req.HideTraps, nil)
 	}
 	_, statErr := os.Stat(path)
 	store, e := report.Open(path, os.IsNotExist(statErr))
@@ -106,6 +123,12 @@ func (w *Workspace) handleReport(ctx context.Context, r *CrawlRecord, slot *craw
 	if action == "host_graph" {
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
+		if req.HideTraps {
+			req.GraphOptions.ExcludedSites, e = w.reportTrapSites(ctx, r, slot, run.ID)
+			if e != nil {
+				return nil, e
+			}
+		}
 		return store.Graph(ctx, req.GraphOptions)
 	}
 	rate := 0.0

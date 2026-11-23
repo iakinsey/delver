@@ -492,6 +492,9 @@ func (s *Store) Reserve(ctx context.Context, c Candidate) (Candidate, error) {
 		if c.State != "pending" && c.State != "reserved" {
 			return fmt.Errorf("candidate unavailable")
 		}
+		if s.trapBlocked(tx, c.Request.URI) {
+			return ErrTrapExcluded
+		}
 		if c.State == "pending" {
 			var dispatched int64
 			if e := read(tx, "meta/dispatched", &dispatched); e != nil && e != badger.ErrKeyNotFound {

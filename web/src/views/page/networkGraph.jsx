@@ -250,6 +250,7 @@ export default function NetworkGraph() {
     runId = new URLSearchParams(location.search).get("run_id") || "";
   const [status, setStatus] = useState(null),
     [options, setOptions] = useState(defaults),
+    [hideTraps, setHideTraps] = useState(true),
     [error, setError] = useState(""),
     [statusError, setStatusError] = useState(""),
     [connectionVersion, setConnectionVersion] = useState(0),
@@ -280,7 +281,12 @@ export default function NetworkGraph() {
       try {
         return await apiRequest(
           `crawls/atlas_${action}`,
-          { crawl_id: crawlId, run_id: runId, ...fields },
+          {
+            crawl_id: crawlId,
+            run_id: runId,
+            hide_traps: hideTraps,
+            ...fields,
+          },
           { signal, timeoutMs: 20000 },
         );
       } catch (e) {
@@ -289,7 +295,7 @@ export default function NetworkGraph() {
         throw e;
       }
     },
-    [crawlId, runId],
+    [crawlId, runId, hideTraps],
   );
   const { tiles, error: tileError } = useNetworkTiles(
     call,
@@ -336,7 +342,7 @@ export default function NetworkGraph() {
           setError("");
           setConnectionVersion((v) => v + 1);
         }
-        const key = `${crawlId}:${runId}`;
+        const key = `${crawlId}:${runId}:${hideTraps}`;
         if (settingsFor.current !== key) {
           setOptions(s.snapshot?.options || s.defaults || defaults);
           settingsFor.current = key;
@@ -501,6 +507,12 @@ export default function NetworkGraph() {
                 />
               </label>
             ))}
+          </div>
+          <div
+            className="network-filters"
+            role="group"
+            aria-label="Host filters"
+          >
             <label className="crawl-check">
               <input
                 type="checkbox"
@@ -526,6 +538,19 @@ export default function NetworkGraph() {
               />
               Exclude orphans
             </label>
+            <label className="crawl-check">
+              <input
+                type="checkbox"
+                checked={hideTraps}
+                onChange={(event) => {
+                  setHideTraps(event.target.checked);
+                  setStatus(null);
+                  setFrame(null);
+                  setError("");
+                }}
+              />
+              Hide trap-excluded hosts
+            </label>
           </div>
         </details>
         <button type="submit" disabled={running || busy || !status}>
@@ -547,6 +572,8 @@ export default function NetworkGraph() {
               : snapshot
                 ? `${fmt(snapshot.hosts)} hosts · ${fmt(snapshot.edges)} edges · ${fmt(snapshot.clusters)} clusters`
                 : "No snapshot"}
+          {snapshot?.hidden_hosts > 0 &&
+            ` · ${fmt(snapshot.hidden_hosts)} trap-excluded hosts hidden`}
         </span>
         {status?.job?.error && <p role="alert">{status.job.error}</p>}
       </form>

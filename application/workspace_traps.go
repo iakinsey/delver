@@ -18,6 +18,10 @@ func (w *Workspace) handleTraps(ctx context.Context, r *CrawlRecord, slot *crawl
 	slot.mu.Lock()
 	defer slot.mu.Unlock()
 	w.mu.Lock()
+	if w.records[r.ID] != r || r.Deletion != nil {
+		w.mu.Unlock()
+		return nil, fmt.Errorf("crawl unavailable")
+	}
 	runs := append([]CrawlRun(nil), r.Runs...)
 	w.mu.Unlock()
 	var selected *CrawlRun
@@ -82,4 +86,24 @@ func (w *Workspace) handleTraps(ctx context.Context, r *CrawlRecord, slot *crawl
 		}
 	}
 	return store.TrapDecisions(ctx)
+}
+
+// reportTrapSites loads active exclusions for exactly the selected run.
+func (w *Workspace) reportTrapSites(ctx context.Context, r *CrawlRecord, slot *crawlSlot, runID string) ([]string, error) {
+	input, err := json.Marshal(struct {
+		RunID string `json:"run_id"`
+	}{runID})
+	if err != nil {
+		return nil, err
+	}
+	result, err := w.handleTraps(ctx, r, slot, "trap_decisions", input)
+	if err != nil {
+		return nil, err
+	}
+	decisions := result.([]frontier.TrapDecision)
+	sites := make([]string, 0, len(decisions))
+	for _, decision := range decisions {
+		sites = append(sites, decision.Site)
+	}
+	return sites, nil
 }

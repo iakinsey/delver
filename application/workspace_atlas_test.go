@@ -53,11 +53,25 @@ func TestWorkspaceAtlasLifecycleAndStoredSnapshot(t *testing.T) {
 	require.Equal(t, "completed", status["job"].(map[string]interface{})["state"])
 	snap := status["snapshot"].(map[string]interface{})
 	require.EqualValues(t, 2, snap["hosts"])
+	filteredRequest := map[string]interface{}{"crawl_id": id, "hide_traps": true}
+	workspaceCall(t, w, "atlas_generate", filteredRequest)
+	var filtered map[string]interface{}
+	require.Eventually(t, func() bool {
+		st := workspaceCall(t, w, "atlas_status", filteredRequest).(map[string]interface{})
+		if st["job"].(map[string]interface{})["state"] != "completed" {
+			return false
+		}
+		filtered = st["snapshot"].(map[string]interface{})
+		return true
+	}, 5*time.Second, 10*time.Millisecond)
+	require.NotEqual(t, snap["id"], filtered["id"])
 	require.NoError(t, w.Close())
 	w, e = NewWorkspace(context.Background(), options)
 	require.NoError(t, e)
 	status = workspaceCall(t, w, "atlas_status", request).(map[string]interface{})
 	require.Equal(t, snap["id"], status["snapshot"].(map[string]interface{})["id"])
+	filteredStatus := workspaceCall(t, w, "atlas_status", filteredRequest).(map[string]interface{})
+	require.Equal(t, filtered["id"], filteredStatus["snapshot"].(map[string]interface{})["id"])
 	frame := workspaceCall(t, w, "atlas_view", map[string]interface{}{"crawl_id": id, "snapshot": snap["id"], "bounds": []float64{-1, -1, 2, 2}, "node_limit": 100, "edge_limit": 100}).(map[string]interface{})
 	require.Len(t, frame["nodes"], 2)
 	workspaceCall(t, w, "atlas_generate", request)
@@ -73,6 +87,8 @@ func TestWorkspaceAtlasLifecycleAndStoredSnapshot(t *testing.T) {
 	require.NoError(t, e)
 	waitDeleted(t, w, id)
 	_, e = os.Stat(artifact)
+	require.True(t, os.IsNotExist(e))
+	_, e = os.Stat(artifact + filteredAtlasSuffix)
 	require.True(t, os.IsNotExist(e))
 	w.mu.Lock()
 	remaining := len(w.atlasJobs)

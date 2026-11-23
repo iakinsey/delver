@@ -24,8 +24,13 @@ type atlasJob struct {
 	done   chan struct{}
 }
 
-func (w *Workspace) handleAtlas(ctx context.Context, path, action string, raw json.RawMessage) (result interface{}, resultErr error) {
-	snapshotPath := path + ".atlas.sqlite"
+const filteredAtlasSuffix = ".traps"
+
+func (w *Workspace) handleAtlas(ctx context.Context, sourcePath, action string, raw json.RawMessage, hideTraps bool, excludedSites []string) (result interface{}, resultErr error) {
+	snapshotPath := sourcePath + ".atlas.sqlite"
+	if hideTraps {
+		snapshotPath += filteredAtlasSuffix
+	}
 	epoch := report.AtlasEpoch(snapshotPath)
 	if action != "atlas_generate" && action != "atlas_cancel" && action != "atlas_status" {
 		defer func() {
@@ -41,7 +46,7 @@ func (w *Workspace) handleAtlas(ctx context.Context, path, action string, raw js
 		}
 		return nil, fmt.Errorf("graph unavailable during protection cleanup")
 	}
-	path += ".atlas.sqlite"
+	path := snapshotPath
 	var req struct {
 		Options *report.AtlasOptions `json:"options"`
 		report.AtlasViewport
@@ -90,7 +95,6 @@ func (w *Workspace) handleAtlas(ctx context.Context, path, action string, raw js
 		w.background.Add(1)
 		w.mu.Unlock()
 		// Open a dedicated handle: the request handle closes when this RPC returns.
-		sourcePath := strings.TrimSuffix(path, ".atlas.sqlite")
 		_, statErr := os.Stat(sourcePath)
 		source, err := report.Open(sourcePath, os.IsNotExist(statErr))
 		if err != nil {
@@ -109,7 +113,7 @@ func (w *Workspace) handleAtlas(ctx context.Context, path, action string, raw js
 			defer cancel()
 			defer source.Close()
 			defer func() { <-atlasGeneration }()
-			_, err := source.GenerateAtlas(jobctx, path, j.ID, o, func(phase string) { w.mu.Lock(); j.Phase = phase; w.mu.Unlock() })
+			_, err := source.GenerateFilteredAtlas(jobctx, path, j.ID, o, excludedSites, func(phase string) { w.mu.Lock(); j.Phase = phase; w.mu.Unlock() })
 			w.mu.Lock()
 			defer w.mu.Unlock()
 			j.State = "completed"

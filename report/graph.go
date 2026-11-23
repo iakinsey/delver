@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/iakinsey/delver/site"
 )
 
 type topology struct {
@@ -22,6 +24,7 @@ type topology struct {
 	bridge      map[int64]int
 	revision    int64
 	at          time.Time
+	hiddenHosts int
 }
 
 func (g *topology) HasEdgeFromTo(a, b int64) bool {
@@ -48,7 +51,24 @@ func Forget(path string) {
 	}
 }
 
-func (s *Store) topology(ctx context.Context) (g *topology, err error) {
+func (s *Store) topology(ctx context.Context) (*topology, error) {
+	return s.filteredTopology(ctx, nil)
+}
+
+func (s *Store) filteredTopology(ctx context.Context, excluded []string) (g *topology, err error) {
+	filter := make(map[string]bool, len(excluded))
+	keys := make([]string, 0, len(excluded))
+	for _, value := range excluded {
+		if key := site.Key(value); key != "" && !filter[key] {
+			filter[key] = true
+			keys = append(keys, key)
+		}
+	}
+	cacheKey := s.path
+	if len(keys) > 0 {
+		sort.Strings(keys)
+		cacheKey = filepath.Join(s.path, fmt.Sprintf("visible-%x", sha256.Sum256([]byte(strings.Join(keys, "\x00")))))
+	}
 	counts, err := s.Counts(ctx)
 	if err != nil {
 		return nil, err
@@ -59,7 +79,7 @@ func (s *Store) topology(ctx context.Context) (g *topology, err error) {
 		return nil, ctx.Err()
 	}
 	defer func() { <-analyses.gate }()
-	if old := analyses.values[s.path]; old != nil && old.revision == counts.Revision {
+	if old := analyses.values[cacheKey]; old != nil && old.revision == counts.Revision {
 		return old, nil
 	}
 	if counts.Hosts > 100000 || counts.Edges > 1000000 {
@@ -85,6 +105,10 @@ func (s *Store) topology(ctx context.Context) (g *topology, err error) {
 			rows.Close()
 			return nil, err
 		}
+		if len(filter) > 0 && filter[site.Key(h.Name)] {
+			g.hiddenHosts++
+			continue
+		}
 		g.hosts[h.ID] = h
 		g.ids = append(g.ids, h.ID)
 		if len(g.ids) > 100000 {
@@ -107,6 +131,12 @@ func (s *Store) topology(ctx context.Context) (g *topology, err error) {
 		if err = rows.Scan(&a, &b); err != nil {
 			rows.Close()
 			return nil, err
+		}
+		if _, ok := g.hosts[a]; !ok {
+			continue
+		}
+		if _, ok := g.hosts[b]; !ok {
+			continue
 		}
 		g.out[a] = append(g.out[a], b)
 		g.in[b] = append(g.in[b], a)
@@ -213,19 +243,20 @@ func (s *Store) topology(ctx context.Context) (g *topology, err error) {
 		delete(analyses.values, oldest)
 	}
 	if _, statErr := os.Stat(s.path); statErr == nil {
-		analyses.values[s.path] = g
+		analyses.values[cacheKey] = g
 	}
 	return g, nil
 }
 
 // GraphOptions bounds rendering, not neighborhood depth. Limits are explicit.
 type GraphOptions struct {
-	Host      string   `json:"host"`
-	Depth     int      `json:"depth"`
-	Mode      string   `json:"mode"`
-	NodeLimit int      `json:"node_limit"`
-	EdgeLimit int      `json:"edge_limit"`
-	Expanded  []string `json:"expanded"`
+	ExcludedSites []string `json:"-"`
+	Host          string   `json:"host"`
+	Depth         int      `json:"depth"`
+	Mode          string   `json:"mode"`
+	NodeLimit     int      `json:"node_limit"`
+	EdgeLimit     int      `json:"edge_limit"`
+	Expanded      []string `json:"expanded"`
 }
 type GraphNode struct {
 	ID            string  `json:"id"`
@@ -250,14 +281,15 @@ type GraphEdge struct {
 	Links  int    `json:"links"`
 }
 type GraphView struct {
-	Nodes      []GraphNode `json:"nodes"`
-	Edges      []GraphEdge `json:"edges"`
-	TotalHosts int         `json:"total_hosts"`
-	TotalEdges int         `json:"total_edges"`
-	Sampled    bool        `json:"sampled"`
-	Grouped    bool        `json:"grouped"`
-	Revision   int64       `json:"revision"`
-	AnalyzedAt time.Time   `json:"analyzed_at"`
+	HiddenHosts int         `json:"hidden_hosts"`
+	Nodes       []GraphNode `json:"nodes"`
+	Edges       []GraphEdge `json:"edges"`
+	TotalHosts  int         `json:"total_hosts"`
+	TotalEdges  int         `json:"total_edges"`
+	Sampled     bool        `json:"sampled"`
+	Grouped     bool        `json:"grouped"`
+	Revision    int64       `json:"revision"`
+	AnalyzedAt  time.Time   `json:"analyzed_at"`
 }
 
 func (o *GraphOptions) validate() error {
@@ -348,7 +380,7 @@ func (s *Store) Graph(ctx context.Context, o GraphOptions) (GraphView, error) {
 	if e := o.validate(); e != nil {
 		return v, e
 	}
-	g, e := s.topology(ctx)
+	g, e := s.filteredTopology(ctx, o.ExcludedSites)
 	if e != nil {
 		return v, e
 	}
@@ -359,6 +391,7 @@ func (s *Store) Graph(ctx context.Context, o GraphOptions) (GraphView, error) {
 			return v, e
 		}
 	}
+	v.HiddenHosts = g.hiddenHosts
 	var root int64
 	for id, h := range g.hosts {
 		if h.Name == name {
@@ -367,6 +400,11 @@ func (s *Store) Graph(ctx context.Context, o GraphOptions) (GraphView, error) {
 		}
 	}
 	if root == 0 {
+		for _, excluded := range o.ExcludedSites {
+			if site.Key(name) == site.Key(excluded) {
+				return v, fmt.Errorf("selected host is trap-excluded; turn off Hide trap-excluded hosts to view it")
+			}
+		}
 		return v, fmt.Errorf("host not found")
 	}
 	dist := map[int64]int{root: 0}

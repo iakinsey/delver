@@ -263,3 +263,20 @@ func TestAtlasConcurrentSnapshotReplacement(t *testing.T) {
 	}
 	require.NoError(t, <-finished)
 }
+
+func TestAtlasCanOmitTrapHostsWithoutReplacingFullSnapshot(t *testing.T) {
+	s, fullPath, full := atlasFixture(t, 20)
+	ctx := context.Background()
+	filteredPath := fullPath + ".traps"
+	filtered, err := s.GenerateFilteredAtlas(ctx, filteredPath, "filtered", full.Options, []string{"H10.test."}, func(string) {})
+	require.NoError(t, err)
+	require.Equal(t, 1, filtered.HiddenHosts)
+	require.Equal(t, 19, filtered.Hosts)
+	require.Equal(t, 17, filtered.Edges)
+	hidden, err := AtlasSearch(ctx, filteredPath, "h10.test", filtered.ID)
+	require.NoError(t, err)
+	require.Empty(t, hidden)
+	original, err := AtlasSearch(ctx, fullPath, "h10.test", full.ID)
+	require.NoError(t, err)
+	require.Len(t, original, 1)
+}

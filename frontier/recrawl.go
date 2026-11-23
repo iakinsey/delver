@@ -68,6 +68,10 @@ func (s *Store) DrainRecrawls(ctx context.Context, limit int) error {
 			s.mu.Lock()
 			defer s.mu.Unlock()
 			return s.update(func(tx *badger.Txn) error {
+				if s.trapBlocked(tx, e.request.URI) {
+					active = true
+					return nil
+				}
 				var c Candidate
 				if err := read(tx, "u/"+e.request.URI, &c); err == nil {
 					if c.Terminal == 0 || c.Request.RequestID != e.request.RequestID {

@@ -429,6 +429,7 @@ func (w *Workspace) purgeIncident(ctx context.Context, i protection.Incident) er
 					w.cancelAtlases(reportPath)
 					report.Forget(reportPath)
 					report.ForgetAtlas(reportPath + ".atlas.sqlite")
+					report.ForgetAtlas(reportPath + ".atlas.sqlite" + filteredAtlasSuffix)
 					if _, e = os.Stat(reportPath); e == nil {
 						store, e := report.Open(reportPath, false)
 						if e != nil {
@@ -662,7 +663,10 @@ func removeProtectionAtlasArtifacts(reportPath string) error {
 		}
 		for _, entry := range entries {
 			name := entry.Name()
-			if name == prefix || name == prefix+"-wal" || name == prefix+"-shm" || (strings.HasPrefix(name, prefix+".") && (strings.HasSuffix(name, ".tmp") || strings.HasSuffix(name, ".tmp-journal"))) {
+			filtered := prefix + filteredAtlasSuffix
+			if name == prefix || name == prefix+"-wal" || name == prefix+"-shm" ||
+				name == filtered || name == filtered+"-wal" || name == filtered+"-shm" ||
+				(strings.HasPrefix(name, prefix+".") && (strings.HasSuffix(name, ".tmp") || strings.HasSuffix(name, ".tmp-journal"))) {
 				if e := os.Remove(filepath.Join(dir, name)); e != nil && !os.IsNotExist(e) {
 					return e
 				}

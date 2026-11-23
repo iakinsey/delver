@@ -211,3 +211,36 @@ func TestHostBackboneRemainsConnectedWhenLinkBudgetIsSmaller(t *testing.T) {
 		require.True(t, connected[node.ID], node.Name)
 	}
 }
+
+func TestGraphHidesTrapSitesBeforeTraversal(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(filepath.Join(t.TempDir(), "report.sqlite"), false)
+	require.NoError(t, err)
+	defer s.Close()
+	require.NoError(t, s.Discover(ctx, []URL{
+		{URI: "https://root.test/"},
+		{URI: "https://sub.trap.test/", Origin: "https://root.test/"},
+		{URI: "https://only-through-trap.test/", Origin: "https://sub.trap.test/"},
+		{URI: "https://direct.test/", Origin: "https://root.test/"},
+	}))
+	o := GraphOptions{Host: "root.test", Depth: 2, Mode: "grouped", ExcludedSites: []string{"TRAP.test."}}
+	filtered, err := s.Graph(ctx, o)
+	require.NoError(t, err)
+	require.Equal(t, 1, filtered.HiddenHosts)
+	require.Len(t, filtered.Nodes, 2)
+	require.Len(t, filtered.Edges, 1)
+	for _, node := range filtered.Nodes {
+		require.Contains(t, []string{"root.test", "direct.test"}, node.Name)
+	}
+	o.Host = "sub.trap.test"
+	_, err = s.Graph(ctx, o)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "trap-excluded")
+	o.Host = "root.test"
+	o.ExcludedSites = nil
+	full, err := s.Graph(ctx, o)
+	require.NoError(t, err)
+	require.Zero(t, full.HiddenHosts)
+	require.Len(t, full.Nodes, 4)
+	require.Len(t, full.Edges, 3)
+}

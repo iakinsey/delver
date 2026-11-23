@@ -63,6 +63,20 @@ for (const mobile of [false, true])
     ).toBeVisible();
     await expect(page.getByText("Requests/s", { exact: true })).toBeVisible();
     await choose(page);
+    const trapFilter = page.getByRole("checkbox", {
+      name: "Hide trap-excluded hosts",
+      exact: true,
+    });
+    await expect(trapFilter).toBeChecked();
+    expect((await trapFilter.boundingBox()).width).toBeLessThan(40);
+    const unfilteredResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/crawls/host_graph") &&
+        response.request().postDataJSON().hide_traps === false,
+    );
+    await trapFilter.uncheck();
+    expect((await (await unfilteredResponse).json()).success).toBe(true);
+    await trapFilter.check();
     await expect(page.getByText(/Size: authority/)).toBeVisible();
     await expect(page.getByText(/Authority percentile:/)).toBeVisible();
     await expect(page.getByText(/Graph rendering unavailable/)).toHaveCount(0);

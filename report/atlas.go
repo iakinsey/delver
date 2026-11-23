@@ -11,6 +11,8 @@ import (
 	"math/rand"
 	"os"
 	"time"
+
+	"github.com/iakinsey/delver/site"
 )
 
 type AtlasOptions struct {
@@ -34,15 +36,16 @@ func (o AtlasOptions) Validate() error {
 }
 
 type AtlasInfo struct {
-	Format   int          `json:"format"`
-	ID       string       `json:"id"`
-	Created  time.Time    `json:"created"`
-	Revision int64        `json:"revision"`
-	Partial  bool         `json:"partial"`
-	Hosts    int          `json:"hosts"`
-	Edges    int          `json:"edges"`
-	Clusters int          `json:"clusters"`
-	Options  AtlasOptions `json:"options"`
+	HiddenHosts int          `json:"hidden_hosts,omitempty"`
+	Format      int          `json:"format"`
+	ID          string       `json:"id"`
+	Created     time.Time    `json:"created"`
+	Revision    int64        `json:"revision"`
+	Partial     bool         `json:"partial"`
+	Hosts       int          `json:"hosts"`
+	Edges       int          `json:"edges"`
+	Clusters    int          `json:"clusters"`
+	Options     AtlasOptions `json:"options"`
 }
 type atlasVertex struct {
 	id             int64
@@ -56,7 +59,15 @@ type atlasLink struct{ a, b int }
 
 // GenerateAtlas holds a consistent WAL read snapshot, never the crawler writer
 // lock. Limits are checked while reading, before appending more records.
-func (s *Store) GenerateAtlas(ctx context.Context, target, id string, o AtlasOptions, progress func(string)) (info AtlasInfo, err error) {
+func (s *Store) GenerateAtlas(ctx context.Context, target, id string, o AtlasOptions, progress func(string)) (AtlasInfo, error) {
+	return s.GenerateFilteredAtlas(ctx, target, id, o, nil, progress)
+}
+
+func (s *Store) GenerateFilteredAtlas(ctx context.Context, target, id string, o AtlasOptions, excludedSites []string, progress func(string)) (info AtlasInfo, err error) {
+	excluded := make(map[string]bool, len(excludedSites))
+	for _, name := range excludedSites {
+		excluded[site.Key(name)] = true
+	}
 	if err = o.Validate(); err != nil {
 		return
 	}
@@ -100,6 +111,10 @@ func (s *Store) GenerateAtlas(ctx context.Context, target, id string, o AtlasOpt
 		var v atlasVertex
 		if err = rows.Scan(&v.id, &v.name, &v.known, &v.visited); err != nil {
 			break
+		}
+		if len(excluded) > 0 && excluded[site.Key(v.name)] {
+			info.HiddenHosts++
+			continue
 		}
 		if len(v.name) > 253 {
 			err = fmt.Errorf("host name exceeds 253 bytes")

@@ -38,7 +38,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 beforeEach(() => {
-  apiRequest.mockImplementation(async (path) => {
+  apiRequest.mockImplementation(async (path, data) => {
     if (path.endsWith("/report")) return summary;
     if (path.endsWith("/hosts"))
       return [{ id: 1, name: "example.test", visited: 6, known: 8 }];
@@ -59,6 +59,7 @@ beforeEach(() => {
           },
         ],
         edges: [],
+        hidden_hosts: data.hide_traps ? 3 : 0,
         total_hosts: 1,
         total_edges: 0,
         revision: 1,
@@ -101,7 +102,28 @@ describe("crawl report", () => {
       depth: 2,
       mode: "hosts",
       run_id: "run-1",
+      hide_traps: true,
     });
+    expect(
+      screen.getByText("3 trap-excluded hosts hidden in this run"),
+    ).toBeVisible();
+    const filter = screen.getByRole("checkbox", {
+      name: "Hide trap-excluded hosts",
+    });
+    expect(filter).toBeChecked();
+    fireEvent.click(filter);
+    await waitFor(() =>
+      expect(
+        apiRequest.mock.calls.some(
+          ([path, data]) =>
+            path.endsWith("/host_graph") && data.hide_traps === false,
+        ),
+      ).toBe(true),
+    );
+    await screen.findByTestId("graph");
+    expect(
+      screen.queryByText(/trap-excluded hosts hidden/),
+    ).not.toBeInTheDocument();
   });
   it("uses ranked cursors when loading more host suggestions", async () => {
     const rows = Array.from({ length: 21 }, (_, i) => ({

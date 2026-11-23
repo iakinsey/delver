@@ -18,6 +18,8 @@ Node size represents global PageRank authority, independent of the displayed nei
 
 **Grouped** is optional. Oversized neighborhoods retain important host anchors and combine remaining hosts into expandable groups. Group membership and directed link totals include all hosts and links in the neighborhood, including internal group links. Expansion redistributes the display budget; an expansion that cannot fit reports an error. Group size does not represent PageRank.
 
+**Hide trap-excluded hosts** defaults to enabled. It removes the selected run's actively excluded canonical sites and their subdomains before neighborhood traversal, importance analysis, grouping, and display limits. A path through an excluded host does not make its far-side neighbors reachable. The graph reports the number of excluded host records. Turning the filter off retains access to the full recorded graph. Refresh after restoring an exclusion; underlying report counts and stored links are unchanged.
+
 **Display settings** defaults to 500 nodes and 2,000 links; supported ranges are 10–2,000 nodes and 32–10,000 links. WebGL renders only the bounded projection. Layout runs in a worker for a bounded interval. Pan, zoom, Fit, Fullscreen, keyboard controls, and a selectable host/group list are available. Server analysis is bounded at 100,000 hosts and 1,000,000 distinct directed links per run; larger runs receive an explicit analysis-limit error. Counter and host-search endpoints remain available.
 
 ## Storage and integration
@@ -30,7 +32,7 @@ Older runs import retained frontier/staged records, JSONL output, and attributed
 
 ## API and validation
 
-The existing workspace RPC envelope exposes `/crawls/report`, `/crawls/hosts`, and `/crawls/host_graph`. Supply `crawl_id` and optional `run_id` (latest by default). Host search accepts `query`, `after` (the last result’s `cursor`; older hostname cursors are also accepted), and `limit`. Graph accepts `host`, `depth` (default 2), `mode` (`hosts` or `grouped`), `node_limit`, `edge_limit`, and optional `expanded` group IDs. Responses contain compact report/graph data rather than result payloads. Graph analysis has a 30-second deadline and a two-entry topology cache; live URL counters are read independently.
+The existing workspace RPC envelope exposes `/crawls/report`, `/crawls/hosts`, and `/crawls/host_graph`. Supply `crawl_id` and optional `run_id` (latest by default). Host search accepts `query`, `after` (the last result’s `cursor`; older hostname cursors are also accepted), and `limit`. Graph accepts `host`, `depth` (default 2), `mode` (`hosts` or `grouped`), `node_limit`, `edge_limit`, optional `expanded` group IDs, and `hide_traps` (the UI sends `true` by default; omitted API values retain the full graph). Responses contain compact report/graph data rather than result payloads. Graph analysis has a 30-second deadline and a two-entry topology cache; live URL counters are read independently.
 
 Normal unit and browser suites include report coverage. Scale workloads start from empty temporary storage and can also be selected directly with Go:
 

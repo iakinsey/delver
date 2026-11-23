@@ -1,5 +1,18 @@
 import { test, expect } from "./test";
-import { base, api, info, createForm, savedRecord } from "./helpers/workspace";
+import {
+  base,
+  api as workspaceAPI,
+  info,
+  createForm,
+  savedRecord,
+} from "./helpers/workspace";
+// These assertions follow the Graph UI's default filtered snapshot.
+const api = (request, action, data = {}) =>
+  workspaceAPI(
+    request,
+    action,
+    action.startsWith("atlas_") ? { hide_traps: true, ...data } : data,
+  );
 for (const mobile of [false, true])
   test(`generated network ${mobile ? "mobile" : "desktop"}`, async ({
     page,
@@ -531,7 +544,11 @@ for (const mobile of [false, true]) {
       .getByRole("button", { name: "Graph", exact: true })
       .click();
     await page.getByText("Generation parameters", { exact: true }).click();
-    for (const name of ["Visited hosts only", "Exclude orphans"]) {
+    for (const name of [
+      "Visited hosts only",
+      "Exclude orphans",
+      "Hide trap-excluded hosts",
+    ]) {
       const toggle = page.getByRole("checkbox", { name, exact: true });
       const box = await toggle.boundingBox();
       expect(box.width).toBeLessThan(40);
@@ -543,6 +560,40 @@ for (const mobile of [false, true]) {
     const status = await api(request, "atlas_status", { crawl_id: record.id });
     expect(status.snapshot.hosts).toBe(2);
     expect(status.snapshot.edges).toBe(2);
+    const filter = page.getByRole("checkbox", {
+      name: "Hide trap-excluded hosts",
+      exact: true,
+    });
+    await expect(filter).toBeChecked();
+    await filter.uncheck();
+    await expect(
+      page.getByRole("button", { name: "Generate", exact: true }),
+    ).toBeEnabled();
+    expect(
+      (
+        await api(request, "atlas_status", {
+          crawl_id: record.id,
+          hide_traps: false,
+        })
+      ).snapshot,
+    ).toBeNull();
+    await page.getByRole("button", { name: "Generate", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Regenerate", exact: true }),
+    ).toBeEnabled();
+    const full = await api(request, "atlas_status", {
+      crawl_id: record.id,
+      hide_traps: false,
+    });
+    expect(full.snapshot.hosts).toBe(2);
+    expect(full.snapshot.id).not.toBe(status.snapshot.id);
+    await filter.check();
+    await expect(
+      page.getByRole("button", { name: "Regenerate", exact: true }),
+    ).toBeEnabled();
+    expect(
+      (await api(request, "atlas_status", { crawl_id: record.id })).snapshot.id,
+    ).toBe(status.snapshot.id);
     const canvas = page.getByLabel("Interactive host network", { exact: true });
     const pixels = async () =>
       canvas.evaluate((c) => {

@@ -58,3 +58,23 @@ make test-ui
 ```
 
 Tests use temporary storage and controlled network fixtures. See [browser validation](web/README.md) for targeted UI coverage and [validation commands](docs/manual-testing.md) for benchmarks, endurance, scale, Elasticsearch, and Tor. Tests and synthetic fixtures are tracked; generated evidence and private configuration stay outside Git.
+
+### Duplicate gateway clusters
+
+With automatic trap protection enabled, pages on different sites that share a
+structural fingerprint and link exclusively to the same external URL are treated
+as a gateway cluster. The first five observed sites remain eligible. Subsequent
+members are excluded from automatic crawl expansion and revisits, and their
+observed links remain in the crawl graph. Use **Trap exclusions** to inspect the
+decision or restore a site.
+
+Replay an existing result log without modifying its crawl:
+
+```sh
+go run ./cmd/gateway-replay -results /path/to/run/results.jsonl
+```
+
+To backfill a stopped crawl with automatic trap protection enabled, pass
+`-apply-frontier /path/to/run/frontier` with the results from that same run.
+Replay is safe to repeat. It reads a snapshot of the result log and never visits
+the recorded URLs.

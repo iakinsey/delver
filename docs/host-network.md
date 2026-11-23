@@ -4,6 +4,10 @@ Open **Graph** in the shared Crawl / Reports / Graph navigation, or **Reports �
 
 Defaults include visited hosts only and exclude hosts with no remaining connections after filtering. Visited means at least one recorded HTTP response, including HTTP errors. Nodes represent hostnames, without merging subdomains or registrable domains. Partial historical link coverage remains marked.
 
+**Hide trap-excluded hosts** is enabled by default under **Generation parameters**, alongside the other host filters. Generation omits the selected run's active trap exclusions, including their subdomains and incident edges, before clustering and layout. The snapshot reports the number of omitted hosts. This changes the derived visualization, not crawl records or report totals.
+
+Full and filtered snapshots are stored separately. Switching the checkbox selects the corresponding snapshot; generating one does not replace the other. Existing full snapshots remain available with the filter off. Generate a filtered snapshot when none exists, and use **Regenerate** after trap exclusions change or a site is restored. **Reload snapshot** loads an already generated snapshot; it does not recompute the filter.
+
 ## Geometry and zoom
 
 The server computes weighted Louvain modularity communities on the undirected projection, with cached community totals and neighbor weights, recursively refines oversized communities, and lays out their weighted quotient and internal links with Barnes–Hut Fruchterman–Reingold forces. Disconnected components are laid out separately and packed by their actual footprints. Structurally equivalent leaves receive deterministic separation to avoid artificial rings. The analysis-pass parameter bounds local modularity passes, PageRank, and layout refinement; modularity aggregation has a 16-level ceiling. Directed links and PageRank retain their original directions. A structurally indivisible oversized community has bounded display partitions.

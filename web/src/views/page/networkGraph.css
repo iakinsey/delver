@@ -105,10 +105,12 @@
   }
 }
 
-.network-controls label:has(input[type="checkbox"]) {
-  flex-direction: row;
+.network-filters {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  align-self: center;
+  gap: 8px 16px;
+  margin-top: 12px;
 }
 .network-inspector label {
   display: flex;

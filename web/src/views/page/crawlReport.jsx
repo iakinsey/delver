@@ -25,6 +25,7 @@ export default function CrawlReport() {
     [host, setHost] = useState(""),
     [depth, setDepth] = useState("2"),
     [mode, setMode] = useState("hosts"),
+    [hideTraps, setHideTraps] = useState(true),
     [limits, setLimits] = useState({ node_limit: 500, edge_limit: 2000 }),
     [draftLimits, setDraftLimits] = useState(limits),
     [expanded, setExpanded] = useState([]),
@@ -104,7 +105,15 @@ export default function CrawlReport() {
     const timer = setTimeout(() => {
       call(
         "host_graph",
-        { ...data, host, depth: d, mode, ...limits, expanded },
+        {
+          ...data,
+          host,
+          depth: d,
+          mode,
+          ...limits,
+          expanded,
+          hide_traps: hideTraps,
+        },
         controller.signal,
       )
         .then((r) => {
@@ -126,7 +135,7 @@ export default function CrawlReport() {
       controller.abort();
       graphVersion.current++;
     };
-  }, [host, depth, mode, limits, expanded, refresh, crawlId, runId]);
+  }, [host, depth, mode, limits, expanded, hideTraps, refresh, crawlId, runId]);
   useEffect(() => {
     setQuery("");
     setHost("");
@@ -345,6 +354,19 @@ export default function CrawlReport() {
               <button onClick={() => setRefresh((n) => n + 1)} disabled={busy}>
                 Refresh
               </button>
+              <label className="crawl-check">
+                <input
+                  type="checkbox"
+                  checked={hideTraps}
+                  onChange={(event) => {
+                    setHideTraps(event.target.checked);
+                    setExpanded([]);
+                    setView(null);
+                    setInspection(null);
+                  }}
+                />
+                Hide trap-excluded hosts
+              </label>
               <button onClick={fullscreen}>Fullscreen</button>
             </div>
             <details>
@@ -419,6 +441,12 @@ export default function CrawlReport() {
                   Size: authority · Amber ring: cross-community connector ·
                   Hollow: unvisited · Purple: host group
                 </p>
+                {hideTraps && view.hidden_hosts > 0 && (
+                  <p>
+                    {number(view.hidden_hosts)} trap-excluded hosts hidden in
+                    this run
+                  </p>
+                )}
                 <HostGraph view={view} onPick={pick} onError={renderError} />
                 <p>
                   {view.nodes.length} rendered / {number(view.total_hosts)}{" "}
