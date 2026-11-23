@@ -3,6 +3,7 @@ package protection
 import (
 	"context"
 	"io"
+	"net/url"
 )
 
 // Inspector scans bounded text windows while a normal response consumer reads.
@@ -14,10 +15,12 @@ type Inspector struct {
 	uri, crawl, run string
 	depth           int
 	window          []byte
+	normalizedURL   string
 }
 
 func (p *Policy) InspectReader(ctx context.Context, source io.Reader, uri, crawl, run string, depth int) *Inspector {
-	return &Inspector{ctx: ctx, source: source, policy: p, uri: uri, crawl: crawl, run: run, depth: depth, window: make([]byte, 0, 64<<10)}
+	u, _ := url.PathUnescape(uri)
+	return &Inspector{ctx: ctx, source: source, policy: p, uri: uri, crawl: crawl, run: run, depth: depth, normalizedURL: normalizedText(u), window: make([]byte, 0, 64<<10)}
 }
 func (r *Inspector) Read(buffer []byte) (int, error) {
 	if e := r.ctx.Err(); e != nil {
@@ -52,7 +55,7 @@ func (r *Inspector) InspectChunk(buffer []byte) error {
 			r.window = r.window[:keep]
 		}
 		r.window = append(r.window, part...)
-		if failure := r.policy.Inspect(r.uri, r.window, r.crawl, r.run, r.depth); failure != nil {
+		if failure := r.policy.inspectNormalizedURL(r.uri, r.window, r.normalizedURL, r.crawl, r.run, r.depth); failure != nil {
 			r.Close()
 			return failure
 		}

@@ -175,6 +175,9 @@ func validateParameters(app config.Application, resources map[string]config.Reso
 				return fmt.Errorf("resource %s requires path", r.Name)
 			}
 		case *queue.CrawlQueueParams:
+			if p.CacheBudgetMB != 0 && (p.CacheBudgetMB < 16 || p.CacheBudgetMB > 1024) {
+				return fmt.Errorf("resource %s: request queue cache must be between 16 and 1024 MiB", r.Name)
+			}
 			if p.Path == "" || p.CrawlID == "" || p.MaxAttempts < 1 {
 				return fmt.Errorf("resource %s: invalid crawl queue parameters", r.Name)
 			}

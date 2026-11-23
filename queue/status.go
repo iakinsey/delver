@@ -3,8 +3,6 @@ package queue
 import (
 	"encoding/json"
 	"github.com/dgraph-io/badger/v3"
-	"os"
-	"strings"
 )
 
 func (s *crawlQueue) Counts() (map[string]int64, error) {
@@ -47,27 +45,6 @@ func (s *crawlQueue) Counts() (map[string]int64, error) {
 	return counts, err
 }
 func (s *fileQueue) Counts() (map[string]int64, error) {
-	counts := map[string]int64{"pending": 0, "leased": 0, "failed": 0}
-	for _, dir := range []string{s.path, s.dlqPath} {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			return nil, err
-		}
-		for _, entry := range entries {
-			name := entry.Name()
-			state := "pending"
-			if strings.HasSuffix(name, claimedSuffix) {
-				state = "leased"
-				name = strings.TrimSuffix(name, claimedSuffix)
-			}
-			if !s.entityRegex.MatchString(name) {
-				continue
-			}
-			if dir == s.dlqPath {
-				state = "failed"
-			}
-			counts[state]++
-		}
-	}
-	return counts, nil
+	counts, _, err := s.fileSnapshot(false)
+	return counts, err
 }

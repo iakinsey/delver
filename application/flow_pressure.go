@@ -12,6 +12,17 @@ import (
 
 func (p *preparedApplication) pressure() flow.Pressure {
 	pressure := flow.Pressure{Queues: map[string]int64{}, OldestSeconds: map[string]float64{}, MemoryMB: flow.PressureMemoryMB()}
+	inspection := p.app.Config.HTTPClient.Protection.MemorySnapshot()
+	pressure.InspectionReservedBytes = inspection.ReservedBytes
+	pressure.InspectionPeakBytes = inspection.PeakBytes
+	pressure.InspectionActive = inspection.Active
+	pressure.InspectionWaiters = inspection.Waiters
+	pressure.ResourceMetrics = map[string]map[string]int64{}
+	for name, resource := range p.resources {
+		if source, ok := resource.(interface{ Performance() map[string]int64 }); ok {
+			pressure.ResourceMetrics[name] = source.Performance()
+		}
+	}
 	for _, w := range p.workerDefinitions() {
 		if w.Type != "composite_extractor" && w.Type != "frontier_accumulator" && w.Type != "jsonl_sink" && w.Type != "transformer" {
 			continue

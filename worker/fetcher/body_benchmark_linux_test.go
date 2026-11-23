@@ -23,7 +23,7 @@ import (
 // This measures the actual fetch worker and ordinary HTTP transport, including
 // incremental protection, checksum, atomic publication and response cleanup.
 func BenchmarkProtectedFetchBody(b *testing.B) {
-	for _, size := range []int{121 << 10, 202 << 10, 1 << 20} {
+	for _, size := range []int{8 << 10, 121 << 10, 202 << 10, 1 << 20, 15 << 20} {
 		b.Run(fmt.Sprintf("%dKiB", size>>10), func(b *testing.B) {
 			body := bytes.Repeat([]byte("fixture payload "), size/16)
 			expected := fmt.Sprintf("%x", md5.Sum(body))
@@ -39,7 +39,7 @@ func BenchmarkProtectedFetchBody(b *testing.B) {
 			}
 			defer policy.Close()
 			store := objectstore.NewFilesystemObjectStore(objectstore.FilesystemObjectStoreParams{Path: b.TempDir()})
-			worker := NewHttpFetcherWithConfig(HttpFetcherParams{ObjectStore: store}, config.Config{HTTPClient: config.HTTPClientConfig{Protection: policy, PerOriginConcurrency: 8, MaxResponseBytes: 4 << 20}}).(*httpFetcher)
+			worker := NewHttpFetcherWithConfig(HttpFetcherParams{ObjectStore: store}, config.Config{HTTPClient: config.HTTPClientConfig{Protection: policy, PerOriginConcurrency: 8, MaxResponseBytes: 16 << 20}}).(*httpFetcher)
 			defer worker.OnComplete()
 			raw, _ := json.Marshal(message.FetcherRequest{URI: server.URL})
 			b.SetParallelism(2)

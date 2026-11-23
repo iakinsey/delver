@@ -24,6 +24,7 @@ type ProxySettings struct {
 	URL  string `json:"url"`
 }
 type CrawlDefinition struct {
+	RequestQueueCacheMB  int                `json:"request_queue_cache_mb,omitempty"`
 	Traps                *trap.Settings     `json:"traps,omitempty"`
 	RestrictedPurgeDepth int                `json:"restricted_purge_depth"`
 	ExcludedExtensions   string             `json:"excluded_extensions,omitempty"`
@@ -49,7 +50,7 @@ type CrawlDefinition struct {
 func DefaultCrawlDefinition() CrawlDefinition {
 	p := flow.Default()
 	traps := trap.Default()
-	return CrawlDefinition{Traps: &traps, Fetch: &p, Network: DefaultNetworkSettings(), Name: "Untitled crawl", Seeds: []string{}, Feeds: []string{}, Scope: "same_domain", Strategy: "host_diverse", MaxDepth: 10, MaxHops: 3, RequestDelay: "100ms", Concurrency: 2, Revisit: "24h", Retention: frontier.DefaultRetention()}
+	return CrawlDefinition{RequestQueueCacheMB: 64, Traps: &traps, Fetch: &p, Network: DefaultNetworkSettings(), Name: "Untitled crawl", Seeds: []string{}, Feeds: []string{}, Scope: "same_domain", Strategy: "host_diverse", MaxDepth: 10, MaxHops: 3, RequestDelay: "100ms", Concurrency: 2, Revisit: "24h", Retention: frontier.DefaultRetention()}
 }
 func decodeDefinition(raw json.RawMessage) (CrawlDefinition, error) {
 	d := DefaultCrawlDefinition()
@@ -109,6 +110,12 @@ func compileCrawl(root, runID string, d CrawlDefinition, allowEmpty bool) (confi
 		return a, err
 	}
 	c := &a.Config
+	if d.RequestQueueCacheMB == 0 {
+		d.RequestQueueCacheMB = 64
+	}
+	if d.RequestQueueCacheMB < 16 || d.RequestQueueCacheMB > 1024 {
+		return a, errs.NewRequestError("request queue cache must be between 16 and 1024 MiB")
+	}
 	if d.Traps != nil {
 		if err := d.Traps.Validate(); err != nil {
 			return a, err
@@ -179,7 +186,7 @@ func compileCrawl(root, runID string, d CrawlDefinition, allowEmpty bool) (confi
 		}
 		a.Workers = append(a.Workers, config.Worker{Name: name, Type: kind, Inbox: in, Outbox: out, Parameters: b, Manager: manager, Interval: interval, Once: once, Count: count})
 	}
-	resource("requests", "crawl_queue", map[string]interface{}{"path": filepath.Join(root, "requests"), "crawl_id": runID, "max_attempts": 3, "notify_dispatch": true, "accept_frontier_generations": true})
+	resource("requests", "crawl_queue", map[string]interface{}{"path": filepath.Join(root, "requests"), "crawl_id": runID, "max_attempts": 3, "notify_dispatch": true, "accept_frontier_generations": true, "cache_budget_mb": d.RequestQueueCacheMB})
 	for _, name := range []string{"seeds", "fetched", "analyzed", "results"} {
 		resource(name, "file_queue", map[string]interface{}{"name": name, "path": filepath.Join(root, name), "dlq_path": filepath.Join(root, name+"-failed"), "max_attempts": 3, "max_poll_delay_ms": 20, "reset": true})
 	}

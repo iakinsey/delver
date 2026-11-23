@@ -71,3 +71,59 @@ Cumulative attempt/error/status/byte/storage counters are atomically checkpointe
 `make test-benchmark BASELINE=/private/path/baseline.log BASELINE_APP=/private/path/pipeline-baseline.log` compares five final repetitions against five same-host baseline repetitions at 4, 16, 32, and 64 slots. Both isolated network capacity and complete worker-pipeline median successful throughput may not regress by more than 10%. Raw attempts, successes, latency, heap, and peak concurrency are emitted by `BenchmarkFetchCapacity`; isolated application tests cover pipeline progress, retries, and adaptive recovery.
 
 `make test-soak`, `make test-million`, `make test-million-disk`, `make test-elasticsearch`, and `make test-tor` are separate acceptance gates. They require their documented prerequisites and retain the full endurance/scale/live-network workloads. Generated reports belong outside Git. Prior measurements in [endurance validation](endurance-validation.md) describe earlier code and do not establish current-code acceptance.
+
+## Resource settings and measurements
+
+**Request queue cache (MiB)** is a crawl setting, default 64, range 16–1024.
+Guided definitions use `request_queue_cache_mb`; expert crawl-queue resources use
+`parameters.cache_budget_mb`. Expert **Apply queue cache** patches the named
+resources through the server and preserves other JSON parameters. Missing values
+resolve to 64 during preparation. Historical snapshots and existing database
+files are retained. Cache capacity is distinct from process heap/RSS: memtables,
+worker state, response bodies, database bookkeeping and filesystem mappings also
+consume memory. Synchronous writes and supported transaction sizes are retained.
+
+Fetch metric details include inspection reservations, peak reserved bytes,
+waiters and reservation-wait latency. Resource metrics report request-cache
+capacity and file-queue directory scans/cached candidates. The file queue keeps
+at most 256 candidate names; queue files remain authoritative. Enqueues wake the
+consumer, and periodic directory reconciliation retains filesystem recovery.
+
+Eligible mapped, known-length protected responses reserve twice their bounded
+length plus an 8 MiB inspection allowance, capped at the previous worst-case
+reservation. Unknown, decompressed, encoded and buffered responses keep the
+worst-case reservation. Reservations are acquired atomically and held through
+publication. The inspection budget accounts for reservation capacity, not all
+process memory or race-detector overhead.
+
+Compiled Go benchmarks can be compared locally using:
+
+```sh
+go test -c -o /private/path/candidate.test ./queue
+make test-efficiency-benchmark \
+  BASELINE_TEST_BIN=/private/path/baseline.test \
+  CANDIDATE_TEST_BIN=/private/path/candidate.test \
+  EFFICIENCY_BENCHMARK='BenchmarkRequestQueueResources' \
+  BENCHTIME=1x VALIDATION_ROOT=/private/path/evidence
+```
+
+The runner takes two unchanged controls and five alternating pairs, records
+binary hashes, CPU allocation, host load, allocations, process CPU, peak RSS,
+descriptors and disk writes, and returns a nonzero inconclusive result when
+timing CV or control drift exceeds 10%. Process samples include fixture setup;
+Go benchmark measurements exclude setup where their implementation stops the
+timer. The runner does not accept a remote host and does not initiate Tor
+traffic. Workloads use synthetic data and local fixtures. Run builds and test
+suites separately from measurements. `--storage-root /dev/shm` selects a tmpfs
+comparison; persistent-disk durability and scale gates remain separate.
+
+Individual workloads are selectable through normal `go test -bench` commands:
+`BenchmarkProtectionEfficiency`, `BenchmarkProtectedResponseSizes`,
+`BenchmarkInspectionAdmission`, `BenchmarkStagingTransfer`,
+`BenchmarkStagedDeduplication`, `BenchmarkFileQueueSelection`,
+`BenchmarkRequestQueueResources`, `BenchmarkRequestQueueCacheWorkingSet`,
+`BenchmarkSharedPageAnalysis`, `BenchmarkWorkspaceStates`, and
+`BenchmarkReportResponseWrites`.
+Production-build allocation allowance is checked by
+`TestInspectionTransientAllowance`; race builds retain reservation, cancellation,
+misleading-length, decompression and fallback correctness checks separately.

@@ -44,6 +44,26 @@ func prepareApplication(app config.Application) (config.Application, error) {
 	app.Config.HTTPClient.ExcludedExtensions = extensions
 	app.Resources = append([]config.Resource(nil), app.Resources...)
 	for i, r := range app.Resources {
+		if r.Type == "crawl_queue" {
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(r.Parameters, &fields); err != nil {
+				return app, err
+			}
+			if fields == nil {
+				fields = map[string]json.RawMessage{}
+			}
+			var budget int
+			if raw, ok := fields["cache_budget_mb"]; ok {
+				if err := json.Unmarshal(raw, &budget); err != nil {
+					return app, err
+				}
+			}
+			if budget == 0 {
+				fields["cache_budget_mb"] = json.RawMessage("64")
+				app.Resources[i].Parameters, _ = json.Marshal(fields)
+			}
+			continue
+		}
 		if r.Type != "frontier_store" {
 			continue
 		}

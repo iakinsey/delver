@@ -19,8 +19,15 @@ import (
 // output execute. No competing workload should run during comparisons.
 func BenchmarkWorkspaceCapacity(b *testing.B)           { benchmarkWorkspaceCapacity(b, false) }
 func BenchmarkWorkspaceCapacityWithReport(b *testing.B) { benchmarkWorkspaceCapacity(b, true) }
+func BenchmarkWorkspaceStates(b *testing.B)             { benchmarkWorkspaceCapacityStates(b, false, true) }
 func benchmarkWorkspaceCapacity(b *testing.B, showReport bool) {
-	const pages = 128
+	benchmarkWorkspaceCapacityStates(b, showReport, false)
+}
+func benchmarkWorkspaceCapacityStates(b *testing.B, showReport, states bool) {
+	pages := 128
+	if states {
+		pages = 512
+	}
 	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
@@ -37,6 +44,10 @@ func benchmarkWorkspaceCapacity(b *testing.B, showReport bool) {
 		w, err := NewWorkspace(context.Background(), Options{DataDirectory: b.TempDir()})
 		if err != nil {
 			b.Fatal(err)
+		}
+		var pausedID, pausedRun string
+		if states {
+			pausedID, pausedRun = prepareCapacityStates(b, w, site.URL)
 		}
 		d := DefaultCrawlDefinition()
 		d.Name = "capacity"
@@ -72,6 +83,7 @@ func benchmarkWorkspaceCapacity(b *testing.B, showReport bool) {
 			b.Fatal(err)
 		}
 		complete := false
+		restarted := false
 		for time.Since(started) < 30*time.Second {
 			value, err = w.snapshot(record.ID)
 			if err != nil {
@@ -92,6 +104,17 @@ func benchmarkWorkspaceCapacity(b *testing.B, showReport bool) {
 				b.Fatal(err)
 			}
 
+			if states && !restarted && state.Runtime.Runtime != nil && state.Runtime.Runtime.Fetch != nil && state.Runtime.Runtime.Fetch.Totals.Successes >= 16 && len(state.Runs) > 0 && state.Runs[0].State != "completed" {
+				if err = w.Close(); err != nil {
+					b.Fatal(err)
+				}
+				w, err = NewWorkspace(context.Background(), Options{DataDirectory: w.root})
+				if err != nil {
+					b.Fatal(err)
+				}
+				restarted = true
+				continue
+			}
 			if showReport && len(state.Runs) > 0 && (state.Runs[0].State == "completed" || state.Runtime.Runtime != nil && state.Runtime.Runtime.Fetch != nil) {
 				rawReport, _ := json.Marshal(map[string]interface{}{"crawl_id": record.ID})
 				if _, err = w.HandleCrawls(context.Background(), "report", rawReport); err != nil {
@@ -110,16 +133,28 @@ func benchmarkWorkspaceCapacity(b *testing.B, showReport bool) {
 			time.Sleep(20 * time.Millisecond)
 		}
 		elapsed += time.Since(started)
+		if states {
+			if !restarted {
+				b.Fatal("workload completed without the required workspace restart")
+			}
+			w.mu.Lock()
+			paused := w.records[pausedID]
+			unchanged := len(paused.Runs) > 0 && paused.Runs[len(paused.Runs)-1].ID == pausedRun && paused.Runs[len(paused.Runs)-1].Desired == "paused"
+			w.mu.Unlock()
+			if !unchanged {
+				b.Fatal("paused crawl changed during restart")
+			}
+		}
 		if err = w.Close(); err != nil {
 			b.Fatal(err)
 		}
 		if !complete || last == nil || last.Fetch == nil {
 			b.Fatal("pipeline did not complete")
 		}
-		if last.Fetch.Totals.Successes != pages {
+		if last.Fetch.Totals.Successes != int64(pages) {
 			b.Fatalf("successes %d != %d", last.Fetch.Totals.Successes, pages)
 		}
-		if last.Frontier["unique_html"] != pages {
+		if last.Frontier["unique_html"] != int64(pages) {
 			b.Fatalf("unique HTML: %v", last.Frontier)
 		}
 	}
@@ -141,6 +176,60 @@ func benchmarkWorkspaceCapacity(b *testing.B, showReport bool) {
 	b.ReportMetric(last.Fetch.Latencies["attempt"].P50, "p50_ms")
 	b.ReportMetric(last.Fetch.Latencies["attempt"].P95, "p95_ms")
 	b.ReportMetric(last.Fetch.Latencies["frontier_storage"].P95, "storage_p95_ms")
-	raw, _ := json.Marshal(map[string]interface{}{"configuration": map[string]interface{}{"mode": "fixed", "slots": 32, "pages": pages, "response_delay": "20ms", "proxy": "controlled-loopback", "completion": "drained"}, "final_metrics": last})
+	raw, _ := json.Marshal(map[string]interface{}{"configuration": map[string]interface{}{"mode": "fixed", "workspace_restart": states, "idle_peer": states, "paused_peer": states, "slots": 32, "pages": pages, "response_delay": "20ms", "proxy": "controlled-loopback", "completion": "drained"}, "final_metrics": last})
 	b.Log(string(raw))
+}
+
+// Add idle and paused peers without public-network traffic. The timed active
+// crawl uses fixed concurrency and restarts the workspace during progress.
+func prepareCapacityStates(b *testing.B, w *Workspace, proxy string) (string, string) {
+	b.Helper()
+	call := func(action string, data interface{}) map[string]interface{} {
+		b.Helper()
+		raw, _ := json.Marshal(data)
+		out, e := w.HandleCrawls(context.Background(), action, raw)
+		if e != nil {
+			b.Fatal(e)
+		}
+		encoded, _ := json.Marshal(out)
+		var result map[string]interface{}
+		if e = json.Unmarshal(encoded, &result); e != nil {
+			b.Fatal(e)
+		}
+		return result
+	}
+	d := DefaultCrawlDefinition()
+	d.Name = "idle peer"
+	d.Seeds = []string{"http://idle.invalid/"}
+	d.Proxy = ProxySettings{Mode: "http", URL: proxy}
+	d.Fetch.Mode = "fixed"
+	d.Fetch.Concurrency = 4
+	d.Fetch.Maximum = 4
+	no := false
+	d.Network.RespectRobots = &no
+	call("create", map[string]interface{}{"definition": d})
+	d.Name = "paused peer"
+	d.Seeds = []string{"http://paused.invalid/"}
+	paused := call("create", map[string]interface{}{"definition": d})
+	id := paused["id"].(string)
+	call("start_run", map[string]interface{}{"crawl_id": id, "revision": paused["revision"], "id": "start-paused"})
+	deadline := time.Now().Add(15 * time.Second)
+	wait := func(want string) {
+		b.Helper()
+		for time.Now().Before(deadline) {
+			out := call("detail", map[string]interface{}{"crawl_id": id})
+			if status, ok := out["runtime"].(map[string]interface{}); ok && status["state"] == want {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		b.Fatal("peer did not become " + want)
+	}
+	wait("running")
+	call("command", map[string]interface{}{"crawl_id": id, "action": "pause", "id": "pause-peer"})
+	wait("paused")
+	w.mu.Lock()
+	run := w.records[id].Runs[len(w.records[id].Runs)-1].ID
+	w.mu.Unlock()
+	return id, run
 }

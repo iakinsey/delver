@@ -34,7 +34,13 @@ const identifierRegex = `^\d+-\d+-\d+-` + nameRegex + "$"
 var errQueueEmpty = errors.New("queue is empty")
 
 type fileQueue struct {
-	policy *protection.Policy
+	candidates      []fileCandidate
+	candidatesReady bool
+	candidatesMore  bool
+	candidatesUntil time.Time
+	candidateScans  atomic.Int64
+	wake            chan struct{}
+	policy          *protection.Policy
 	admission
 	failures       chan error
 	healthMu       sync.Mutex
@@ -96,7 +102,7 @@ func NewFileQueue(params FileQueueParams) Queue {
 		panic(err)
 	}
 
-	return &fileQueue{failures: make(chan error, 1),
+	return &fileQueue{wake: make(chan struct{}, 1), failures: make(chan error, 1),
 		name:           params.Name,
 		maxAttempts:    params.MaxAttempts,
 		path:           params.Path,
@@ -228,6 +234,7 @@ func (s *fileQueue) putProtected(message types.Message, priority int) error {
 	if err := os.Rename(writingPath, finalPath); err != nil {
 		return errors.Wrap(err, "failed to rename file for queue put")
 	}
+	s.notifyPendingLocked(fileName)
 
 	return nil
 }
@@ -235,6 +242,7 @@ func (s *fileQueue) putProtected(message types.Message, priority int) error {
 func (s *fileQueue) Prepare() error {
 	s.putLock.Lock()
 	defer s.putLock.Unlock()
+	s.invalidateCandidatesLocked()
 	if err := s.restoreReplays(); err != nil {
 		return err
 	}
@@ -267,6 +275,8 @@ func (s *fileQueue) Prepare() error {
 }
 
 func (s *fileQueue) EndTransaction(message types.Message, success bool) error {
+	s.putLock.Lock()
+	defer s.putLock.Unlock()
 	defer s.finish(message)
 	delivery := message.DeliveryID
 	if delivery == "" {
@@ -306,7 +316,11 @@ func (s *fileQueue) EndTransaction(message types.Message, success bool) error {
 	if err = os.WriteFile(messagePath, payload, 0600); err != nil {
 		return err
 	}
-	return os.Rename(messagePath, filepath.Join(s.path, delivery))
+	if err := os.Rename(messagePath, filepath.Join(s.path, delivery)); err != nil {
+		return err
+	}
+	s.notifyPendingLocked(delivery)
+	return nil
 }
 
 func (s *fileQueue) Len() int64 {
@@ -351,14 +365,17 @@ func (s *fileQueue) perform() {
 
 		select {
 		case <-time.After(sleepTime):
-			if s.isTerminating() {
-
-				return
-			}
-
+		case <-s.wake:
+		case <-s.terminate:
+			return
+		}
+		if s.isTerminating() {
+			return
+		}
+		{
 			if s.admission.enabled() {
-				counts, err := s.Counts()
-				if err == nil && counts["pending"] == 0 {
+				pending, err := s.pendingCandidateAvailable()
+				if err == nil && !pending {
 					continue
 				}
 			}
@@ -391,13 +408,16 @@ func (s *fileQueue) perform() {
 			} else {
 				select {
 				case s.channel <- *message:
+					// Continue draining ready work. Empty queues still wait for
+					// enqueue notifications or the reconciliation poll.
+					select {
+					case s.wake <- struct{}{}:
+					default:
+					}
 				case <-s.terminate:
 					return
 				}
 			}
-		case <-s.terminate:
-
-			return
 		}
 	}
 }
@@ -405,19 +425,15 @@ func (s *fileQueue) perform() {
 func (s *fileQueue) next() (*types.Message, error) {
 	s.putLock.Lock()
 	defer s.putLock.Unlock()
-	files, err := util.ReadDirAlphabetized(s.path)
-	sortQueueFiles(files)
-
-	if err != nil {
-		return nil, err
-	}
-
-	for _, file := range files {
-		name := file.Name()
-
-		if !s.entityRegex.MatchString(name) {
-			continue
+	if !s.candidatesReady || len(s.candidates) == 0 && s.candidatesMore || time.Now().After(s.candidatesUntil) {
+		if err := s.refillCandidatesLocked(); err != nil {
+			return nil, err
 		}
+	}
+	for len(s.candidates) > 0 {
+		name := s.candidates[0].name
+		copy(s.candidates, s.candidates[1:])
+		s.candidates = s.candidates[:len(s.candidates)-1]
 
 		workFile := filepath.Join(s.path, name)
 		claimedPath, err := s.claimFile(workFile)

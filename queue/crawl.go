@@ -18,6 +18,7 @@ import (
 )
 
 type CrawlQueueParams struct {
+	CacheBudgetMB             int           `json:"cache_budget_mb,omitempty"`
 	AcceptFrontierGenerations bool          `json:"accept_frontier_generations"`
 	NotifyDispatch            bool          `json:"notify_dispatch"`
 	Path                      string        `json:"path"`
@@ -57,10 +58,19 @@ func (s *crawlQueue) SetFrontierIdentityLookup(lookup func(string) (message.Fetc
 }
 
 func NewCrawlQueue(p CrawlQueueParams) (Queue, error) {
+	if p.CacheBudgetMB == 0 {
+		p.CacheBudgetMB = 64
+	}
+	if p.CacheBudgetMB < 16 || p.CacheBudgetMB > 1024 {
+		return nil, fmt.Errorf("request queue cache must be between 16 and 1024 MiB")
+	}
 	if p.Path == "" || p.CrawlID == "" || p.MaxAttempts < 1 {
 		return nil, fmt.Errorf("crawl queue requires path, crawl_id and positive max_attempts")
 	}
-	db, err := badger.Open(badger.DefaultOptions(p.Path).WithLogger(nil).WithSyncWrites(true))
+	// Preserve the memtable's supported transaction size. The budget covers
+	// read caches; two memtables/compactors bound write-side concurrency.
+	budget := int64(p.CacheBudgetMB) << 20
+	db, err := badger.Open(badger.DefaultOptions(p.Path).WithLogger(nil).WithSyncWrites(true).WithBlockCacheSize(budget * 3 / 4).WithIndexCacheSize(budget / 4).WithNumMemtables(2).WithNumCompactors(2))
 	if err != nil {
 		return nil, err
 	}
@@ -81,6 +91,11 @@ func crawlURI(raw string) (string, error) {
 		u.Path = "/"
 	}
 	return u.String(), nil
+}
+
+// Configured cache capacity is separate from resident memory or heap usage.
+func (s *crawlQueue) Performance() map[string]int64 {
+	return map[string]int64{"cache_capacity_bytes": int64(s.params.CacheBudgetMB) << 20}
 }
 func (s *crawlQueue) key(msg types.Message) ([]byte, error) {
 	var req message.FetcherRequest

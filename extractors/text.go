@@ -19,6 +19,9 @@ func NewTextExtractor() Extractor {
 	return &textExtractor{}
 }
 
+// Initialized once and never mutated; sanitizer calls keep their token state local.
+var textPolicy = bluemonday.StripTagsPolicy()
+
 var spacing = []*unicode.RangeTable{
 	unicode.Space,
 	unicode.Pattern_White_Space,
@@ -32,8 +35,7 @@ func (s *textExtractor) PerformContext(ctx context.Context, f *os.File, composit
 		return nil, err
 	}
 
-	p := bluemonday.StripTagsPolicy()
-	buf := p.SanitizeReader(contextReader{ctx, f})
+	buf := textPolicy.SanitizeReader(contextReader{ctx, f})
 
 	if err := ctx.Err(); err != nil {
 		return nil, err

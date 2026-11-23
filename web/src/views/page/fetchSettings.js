@@ -130,7 +130,13 @@ export function FetchSettings({ value, onChange, onError, disabled = false }) {
   );
 }
 
-export function ExpertFetchSettings({ pipeline, onApply, onError, onBusy }) {
+export function ExpertFetchSettings({
+  pipeline,
+  onApply,
+  onError,
+  onBusy,
+  disabled = false,
+}) {
   const [draft, setDraft] = useState(null);
   const [applying, setApplying] = useState(false);
   const setBusy = (value) => {
@@ -150,12 +156,12 @@ export function ExpertFetchSettings({ pipeline, onApply, onError, onBusy }) {
         value={value}
         onChange={setDraft}
         onError={onError}
-        disabled={applying}
+        disabled={applying || disabled}
       />
       {draft && (
         <button
           type="button"
-          disabled={applying}
+          disabled={applying || disabled}
           onClick={async () => {
             setBusy(true);
             try {
@@ -176,5 +182,74 @@ export function ExpertFetchSettings({ pipeline, onApply, onError, onBusy }) {
         </button>
       )}
     </div>
+  );
+}
+
+export function ExpertQueueCacheSettings({
+  pipeline,
+  onApply,
+  onError,
+  onBusy,
+  disabled = false,
+}) {
+  const [draft, setDraft] = useState({});
+  const [applying, setApplying] = useState(false);
+  let resources;
+  try {
+    resources = (JSON.parse(pipeline).resources || []).filter(
+      (r) => r.type === "crawl_queue",
+    );
+  } catch {
+    return null;
+  }
+  if (!resources.length) return null;
+  return (
+    <section>
+      <h3>Request queue storage</h3>
+      {resources.map((r) => (
+        <label key={r.name} className="crawl-field">
+          Request queue cache (MiB): {r.name}
+          <input
+            type="number"
+            min="16"
+            max="1024"
+            required
+            disabled={applying || disabled}
+            value={draft[r.name] ?? r.parameters?.cache_budget_mb ?? 64}
+            onChange={(e) =>
+              setDraft((old) => ({
+                ...old,
+                [r.name]: e.target.value === "" ? "" : Number(e.target.value),
+              }))
+            }
+          />
+        </label>
+      ))}
+      {Object.keys(draft).length > 0 && (
+        <button
+          type="button"
+          disabled={applying || disabled}
+          onClick={async () => {
+            setApplying(true);
+            onBusy?.(true);
+            try {
+              const result = await crawlAPI("patch_queue_cache", {
+                configuration_json: pipeline,
+                budgets: draft,
+              });
+              onApply(result.configuration_json);
+              setDraft({});
+            } catch (e) {
+              onError(e.message);
+            } finally {
+              setApplying(false);
+              onBusy?.(false);
+            }
+          }}
+        >
+          Apply queue cache
+        </button>
+      )}
+    </section>
   );
 }

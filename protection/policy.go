@@ -53,12 +53,13 @@ type Incident struct {
 	Progress      map[string]string `json:"progress"`
 }
 type State struct {
-	Health        string     `json:"health,omitempty"`
-	InspectionMiB int        `json:"inspection_memory_mib"`
-	Revision      uint64     `json:"revision"`
-	Lists         []List     `json:"lists"`
-	Rules         []Rule     `json:"rules"`
-	Incidents     []Incident `json:"incidents"`
+	Inspection    *InspectionMemory `json:"inspection,omitempty"`
+	Health        string            `json:"health,omitempty"`
+	InspectionMiB int               `json:"inspection_memory_mib"`
+	Revision      uint64            `json:"revision"`
+	Lists         []List            `json:"lists"`
+	Rules         []Rule            `json:"rules"`
+	Incidents     []Incident        `json:"incidents"`
 }
 type flight struct {
 	uri    string
@@ -73,25 +74,34 @@ type policyIndex struct {
 var ErrCancelled = errors.New("protection cleanup cancelled")
 
 type Policy struct {
-	purgeCancels  map[string]context.CancelFunc
-	writeSequence uint64
-	writes        map[uint64]struct{}
-	writesChanged chan struct{}
-	current       atomic.Pointer[policyIndex]
-	persistedRows map[string]string
-	listVersions  map[string]string
-	jobEntries    map[string]bool
-	storeError    error
-	healthChanged chan struct{}
-	memoryUsed    int64
-	memoryChanged chan struct{}
-	mu            sync.RWMutex
-	db            *sql.DB
-	state         State
-	domains       map[string][]string
-	urls          map[string][]string
-	quarantines   map[string]string
-	flights       map[string]flight
+	purgeCancels                map[string]context.CancelFunc
+	writeSequence               uint64
+	writes                      map[uint64]struct{}
+	writesChanged               chan struct{}
+	current                     atomic.Pointer[policyIndex]
+	persistedRows               map[string]string
+	listVersions                map[string]string
+	jobEntries                  map[string]bool
+	storeError                  error
+	healthChanged               chan struct{}
+	memoryUsed                  int64
+	memoryPeak                  int64
+	memoryActive, memoryWaiters int
+	memoryWaits, memoryWaitNS   int64
+	memoryChanged               chan struct{}
+	mu                          sync.RWMutex
+	db                          *sql.DB
+	state                       State
+	domains                     map[string][]string
+	urls                        map[string][]string
+	quarantines                 map[string]string
+	flights                     map[string]flight
+	compiledRules               []normalizedRule
+}
+
+type normalizedRule struct {
+	id      string
+	phrases []string
 }
 
 func Open(path string) (*Policy, error) {
@@ -124,6 +134,8 @@ func (p *Policy) Snapshot() State {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	s := p.state
+	memory := p.memorySnapshotLocked()
+	s.Inspection = &memory
 	s.Lists = append([]List{}, s.Lists...)
 	for n := range s.Lists {
 		s.Lists[n].Entries = append([]Entry{}, s.Lists[n].Entries...)
@@ -152,6 +164,17 @@ func (p *Policy) Incidents() []Incident {
 	return p.incidentsLocked()
 }
 func (p *Policy) reindexLocked() {
+	p.compiledRules = nil
+	for _, rule := range p.state.Rules {
+		if !rule.Enabled {
+			continue
+		}
+		prepared := normalizedRule{id: rule.ID}
+		for _, phrase := range rule.Phrases {
+			prepared.phrases = append(prepared.phrases, normalizedText(phrase))
+		}
+		p.compiledRules = append(p.compiledRules, prepared)
+	}
 	p.domains = map[string][]string{}
 	p.urls = map[string][]string{}
 
@@ -486,7 +509,9 @@ func (p *Policy) SetIncident(i Incident) error {
 var tags = regexp.MustCompile(`<[^>]*>`)
 
 func normalizedText(s string) string {
-	s = tags.ReplaceAllString(s, " ")
+	if strings.IndexByte(s, '<') >= 0 {
+		s = tags.ReplaceAllString(s, " ")
+	}
 	s = html.UnescapeString(s)
 	s = strings.ToLower(norm.NFKC.String(s))
 	return normalizedWhitespace(s)
@@ -543,27 +568,65 @@ func (p *Policy) Inspect(raw string, body []byte, crawl, run string, depth int) 
 	if p == nil {
 		return nil
 	}
+	u, _ := url.PathUnescape(raw)
+	return p.inspectNormalizedURL(raw, body, normalizedText(u), crawl, run, depth)
+}
+
+func (p *Policy) inspectNormalizedURL(raw string, body []byte, normalizedURL, crawl, run string, depth int) error {
+	if p == nil {
+		return nil
+	}
 	if e := p.Check(raw); e != nil {
 		return e
 	}
 	text := normalizedText(string(body))
-	u, _ := url.PathUnescape(raw)
-	text += " " + normalizedText(u)
 	p.mu.RLock()
-	rules := append([]Rule(nil), p.state.Rules...)
+	// Rebuilt under the lock on every successful rule update; snapshots remain
+	// immutable so matching neither copies rules nor retains page content.
+	rules := p.compiledRules
 	p.mu.RUnlock()
 	for _, r := range rules {
-		if !r.Enabled {
-			continue
-		}
-		for _, phrase := range r.Phrases {
-			if phraseMatches(text, normalizedText(phrase)) {
-				_, e := p.Trigger(raw, r.ID, crawl, run, depth)
+		for _, phrase := range r.phrases {
+			if phraseMatchesJoined(text, normalizedURL, phrase) {
+				_, e := p.Trigger(raw, r.id, crawl, run, depth)
 				return e
 			}
 		}
 	}
 	return nil
+}
+
+// Equivalent to phraseMatches(left+" "+right, phrase), without copying the
+// complete inspection window. Boundary matches must cross the inserted space.
+func phraseMatchesJoined(left, right, phrase string) bool {
+	if phrase == "" {
+		return false
+	}
+	if phraseMatches(left, phrase) || phraseMatches(right, phrase) {
+		return true
+	}
+	for at := 0; at < len(phrase); at++ {
+		if phrase[at] != ' ' || at > len(left) || len(phrase)-at-1 > len(right) {
+			continue
+		}
+		rest := len(phrase) - at - 1
+		if !strings.HasSuffix(left, phrase[:at]) || !strings.HasPrefix(right, phrase[at+1:]) {
+			continue
+		}
+		before, after := false, false
+		if len(left) > at {
+			r, _ := utf8.DecodeLastRuneInString(left[:len(left)-at])
+			before = unicode.IsLetter(r) || unicode.IsDigit(r)
+		}
+		if len(right) > rest {
+			r, _ := utf8.DecodeRuneInString(right[rest:])
+			after = unicode.IsLetter(r) || unicode.IsDigit(r)
+		}
+		if !before && !after {
+			return true
+		}
+	}
+	return false
 }
 
 func phraseMatches(text, phrase string) bool {

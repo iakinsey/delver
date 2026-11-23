@@ -3,10 +3,46 @@ package protection
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
 )
 
+type InspectionMemory struct {
+	ReservedBytes int64 `json:"reserved_bytes"`
+	PeakBytes     int64 `json:"peak_bytes"`
+	Active        int   `json:"active"`
+	Waiters       int   `json:"waiters"`
+	Waits         int64 `json:"waits"`
+	WaitNS        int64 `json:"wait_ns"`
+}
+
+func (p *Policy) memorySnapshotLocked() InspectionMemory {
+	return InspectionMemory{p.memoryUsed, p.memoryPeak, p.memoryActive, p.memoryWaiters, p.memoryWaits, p.memoryWaitNS}
+}
+func (p *Policy) MemorySnapshot() InspectionMemory {
+	if p == nil {
+		return InspectionMemory{}
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.memorySnapshotLocked()
+}
+
 func (p *Policy) Reserve(ctx context.Context, n int64) (func(), error) {
+	started := time.Now()
+	waiting := false
+	defer func() {
+		if waiting {
+			p.mu.Lock()
+			p.memoryWaiters--
+			p.memoryWaitNS += time.Since(started).Nanoseconds()
+			p.mu.Unlock()
+		}
+	}()
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		p.mu.Lock()
 		budget := int64(p.state.InspectionMiB) << 20
 		if n < 0 || n > budget {
@@ -15,14 +51,25 @@ func (p *Policy) Reserve(ctx context.Context, n int64) (func(), error) {
 		}
 		if p.memoryUsed+n <= budget {
 			p.memoryUsed += n
+			p.memoryActive++
+			p.memoryPeak = max(p.memoryPeak, p.memoryUsed)
 			p.mu.Unlock()
+			var once sync.Once
 			return func() {
-				p.mu.Lock()
-				p.memoryUsed -= n
-				close(p.memoryChanged)
-				p.memoryChanged = make(chan struct{})
-				p.mu.Unlock()
+				once.Do(func() {
+					p.mu.Lock()
+					p.memoryUsed -= n
+					p.memoryActive--
+					close(p.memoryChanged)
+					p.memoryChanged = make(chan struct{})
+					p.mu.Unlock()
+				})
 			}, nil
+		}
+		if !waiting {
+			waiting = true
+			p.memoryWaiters++
+			p.memoryWaits++
 		}
 		changed := p.memoryChanged
 		p.mu.Unlock()

@@ -894,6 +894,22 @@
     {
       "file": "workspace-body.spec.js",
       "title": "protected body https-proxy https chunked"
+    },
+    {
+      "file": "workspace-queue-cache.spec.js",
+      "title": "request queue cache expert exact integers desktop"
+    },
+    {
+      "file": "workspace-queue-cache.spec.js",
+      "title": "request queue cache expert exact integers mobile"
+    },
+    {
+      "file": "workspace-queue-cache.spec.js",
+      "title": "request queue cache guided persistence and runtime desktop"
+    },
+    {
+      "file": "workspace-queue-cache.spec.js",
+      "title": "request queue cache guided persistence and runtime mobile"
     }
   ]
 }

@@ -47,3 +47,16 @@ Run `go test ./frontier ./queue ./worker/frontierworker ./application`. The meas
 Extension exclusions are applied before discovery staging, including seed admission. Each 128-input chunk atomically stores allowed links, its replay marker, and an aggregate policy-skip count. Replaying that chunk does not repeat its skips. Already-staged links excluded by a new policy are removed and counted in the same batched acknowledgment transaction. Admission and HTTP checks remain authoritative for queued requests and redirects. A new discovery after removing a rule can admit a previously excluded URL; replaying an already committed input retains its original decision.
 
 For a controlled filtering comparison, capture five baseline repetitions of `BenchmarkDiscoveryExtensionBatch` and `BenchmarkWorkspaceDiscoveryPressure` with `go test -run '^$' -bench NAME -benchtime=1x -count=5` in their respective packages. Set `TMPDIR` to persistent storage for the frontier benchmark. Run `make test-discovery-benchmark DISCOVERY_BASELINE=/private/frontier-baseline.log DISCOVERY_PIPELINE_BASELINE=/private/pipeline-baseline.log VALIDATION_ROOT=/private/results` against the updated code. The target records timings, database commits, policy skips, analyzed-queue peaks, and sampled fetch-idle time, and rejects an allowed-only median slowdown above 10%.
+
+## Staged discovery and admission
+
+Discovery events own their durable staging records and replay receipts.
+Admission normalizes URLs, deduplicates frontier identities and retains better
+traversal paths. Pending discoveries remain durable until admitted or excluded.
+
+Unconstrained admission windows commit up to 128 records together. A rejected
+batch rolls back completely before the ordinary per-record path handles that
+window. Oversized batches fall back to individual admissions; acknowledgments
+remain after commit. Report response writes coalesce callers already waiting,
+with a maximum of 128 and no batching timer. Uncontended report writes execute
+in the caller. Object and file-queue file syncs remain enabled.

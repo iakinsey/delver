@@ -82,3 +82,8 @@ test-network-million:
 test-protection-benchmark:
 	@test -n "$(BASELINE_BIN)" || (echo 'BASELINE_BIN must identify the pre-change binary'; exit 1)
 	python3 scripts/benchmark-protection.py --baseline "$(BASELINE_BIN)" --final "$(CURDIR)/build/delver" --output "$(VALIDATION_ROOT)/protection-benchmark" --storage-root "$(TMPFS_ROOT)/protection-benchmark"
+
+.PHONY: test-efficiency-benchmark
+test-efficiency-benchmark:
+	@test -n "$(BASELINE_TEST_BIN)" && test -n "$(CANDIDATE_TEST_BIN)" && test -n "$(EFFICIENCY_BENCHMARK)" || (echo 'BASELINE_TEST_BIN, CANDIDATE_TEST_BIN and EFFICIENCY_BENCHMARK are required'; exit 1)
+	python3 scripts/benchmark-efficiency.py --baseline "$(BASELINE_TEST_BIN)" --candidate "$(CANDIDATE_TEST_BIN)" --benchmark "$(EFFICIENCY_BENCHMARK)" --benchtime "$(or $(BENCHTIME),3s)" --cpu "$(or $(BENCH_CPU),0)" --procs "$(or $(BENCH_PROCS),1)" --output "$(VALIDATION_ROOT)/efficiency-benchmark"

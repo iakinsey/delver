@@ -4,9 +4,6 @@ import (
 	"encoding/json"
 	"github.com/dgraph-io/badger/v3"
 	"github.com/iakinsey/delver/types/message"
-	"os"
-	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -50,30 +47,4 @@ func (s *crawlQueue) Pressure() (map[string]int64, float64, error) {
 	})
 	return counts, time.Since(time.Unix(0, oldest)).Seconds(), err
 }
-func (s *fileQueue) Pressure() (map[string]int64, float64, error) {
-	counts, err := s.Counts()
-	if err != nil {
-		return nil, 0, err
-	}
-	entries, err := os.ReadDir(s.path)
-	if err != nil {
-		return nil, 0, err
-	}
-	oldest := time.Now()
-	for _, e := range entries {
-		if !s.entityRegex.MatchString(strings.TrimSuffix(e.Name(), claimedSuffix)) {
-			continue
-		}
-		info, err := os.Stat(filepath.Join(s.path, e.Name()))
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return nil, 0, err
-		}
-		if info.ModTime().Before(oldest) {
-			oldest = info.ModTime()
-		}
-	}
-	return counts, time.Since(oldest).Seconds(), nil
-}
+func (s *fileQueue) Pressure() (map[string]int64, float64, error) { return s.fileSnapshot(true) }

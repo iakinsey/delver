@@ -7,6 +7,7 @@ All workspace actions use POST JSON. Responses include `http_code`, `success`, o
 | Route | Purpose |
 | --- | --- |
 | `/crawls/defaults`, `/crawls/preview` | Guided defaults and validation preview |
+| `/crawls/patch_fetch`, `/crawls/patch_queue_cache` | Prepare expert fetch/cache edits without saving or rounding custom JSON integers |
 | `/crawls/list`, `/crawls/detail` | Saved crawls and run snapshots |
 | `/crawls/create`, `/crawls/draft`, `/crawls/pipeline` | Create and prepare guided/custom configuration |
 | `/crawls/activate`, `/crawls/start_run`, `/crawls/continue_run` | Activate draft, replace run, continue pending work |

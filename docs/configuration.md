@@ -51,7 +51,7 @@ Every resource has `name`, `type`, and a `parameters` object.
 
 | Type | Parameters |
 | --- | --- |
-| `crawl_queue` | Required `path`, `crawl_id`; `max_attempts` defaults to 3; `recrawl_after` defaults to disabled. Accepts only fetch requests. Exact persistent deduplication. |
+| `crawl_queue` | Required `path`, `crawl_id`; `max_attempts` defaults to 3; `recrawl_after` defaults to disabled; `cache_budget_mb` defaults to 64, range 16–1024 MiB. The budget bounds read-cache capacity; write buffers retain the existing transaction-size limit. Accepts only fetch requests. Exact persistent deduplication. |
 | `file_queue` | Required `name`, `path`, `dlq_path` (distinct); optional `max_poll_delay_ms`, `max_size` (0 = unlimited), `max_attempts` (factory default 3), `reset` (enable claimed-record recovery), `resilient` (factory default true). Lower numeric priority runs first. |
 | `channel_queue` | No parameters. Unbuffered transient queue, no retry persistence. |
 | `timer` | Positive `delay`. Produces immediate and periodic timer messages; jobs normally create their own timer. |

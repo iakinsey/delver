@@ -97,6 +97,19 @@ export function FetchMetrics({ data, frontier }) {
             </tbody>
           </table>
         </div>
+        {Object.entries(data.pressure?.resource_metrics || {}).map(
+          ([name, metrics]) => (
+            <p key={name}>
+              {name}:{" "}
+              {Object.entries(metrics)
+                .map(
+                  ([key, value]) =>
+                    `${key.replaceAll("_", " ")}: ${number(value)}`,
+                )
+                .join(" · ")}
+            </p>
+          ),
+        )}
         <p>
           Received: {number(data.totals?.bytes_received)} bytes · Stored:{" "}
           {number(data.totals?.bytes_stored)} bytes
@@ -105,6 +118,12 @@ export function FetchMetrics({ data, frontier }) {
           Memory: {number(data.pressure?.memory_mb)} MiB · CPU:{" "}
           {number(data.pressure?.cpu_percent)}% · Free disk:{" "}
           {number(data.pressure?.disk_free_mb)} MiB
+        </p>
+        <p>
+          Inspection: {number(data.pressure?.inspection_active)} active ·{" "}
+          {number(data.pressure?.inspection_reserved_bytes)} bytes reserved ·{" "}
+          {number(data.pressure?.inspection_peak_bytes)} bytes peak ·{" "}
+          {number(data.pressure?.inspection_waiters)} waiting
         </p>
         <ul>
           {Object.entries(data.errors || {}).map(([key, value]) => (

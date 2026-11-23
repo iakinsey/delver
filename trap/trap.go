@@ -89,65 +89,68 @@ func Pattern(raw string) uint64 {
 	sort.Strings(keys)
 	return hash(strings.Join(segments, "/") + "?" + strings.Join(keys, "&"))
 }
-func Observe(ctx context.Context, r io.Reader, raw string, links []string) (Observation, error) {
+
+const ObservationByteLimit = 16 << 20
+
+// Structure is private to a delivery. It retains bounded hashes, never page text.
+type Structure struct {
+	stack            []string
+	overflow, tokens int
+	shingles         map[uint64]bool
+	done             bool
+}
+
+func NewStructure() *Structure { return &Structure{shingles: map[uint64]bool{}} }
+func (s *Structure) Add(kind html.TokenType, token html.Token) {
+	if s.done || s.tokens >= 100000 {
+		return
+	}
+	if kind != html.StartTagToken && kind != html.EndTagToken && kind != html.SelfClosingTagToken {
+		return
+	}
+	if token.Data == "script" || token.Data == "style" {
+		return
+	}
+	s.tokens++
+	if kind == html.EndTagToken {
+		if s.overflow > 0 {
+			s.overflow--
+			return
+		}
+		for i := len(s.stack) - 1; i >= 0; i-- {
+			if s.stack[i] == token.Data {
+				s.stack = s.stack[:i]
+				break
+			}
+		}
+		return
+	}
+	path := strings.Join(s.stack, "/") + "/" + token.Data
+	s.shingles[hash(path)] = true
+	// Ancestry shingles retain local structure without encoding sibling order.
+	// Moving a complete section therefore does not change its fingerprint.
+	start := max(0, len(s.stack)-3)
+	s.shingles[hash(strings.Join(s.stack[start:], ">")+">"+token.Data)] = true
+	if len(s.shingles) > 4096 {
+		s.done = true
+		return
+	}
+	if kind == html.StartTagToken && !voidTag(token.Data) {
+		if len(s.stack) < 64 && s.overflow == 0 {
+			s.stack = append(s.stack, token.Data)
+		} else {
+			s.overflow++
+		}
+	}
+}
+func (s *Structure) Observation(raw string, links []string) Observation {
 	o := Observation{URI: raw, Site: site.Key(raw), Signature: make([]uint64, 64), Patterns: []uint64{}, Destinations: []string{}}
 	for i := range o.Signature {
 		o.Signature[i] = ^uint64(0)
 	}
-	z := html.NewTokenizer(io.LimitReader(r, 16<<20))
-	stack := []string{}
-	overflow := 0
-	shingles := map[uint64]bool{}
-	for o.Tokens < 100000 {
-		if e := ctx.Err(); e != nil {
-			return o, e
-		}
-		kind := z.Next()
-		if kind == html.ErrorToken {
-			if e := z.Err(); e != io.EOF {
-				return o, e
-			}
-			break
-		}
-		if kind != html.StartTagToken && kind != html.EndTagToken && kind != html.SelfClosingTagToken {
-			continue
-		}
-		token := z.Token()
-		if token.Data == "script" || token.Data == "style" {
-			continue
-		}
-		o.Tokens++
-		if kind == html.EndTagToken {
-			if overflow > 0 {
-				overflow--
-				continue
-			}
-			for i := len(stack) - 1; i >= 0; i-- {
-				if stack[i] == token.Data {
-					stack = stack[:i]
-					break
-				}
-			}
-			continue
-		}
-		path := strings.Join(stack, "/") + "/" + token.Data
-		shingles[hash(path)] = true
-		// Ancestry shingles retain local structure without encoding sibling order.
-		// Moving a complete section therefore does not change its fingerprint.
-		start := max(0, len(stack)-3)
-		shingles[hash(strings.Join(stack[start:], ">")+">"+token.Data)] = true
-		if len(shingles) > 4096 {
-			break
-		}
-		if kind == html.StartTagToken && !voidTag(token.Data) {
-			if len(stack) < 64 && overflow == 0 {
-				stack = append(stack, token.Data)
-			} else {
-				overflow++
-			}
-		}
-	}
-	for h := range shingles {
+
+	o.Tokens = s.tokens
+	for h := range s.shingles {
 		for i := range o.Signature {
 			v := mix(h + uint64(i)*0x9e3779b97f4a7c15)
 			if v < o.Signature[i] {
@@ -190,7 +193,28 @@ func Observe(ctx context.Context, r io.Reader, raw string, links []string) (Obse
 		o.Patterns = o.Patterns[:128]
 	}
 
-	return o, nil
+	return o
+}
+
+func Observe(ctx context.Context, r io.Reader, raw string, links []string) (Observation, error) {
+	s := NewStructure()
+	z := html.NewTokenizer(io.LimitReader(r, ObservationByteLimit))
+	for !s.done && s.tokens < 100000 {
+		if e := ctx.Err(); e != nil {
+			return Observation{}, e
+		}
+		kind := z.Next()
+		if kind == html.ErrorToken {
+			if e := z.Err(); e != io.EOF {
+				return Observation{}, e
+			}
+			break
+		}
+		if kind == html.StartTagToken || kind == html.EndTagToken || kind == html.SelfClosingTagToken {
+			s.Add(kind, z.Token())
+		}
+	}
+	return s.Observation(raw, links), nil
 }
 
 func voidTag(tag string) bool {

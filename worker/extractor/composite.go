@@ -79,6 +79,7 @@ func (s *compositeExtractor) executeExtractorsContext(ctx context.Context, path 
 		Features:        make(map[string]interface{}),
 	}
 	pending := s.getExtractors()
+	ctx = extractors.WithPreparedAnalysisFor(ctx, pending)
 	if s.initErr != nil {
 		return nil, s.initErr
 	}

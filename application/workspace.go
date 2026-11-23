@@ -546,6 +546,9 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 	if action == "patch_fetch" {
 		return patchFetch(raw)
 	}
+	if action == "patch_queue_cache" {
+		return patchQueueCache(raw)
+	}
 	if action == "preview" {
 		return previewDefinition(raw)
 	}

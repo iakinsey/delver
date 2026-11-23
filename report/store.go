@@ -42,7 +42,8 @@ type Store struct {
 // between consecutive import batches.
 type ledgerWriter struct {
 	sync.Mutex
-	refs int
+	waiting waitingWrites
+	refs    int
 }
 
 var ledgerWriters = struct {
@@ -341,15 +342,7 @@ func (s *Store) Discover(ctx context.Context, urls []URL) error {
 func (s *Store) batch(ctx context.Context, fn func(*sql.Tx) error) error {
 	s.write.Lock()
 	defer s.write.Unlock()
-	tx, e := s.db.BeginTx(ctx, nil)
-	if e != nil {
-		return e
-	}
-	defer tx.Rollback()
-	if e = fn(tx); e != nil {
-		return e
-	}
-	return tx.Commit()
+	return transaction(ctx, s.db, fn)
 }
 func (s *Store) Response(ctx context.Context, uri string, status int) error {
 	if e := s.policy.Check(uri); e != nil {
@@ -362,7 +355,7 @@ func (s *Store) Response(ctx context.Context, uri string, status int) error {
 		return nil
 	}
 	return s.policy.Guard(uri, func() error {
-		return s.batch(ctx, func(tx *sql.Tx) error { _, e := recordURL(ctx, tx, uri, true); return e })
+		return s.coalesced(ctx, func(tx *sql.Tx) error { _, e := recordURL(ctx, tx, uri, true); return e })
 	})
 }
 func (s *Store) Counts(ctx context.Context) (Counts, error) {

@@ -2,6 +2,7 @@ package extractors
 
 import (
 	"context"
+	"github.com/iakinsey/delver/trap"
 	"github.com/iakinsey/delver/types/features"
 	"github.com/iakinsey/delver/types/message"
 	"golang.org/x/net/html"
@@ -30,6 +31,13 @@ func (s *urlExtractor) PerformContext(ctx context.Context, f *os.File, c message
 	if err != nil {
 		return nil, err
 	}
+	var structure *trap.Structure
+	cache := prepared(ctx)
+	if cache != nil {
+		if info, err := f.Stat(); err == nil && info.Size() <= trap.ObservationByteLimit {
+			structure = trap.NewStructure()
+		}
+	}
 	tokenizer := html.NewTokenizer(contextReader{ctx, f})
 	var refs []string
 	hasBase := false
@@ -41,10 +49,16 @@ func (s *urlExtractor) PerformContext(ctx context.Context, f *os.File, c message
 			}
 			break
 		}
-		if kind != html.StartTagToken && kind != html.SelfClosingTagToken {
+		if kind != html.StartTagToken && kind != html.SelfClosingTagToken && !(structure != nil && kind == html.EndTagToken) {
 			continue
 		}
 		token := tokenizer.Token()
+		if structure != nil {
+			structure.Add(kind, token)
+		}
+		if kind == html.EndTagToken {
+			continue
+		}
 		for _, attr := range token.Attr {
 			if attr.Key != "href" {
 				continue
@@ -79,6 +93,11 @@ func (s *urlExtractor) PerformContext(ctx context.Context, f *os.File, c message
 			seen[key] = true
 			result = append(result, key)
 		}
+	}
+	if structure != nil {
+		cache.Lock()
+		cache.structure, cache.uri = structure, c.URI
+		cache.Unlock()
 	}
 	return result, nil
 }

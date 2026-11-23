@@ -213,15 +213,10 @@ func (s *httpFetcher) doHttpRequest(ctx context.Context, request message.Fetcher
 	var hash string
 	var source io.Reader = &boundedBody{reader: res.Body, remaining: limit, count: &response.BytesReceived}
 	if s.protection != nil {
-		releaseMemory, e := s.protection.Reserve(ctx, limit*2+(64<<10))
-		if e != nil {
-			return key, e
-		}
-		defer releaseMemory()
 		encoding := res.Header.Get("Content-Encoding")
 		// Small bodies stay buffered: mapping and pipe setup would outweigh the
 		// saved copies. Unknown/decompressed lengths retain the streaming path.
-		if res.ContentLength >= 64<<10 && res.ContentLength <= limit && len(res.TransferEncoding) == 0 && (encoding == "" || strings.EqualFold(encoding, "identity")) {
+		if !res.Uncompressed && res.ContentLength >= 64<<10 && res.ContentLength <= limit && len(res.TransferEncoding) == 0 && (encoding == "" || strings.EqualFold(encoding, "identity")) {
 			body, readErr := s.readMappedProtected(ctx, request.URI, response.EffectiveURI, source, res.ContentLength, res.Header.Get("Content-Type"))
 			if readErr == nil {
 				defer body.Close()
@@ -252,6 +247,11 @@ func (s *httpFetcher) doHttpRequest(ctx context.Context, request message.Fetcher
 				return key, readErr
 			}
 		}
+		releaseMemory, e := s.reserveInspection(ctx, limit*2+(64<<10))
+		if e != nil {
+			return key, e
+		}
+		defer releaseMemory()
 		if s.flow != nil {
 			s.flow.Counter("body_buffered", 1)
 		}
@@ -272,6 +272,15 @@ func (s *httpFetcher) doHttpRequest(ctx context.Context, request message.Fetcher
 		s.flow.Counter("object_buffered_bytes", response.BytesReceived)
 	}
 	return s.finishStorage(response, key, hash, storageStart, err)
+}
+
+func (s *httpFetcher) reserveInspection(ctx context.Context, bytes int64) (func(), error) {
+	started := time.Now()
+	release, err := s.protection.Reserve(ctx, bytes)
+	if s.flow != nil {
+		s.flow.Measure("inspection_wait", time.Since(started))
+	}
+	return release, err
 }
 
 func (s *httpFetcher) finishStorage(response *message.FetcherResponse, key types.UUID, hash string, storageStart time.Time, err error) (types.UUID, error) {

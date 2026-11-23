@@ -288,161 +288,167 @@ func (s *Store) admitGuarded(ctx context.Context, r message.FetcherRequest) (boo
 		return false, err
 	}
 	usedSlot := false
-	err = s.update(func(tx *badger.Txn) error {
-		if s.trapBlocked(tx, uri) {
-			return ErrTrapExcluded
+	err = s.update(func(tx *badger.Txn) error { return s.admitTx(tx, r, &usedSlot) })
+	return usedSlot && err == nil, err
+}
+
+// admitTx must be rolled back on every error: scheduling and budget mutations
+// may precede a capacity rejection.
+func (s *Store) admitTx(tx *badger.Txn, r message.FetcherRequest, usedSlot *bool) error {
+	uri := r.URI
+
+	if s.trapBlocked(tx, uri) {
+		return ErrTrapExcluded
+	}
+	var existing Candidate
+	if e := read(tx, "u/"+uri, &existing); e == nil {
+		if existing.State == "excluded" && existing.ExclusionPolicy == s.exclusionPolicy {
+			return nil
 		}
-		var existing Candidate
-		if e := read(tx, "u/"+uri, &existing); e == nil {
-			if existing.State == "excluded" && existing.ExclusionPolicy == s.exclusionPolicy {
-				return nil
-			}
-			if existing.State != "excluded" && (!r.BetterTraversalThan(existing.Request) || existing.State == "dedup" || existing.State == "failed") {
-				return nil
-			}
-			if existing.State == "retry_wait" {
-				existing.Request.Depth = r.Depth
-				existing.Request.Hops = r.Hops
-				existing.Request.ScopeRoot = r.ScopeRoot
-				existing.Request.Origin = r.Origin
-				return write(tx, "u/"+uri, existing)
-			}
-			if existing.State == "reserved" {
-				if err := tx.Delete([]byte(fmt.Sprintf("reserved/%020d/%s", existing.Sequence, existing.Request.URI))); err != nil {
-					return err
-				}
-				if err := increment(tx, "meta/reserved", -1); err != nil {
-					return err
-				}
-			}
-			if err := schedule(tx, existing, true); err != nil {
-				return err
-			}
-			if existing.Terminal != 0 {
-				var pending, origin int
-				if err := read(tx, "meta/pending", &pending); err != nil && err != badger.ErrKeyNotFound {
-					return err
-				}
-				if err := read(tx, "site_pending/"+util.SiteKey(existing.Request.Host), &origin); err != nil && err != badger.ErrKeyNotFound {
-					return err
-				}
-				if pending >= s.params.MaxPending || origin >= s.params.MaxPendingPerOrigin {
-					return ErrCapacity
-				}
-				for _, pair := range []struct {
-					life Lifetime
-					kind string
-				}{{s.params.Retention.CompletedFor, "detail"}, {s.params.Retention.FailedFor, "detail"}, {s.params.Retention.DedupFor, "dedup"}} {
-					if pair.life != 0 {
-						if err := tx.Delete([]byte(expiry(retentionDeadline(existing.Terminal, pair.life), pair.kind, uri))); err != nil {
-							return err
-						}
-					}
-				}
-				if err := increment(tx, "meta/pending", 1); err != nil {
-					return err
-				}
-				if err := increment(tx, "site_pending/"+util.SiteKey(existing.Request.Host), 1); err != nil {
-					return err
-				}
-				usedSlot = true
-			}
-			if existing.State == "excluded" {
-				host := existing.Request.Host
-				existing.Request = r
-				existing.Request.URI = uri
-				existing.Request.Host = host
-				existing.Request.Protocol = types.ProtocolHTTP
-				existing.Request.RequestID = types.NewV4()
-				existing.Request.FrontierGeneration = existing.Request.RequestID
-				existing.Request.Attempt = 0
-				existing.ExclusionPolicy = ""
-				existing.LastFailure = ""
-				existing.NextAttempt = 0
-				existing.Discovered = time.Now().UnixNano()
-			}
+		if existing.State != "excluded" && (!r.BetterTraversalThan(existing.Request) || existing.State == "dedup" || existing.State == "failed") {
+			return nil
+		}
+		if existing.State == "retry_wait" {
 			existing.Request.Depth = r.Depth
 			existing.Request.Hops = r.Hops
-			existing.Terminal = 0
-			existing.State = "pending"
-			if err := write(tx, "u/"+uri, existing); err != nil {
+			existing.Request.ScopeRoot = r.ScopeRoot
+			existing.Request.Origin = r.Origin
+			return write(tx, "u/"+uri, existing)
+		}
+		if existing.State == "reserved" {
+			if err := tx.Delete([]byte(fmt.Sprintf("reserved/%020d/%s", existing.Sequence, existing.Request.URI))); err != nil {
 				return err
 			}
-			if err := schedule(tx, existing, false); err != nil {
-				return err
-			}
-			return write(tx, index(existing), uri)
-		} else if e != badger.ErrKeyNotFound {
-			return e
-		}
-		u, _ := url.Parse(uri)
-		budgets := map[string]int{"budget/total": s.params.MaxURLs, "budget/site/" + util.SiteKey(u.Host): s.params.MaxURLsPerOrigin}
-		for pattern, limit := range s.params.PatternBudgets {
-			if s.patterns[pattern].MatchString(uri) {
-				budgets["budget/pattern/"+pattern] = limit
-			}
-		}
-		for key, limit := range budgets {
-			if limit == 0 {
-				continue
-			}
-			var count int
-			if e := read(tx, key, &count); e != nil && e != badger.ErrKeyNotFound {
-				return e
-			}
-			if count >= limit {
-				return ErrRejected
-			}
-			if err := write(tx, key, count+1); err != nil {
+			if err := increment(tx, "meta/reserved", -1); err != nil {
 				return err
 			}
 		}
-		var n int
-		if e := read(tx, "meta/pending", &n); e != nil && e != badger.ErrKeyNotFound {
+		if err := schedule(tx, existing, true); err != nil {
+			return err
+		}
+		if existing.Terminal != 0 {
+			var pending, origin int
+			if err := read(tx, "meta/pending", &pending); err != nil && err != badger.ErrKeyNotFound {
+				return err
+			}
+			if err := read(tx, "site_pending/"+util.SiteKey(existing.Request.Host), &origin); err != nil && err != badger.ErrKeyNotFound {
+				return err
+			}
+			if pending >= s.params.MaxPending || origin >= s.params.MaxPendingPerOrigin {
+				return ErrCapacity
+			}
+			for _, pair := range []struct {
+				life Lifetime
+				kind string
+			}{{s.params.Retention.CompletedFor, "detail"}, {s.params.Retention.FailedFor, "detail"}, {s.params.Retention.DedupFor, "dedup"}} {
+				if pair.life != 0 {
+					if err := tx.Delete([]byte(expiry(retentionDeadline(existing.Terminal, pair.life), pair.kind, uri))); err != nil {
+						return err
+					}
+				}
+			}
+			if err := increment(tx, "meta/pending", 1); err != nil {
+				return err
+			}
+			if err := increment(tx, "site_pending/"+util.SiteKey(existing.Request.Host), 1); err != nil {
+				return err
+			}
+			*usedSlot = true
+		}
+		if existing.State == "excluded" {
+			host := existing.Request.Host
+			existing.Request = r
+			existing.Request.URI = uri
+			existing.Request.Host = host
+			existing.Request.Protocol = types.ProtocolHTTP
+			existing.Request.RequestID = types.NewV4()
+			existing.Request.FrontierGeneration = existing.Request.RequestID
+			existing.Request.Attempt = 0
+			existing.ExclusionPolicy = ""
+			existing.LastFailure = ""
+			existing.NextAttempt = 0
+			existing.Discovered = time.Now().UnixNano()
+		}
+		existing.Request.Depth = r.Depth
+		existing.Request.Hops = r.Hops
+		existing.Terminal = 0
+		existing.State = "pending"
+		if err := write(tx, "u/"+uri, existing); err != nil {
+			return err
+		}
+		if err := schedule(tx, existing, false); err != nil {
+			return err
+		}
+		return write(tx, index(existing), uri)
+	} else if e != badger.ErrKeyNotFound {
+		return e
+	}
+	u, _ := url.Parse(uri)
+	budgets := map[string]int{"budget/total": s.params.MaxURLs, "budget/site/" + util.SiteKey(u.Host): s.params.MaxURLsPerOrigin}
+	for pattern, limit := range s.params.PatternBudgets {
+		if s.patterns[pattern].MatchString(uri) {
+			budgets["budget/pattern/"+pattern] = limit
+		}
+	}
+	for key, limit := range budgets {
+		if limit == 0 {
+			continue
+		}
+		var count int
+		if e := read(tx, key, &count); e != nil && e != badger.ErrKeyNotFound {
 			return e
 		}
-		if n >= s.params.MaxPending {
-			return ErrCapacity
+		if count >= limit {
+			return ErrRejected
 		}
-		var seq int64
-		if e := read(tx, "meta/sequence", &seq); e != nil && e != badger.ErrKeyNotFound {
-			return e
-		}
-		seq++
-		if r.RequestID == "" {
-			r.RequestID = types.NewV4()
-		}
-		r.FrontierGeneration = r.RequestID
-		u, _ = url.Parse(uri)
-		r.Host = u.Host
-		r.Protocol = types.ProtocolHTTP
-		var originCount int
-		if e := read(tx, "site_pending/"+util.SiteKey(r.Host), &originCount); e != nil && e != badger.ErrKeyNotFound {
-			return e
-		}
-		if originCount >= s.params.MaxPendingPerOrigin {
-			return ErrCapacity
-		}
-		if err := write(tx, "site_pending/"+util.SiteKey(r.Host), originCount+1); err != nil {
+		if err := write(tx, key, count+1); err != nil {
 			return err
 		}
-		c := Candidate{Request: r, State: "pending", Sequence: seq, Discovered: time.Now().UnixNano()}
-		if err := write(tx, "u/"+uri, c); err != nil {
-			return err
-		}
-		if err := schedule(tx, c, false); err != nil {
-			return err
-		}
-		if err := write(tx, index(c), uri); err != nil {
-			return err
-		}
-		if err := write(tx, "meta/sequence", seq); err != nil {
-			return err
-		}
-		usedSlot = true
-		return write(tx, "meta/pending", n+1)
-	})
-	return usedSlot && err == nil, err
+	}
+	var n int
+	if e := read(tx, "meta/pending", &n); e != nil && e != badger.ErrKeyNotFound {
+		return e
+	}
+	if n >= s.params.MaxPending {
+		return ErrCapacity
+	}
+	var seq int64
+	if e := read(tx, "meta/sequence", &seq); e != nil && e != badger.ErrKeyNotFound {
+		return e
+	}
+	seq++
+	if r.RequestID == "" {
+		r.RequestID = types.NewV4()
+	}
+	r.FrontierGeneration = r.RequestID
+	u, _ = url.Parse(uri)
+	r.Host = u.Host
+	r.Protocol = types.ProtocolHTTP
+	var originCount int
+	if e := read(tx, "site_pending/"+util.SiteKey(r.Host), &originCount); e != nil && e != badger.ErrKeyNotFound {
+		return e
+	}
+	if originCount >= s.params.MaxPendingPerOrigin {
+		return ErrCapacity
+	}
+	if err := write(tx, "site_pending/"+util.SiteKey(r.Host), originCount+1); err != nil {
+		return err
+	}
+	c := Candidate{Request: r, State: "pending", Sequence: seq, Discovered: time.Now().UnixNano()}
+	if err := write(tx, "u/"+uri, c); err != nil {
+		return err
+	}
+	if err := schedule(tx, c, false); err != nil {
+		return err
+	}
+	if err := write(tx, index(c), uri); err != nil {
+		return err
+	}
+	if err := write(tx, "meta/sequence", seq); err != nil {
+		return err
+	}
+	*usedSlot = true
+	return write(tx, "meta/pending", n+1)
 }
 
 // Pending resumes strictly after a key. Deleting that key does not invalidate the cursor.

@@ -11,15 +11,20 @@ import (
 )
 
 type Pressure struct {
-	Frontier      map[string]int64   `json:"frontier"`
-	FetchPending  int64              `json:"fetch_pending"`
-	Queues        map[string]int64   `json:"queues"`
-	OldestSeconds map[string]float64 `json:"oldest_seconds"`
-	MemoryMB      float64            `json:"memory_mb"`
-	CPUPercent    float64            `json:"cpu_percent"`
-	DiskKnown     bool               `json:"disk_known"`
-	DiskFreeMB    float64            `json:"disk_free_mb"`
-	Health        string             `json:"health"`
+	ResourceMetrics         map[string]map[string]int64 `json:"resource_metrics,omitempty"`
+	InspectionReservedBytes int64                       `json:"inspection_reserved_bytes"`
+	InspectionPeakBytes     int64                       `json:"inspection_peak_bytes"`
+	InspectionActive        int                         `json:"inspection_active"`
+	InspectionWaiters       int                         `json:"inspection_waiters"`
+	Frontier                map[string]int64            `json:"frontier"`
+	FetchPending            int64                       `json:"fetch_pending"`
+	Queues                  map[string]int64            `json:"queues"`
+	OldestSeconds           map[string]float64          `json:"oldest_seconds"`
+	MemoryMB                float64                     `json:"memory_mb"`
+	CPUPercent              float64                     `json:"cpu_percent"`
+	DiskKnown               bool                        `json:"disk_known"`
+	DiskFreeMB              float64                     `json:"disk_free_mb"`
+	Health                  string                      `json:"health"`
 }
 type Histogram struct {
 	Count   int64   `json:"count"`
@@ -293,7 +298,7 @@ func (c *Controller) DispatchBounds(current int) (int, int, int, string) {
 }
 func (c *Controller) Measure(name string, d time.Duration) {
 	switch name {
-	case "attempt", "connect", "tls", "headers", "body", "execution_wait", "origin_wait", "storage", "queue_wait", "frontier_storage":
+	case "attempt", "connect", "tls", "headers", "body", "execution_wait", "origin_wait", "inspection_wait", "storage", "queue_wait", "frontier_storage":
 	default:
 		return
 	}
@@ -594,6 +599,13 @@ func (c *Controller) Counter(key string, n int64) {
 
 func copyPressure(p Pressure) Pressure {
 	q := p
+	q.ResourceMetrics = map[string]map[string]int64{}
+	for name, metrics := range p.ResourceMetrics {
+		q.ResourceMetrics[name] = map[string]int64{}
+		for key, value := range metrics {
+			q.ResourceMetrics[name][key] = value
+		}
+	}
 	q.Queues = map[string]int64{}
 	q.OldestSeconds = map[string]float64{}
 	q.Frontier = map[string]int64{}

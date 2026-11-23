@@ -57,6 +57,19 @@ func (s *httpFetcher) readMappedProtected(ctx context.Context, original, effecti
 			body = nil
 		}
 	}()
+	// Mapped bodies have an exact bounded size. Keep a conservative 8 MiB
+	// allowance for overlapping windows, Unicode expansion and normalization
+	// temporaries, while never reserving more than the legacy configured bound.
+	limit := s.maxBytes
+	if limit <= 0 {
+		limit = 16 << 20
+	}
+	releaseMemory, reserveErr := s.reserveInspection(ctx, min(2*limit+(64<<10), 2*size+(8<<20)))
+	if reserveErr != nil {
+		return nil, reserveErr
+	}
+	releaseBody := body.release
+	body.release = func() { releaseBody(); releaseMemory() }
 	var inspector *protection.Inspector
 	if textualResponse(contentType) {
 		inspector = s.protection.InspectReader(ctx, nil, effective, s.crawlID, s.runID, s.purgeDepth)

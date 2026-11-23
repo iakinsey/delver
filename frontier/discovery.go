@@ -193,7 +193,15 @@ func (s *Store) DrainDiscovery(ctx context.Context, limit int) (int, error) {
 	completed := []discoveryEntry{}
 	consumed, deferrals := 0, 0
 	last := ""
-	for _, e := range entries {
+	var batched map[string]bool
+	for at, e := range entries {
+		if at%128 == 0 {
+			end := min(len(entries), at+128)
+			batched, err = s.batchAdmissions(ctx, entries[at:end], hosts, available, known)
+			if err != nil {
+				return consumed, err
+			}
+		}
 		if err := ctx.Err(); err != nil {
 			return consumed, err
 		}
@@ -221,7 +229,11 @@ func (s *Store) DrainDiscovery(ctx context.Context, limit int) (int, error) {
 			deferrals++
 			continue
 		}
-		used, result := s.admit(ctx, e.request)
+		used := batched[e.key]
+		var result error
+		if batched == nil {
+			used, result = s.admit(ctx, e.request)
+		}
 		if result == nil {
 			known[e.request.URI] = true
 			if used {

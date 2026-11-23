@@ -23,6 +23,7 @@ func payloadMatches(m types.Message, match func(string) bool) bool {
 func (s *fileQueue) PurgeMatching(ctx context.Context, match func(string) bool) error {
 	s.putLock.Lock()
 	defer s.putLock.Unlock()
+	defer s.invalidateCandidatesLocked()
 	for _, root := range []string{s.path, s.dlqPath} {
 		if root == "" {
 			continue

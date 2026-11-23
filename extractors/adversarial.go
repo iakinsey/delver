@@ -67,7 +67,15 @@ func (s *adversarialExtractor) PerformContext(ctx context.Context, f *os.File, c
 		return nil, err
 	}
 	var structure *trap.Observation
-	if f != nil {
+	if cache := prepared(ctx); cache != nil {
+		cache.Lock()
+		if cache.structure != nil && cache.uri == composite.URI {
+			observation := cache.structure.Observation(composite.URI, uris)
+			structure = &observation
+		}
+		cache.Unlock()
+	}
+	if structure == nil && f != nil {
 		if _, err := f.Seek(0, 0); err != nil {
 			return nil, err
 		}

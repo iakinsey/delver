@@ -1,5 +1,9 @@
 import { TrapSettings } from "./trapSettings";
-import { FetchSettings, ExpertFetchSettings } from "./fetchSettings";
+import {
+  FetchSettings,
+  ExpertFetchSettings,
+  ExpertQueueCacheSettings,
+} from "./fetchSettings";
 import React, { useState, useRef, useId, useEffect } from "react";
 import { crawlAPI, strategyTitle, words } from "./crawlApi";
 function Choice({ group, value, selected, title, children, onChange }) {
@@ -155,6 +159,14 @@ export function CrawlEditor({
               />
             </Field>
             <ExpertFetchSettings
+              disabled={fetchApplying}
+              pipeline={editor.pipeline}
+              onBusy={setFetchApplying}
+              onApply={(pipeline) => setEditor((old) => ({ ...old, pipeline }))}
+              onError={onError}
+            />
+            <ExpertQueueCacheSettings
+              disabled={fetchApplying}
               pipeline={editor.pipeline}
               onBusy={setFetchApplying}
               onApply={(pipeline) => setEditor((old) => ({ ...old, pipeline }))}
@@ -597,6 +609,21 @@ export function CrawlEditor({
               onChange={(fetch) => set({ fetch })}
               onError={onError}
             />
+            <Field label="Request queue cache (MiB)">
+              <input
+                required
+                type="number"
+                min="16"
+                max="1024"
+                value={d.request_queue_cache_mb ?? 64}
+                onChange={(e) =>
+                  set({
+                    request_queue_cache_mb:
+                      e.target.value === "" ? "" : Number(e.target.value),
+                  })
+                }
+              />
+            </Field>
             {execution && d.fetch && (
               <p>
                 Effective concurrency ceiling:{" "}
