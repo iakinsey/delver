@@ -11,7 +11,7 @@ import (
 )
 
 func (p *preparedApplication) pressure() flow.Pressure {
-	pressure := flow.Pressure{Queues: map[string]int64{}, OldestSeconds: map[string]float64{}, MemoryMB: flow.HeapMB()}
+	pressure := flow.Pressure{Queues: map[string]int64{}, OldestSeconds: map[string]float64{}, MemoryMB: flow.PressureMemoryMB()}
 	for _, w := range p.workerDefinitions() {
 		if w.Type != "composite_extractor" && w.Type != "frontier_accumulator" && w.Type != "jsonl_sink" && w.Type != "transformer" {
 			continue

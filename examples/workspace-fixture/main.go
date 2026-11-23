@@ -3,6 +3,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -133,6 +135,27 @@ func main() {
 			}
 			w.Header().Set("Content-Type", "text/html")
 			fmt.Fprintf(w, `<title>Small network</title><a href="%s/network-small">Neighbor</a>`, target)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/body-") {
+			body := bytes.Repeat([]byte("fixture payload "), 8192)
+			w.Header().Set("Content-Type", "text/html")
+			switch r.URL.Path {
+			case "/body-gzip":
+				var compressed bytes.Buffer
+				writer := gzip.NewWriter(&compressed)
+				_, _ = writer.Write(body)
+				_ = writer.Close()
+				w.Header().Set("Content-Encoding", "gzip")
+				w.Header().Set("Content-Length", strconv.Itoa(compressed.Len()))
+				_, _ = w.Write(compressed.Bytes())
+			case "/body-chunked":
+				w.(http.Flusher).Flush()
+				_, _ = w.Write(body)
+			default:
+				w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+				_, _ = w.Write(body)
+			}
 			return
 		}
 		if r.URL.Path == "/report-root" {
@@ -460,6 +483,7 @@ func fixtureHTTPServer(handler http.Handler, key string, tls bool) *httptest.Ser
 		server.Listener = listener
 	}
 	if tls {
+		server.EnableHTTP2 = key == "TLS_SOURCE"
 		server.StartTLS()
 	} else {
 		server.Start()

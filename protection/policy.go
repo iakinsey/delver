@@ -489,7 +489,55 @@ func normalizedText(s string) string {
 	s = tags.ReplaceAllString(s, " ")
 	s = html.UnescapeString(s)
 	s = strings.ToLower(norm.NFKC.String(s))
-	return strings.Join(strings.Fields(s), " ")
+	return normalizedWhitespace(s)
+}
+
+// normalizedWhitespace is equivalent to Join(Fields(s), " ") without a slice
+// of every word. Ordinary single-spaced text needs no additional allocation.
+func normalizedWhitespace(s string) string {
+	s = strings.TrimSpace(s)
+	previousSpace := false
+	for _, r := range s {
+		space := false
+		if r < utf8.RuneSelf {
+			space = r == ' ' || r >= '\t' && r <= '\r'
+		} else {
+			space = unicode.IsSpace(r)
+		}
+		if space && (r != ' ' || previousSpace) {
+			var out strings.Builder
+			out.Grow(len(s))
+			start := -1
+			for at, value := range s {
+				space := false
+				if value < utf8.RuneSelf {
+					space = value == ' ' || value >= '\t' && value <= '\r'
+				} else {
+					space = unicode.IsSpace(value)
+				}
+				if space {
+					if start >= 0 {
+						if out.Len() > 0 {
+							out.WriteByte(' ')
+						}
+						out.WriteString(s[start:at])
+						start = -1
+					}
+				} else if start < 0 {
+					start = at
+				}
+			}
+			if start >= 0 {
+				if out.Len() > 0 {
+					out.WriteByte(' ')
+				}
+				out.WriteString(s[start:])
+			}
+			return out.String()
+		}
+		previousSpace = space
+	}
+	return s
 }
 func (p *Policy) Inspect(raw string, body []byte, crawl, run string, depth int) error {
 	if p == nil {

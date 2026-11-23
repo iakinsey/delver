@@ -4,8 +4,27 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 )
+
+var mappedMemory atomic.Int64
+
+// TrackMappedMemory keeps off-heap response staging visible to memory gates.
+// The full mapping is charged conservatively, including not-yet-resident pages.
+func TrackMappedMemory(bytes int64) func() {
+	mappedMemory.Add(bytes)
+	var released atomic.Bool
+	return func() {
+		if released.CompareAndSwap(false, true) {
+			mappedMemory.Add(-bytes)
+		}
+	}
+}
+
+func PressureMemoryMB() float64 {
+	return HeapMB() + float64(mappedMemory.Load())/(1<<20)
+}
 
 // Default memory pressure thresholds leave room for several independent stores.
 // Resolve to concrete MiB values so saved crawls do not change after restart.

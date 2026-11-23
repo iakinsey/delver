@@ -26,7 +26,7 @@ After **Failures before host cooldown**, failed hosts enter an exponentially inc
 
 The publisher refills below **Fetch refill low watermark multiplier × effective concurrency**, targeting **Fetch queue target multiplier × effective concurrency**. **Fetch queue hard ceiling** and **Maximum refill batch** bound each refill. **Candidate selection window** bounds the candidate set. Existing work above a newly reduced target drains naturally. These controls work through the existing frontier publisher job and durable queue, rather than a separate crawl loop.
 
-Downstream queue and heap watermarks pause new admission and publication, then resume below the configured low watermarks. Low disk space on configured storage/output paths and queue/storage health errors also pause admission. Sampling is periodic, so already admitted work may finish and enqueue results after a watermark is crossed. These are backpressure thresholds, not hard limits on RSS or disk usage. The heap default is one quarter of detected physical/cgroup memory, capped at 4096 MiB (minimum 64 MiB); its resume threshold is 75% of that value. The free-disk default is 64 MiB. Configure these for the number and size of stores you intend to run.
+Downstream queue and memory watermarks pause new admission and publication, then resume below the configured low watermarks. Memory pressure includes Go heap usage and anonymous response mappings. Low disk space on configured storage/output paths and queue/storage health errors also pause admission. Sampling is periodic, so already admitted work may finish and enqueue results after a watermark is crossed. These are backpressure thresholds, not hard limits on RSS or disk usage. The memory default is one quarter of detected physical/cgroup memory, capped at 4096 MiB (minimum 64 MiB); its resume threshold is 75% of that value. The free-disk default is 64 MiB. Configure these for the number and size of stores you intend to run.
 
 ## Adaptive control
 
@@ -40,6 +40,22 @@ Old evaluation/cooldown settings migrate to their longer interval. Explicit incr
 
 ## Monitoring and persistence
 
+### Protected response storage
+
+On Linux, protected responses with a known, identity-encoded body of at least 64 KiB (within the configured response-size limit) are read into an anonymous memory-backed file. The normal HTTP transport still handles SOCKS, HTTP proxies, TLS, redirects, timeouts, and connection reuse. Every received chunk passes the same incremental protection inspection before publication; a match cancels the response without waiting for the remaining declared body. Mapped memory is included alongside Go heap usage in the memory admission gate.
+
+After inspection, the filesystem object store computes the checksum and uses `splice` through a pipe to publish a private temporary object, followed by sync and atomic rename. The protection write barrier encloses publication. This avoids a body-sized Go allocation and the final userspace storage copy; it does not bypass the HTTP transport or make inspection zero-copy. Cancellation and failed writes remove temporary objects and release mappings and descriptors.
+
+Small bodies, unknown lengths, gzip, chunked responses, unavailable memory mappings, and non-Linux systems retain buffered inspection. Unsupported kernel/filesystem splice operations fall back to buffered copying from the current offset without repeating the HTTP request or duplicating bytes. Object stores without the optional file-publication interface retain their ordinary `Put` path. These choices require no configuration or state migration.
+
+Fetch counters report successfully inspected `body_mapped` bodies, `body_buffered` selections, actual `object_splice_bytes`, and successfully published `object_buffered_bytes`. Splice bytes can include a partial failed write; they are not successful-response totals. The text normalizer collapses whitespace without allocating a slice of every word and checks ASCII whitespace directly, retaining Unicode classification for other characters. Tests compare its output with the previous implementation, including Unicode and invalid UTF-8.
+
+The production-path benchmark is individually runnable on Linux:
+
+```sh
+go test ./worker/fetcher -run '^$' -bench '^BenchmarkProtectedFetchBody$' -benchtime=200x -count=5 -benchmem
+```
+
 **Fetch metrics** reports page-attempt, successful-response, HTML-response, unique-HTML, admitted-URL, finalized-request, and byte rates; active/effective/process capacity; retry/cooldown counters; response statuses and classified failures; received/stored bytes; heap/CPU/disk; queue depth, oldest age and growth; storage conflicts/failures; and bounded latency summaries for execution wait, origin wait, connect, TLS, headers, body, storage, and frontier storage. Header latency includes connect/TLS time. Body/storage measurements can overlap because object storage streams the body.
 
 Successful response rates count HTTP 2xx/3xx fetches; HTML response rate does not imply unique content. Unique HTML is established by the durable frontier after analysis. Rates use the configured window, starting with elapsed session time; latency summaries use at most **Maximum samples per metric** recent observations, while their sample count is cumulative for that process session. No per-URL metric series are retained.
@@ -49,6 +65,8 @@ Cumulative attempt/error/status/byte/storage counters are atomically checkpointe
 ## Validation
 
 `make test` runs backend and frontend suites; `make test-race` runs backend race checks. `make test-ui` runs real-backend browser scenarios and requires complete coverage of the checked-in targeted inventory within 30 minutes. See [browser validation](../web/README.md).
+
+`TestMappedLargeResponsesAndLimitRecovery` exercises 32 MiB binary and 8 MiB HTML transfers, rejection at the configured size limit, and subsequent worker progress. `TestFilePublicationDiskFull` requires `DELVER_OBJECTSTORE_FULL_DIR` to name a disposable tmpfs of at most 4 MiB; run it explicitly to verify real ENOSPC cleanup and recovery. Ordinary unit tests also inject unsupported and partially completed splice operations, interrupted calls, cancellation, and write errors.
 
 `make test-benchmark BASELINE=/private/path/baseline.log BASELINE_APP=/private/path/pipeline-baseline.log` compares five final repetitions against five same-host baseline repetitions at 4, 16, 32, and 64 slots. Both isolated network capacity and complete worker-pipeline median successful throughput may not regress by more than 10%. Raw attempts, successes, latency, heap, and peak concurrency are emitted by `BenchmarkFetchCapacity`; isolated application tests cover pipeline progress, retries, and adaptive recovery.
 

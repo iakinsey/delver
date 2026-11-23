@@ -583,7 +583,7 @@ type queuePoint struct {
 
 func (c *Controller) Counter(key string, n int64) {
 	switch key {
-	case "storage_conflicts", "storage_failures", "storage_operations", "feed_policy_skips":
+	case "storage_conflicts", "storage_failures", "storage_operations", "feed_policy_skips", "body_mapped", "body_buffered", "object_splice_bytes", "object_buffered_bytes":
 	default:
 		return
 	}

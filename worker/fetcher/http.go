@@ -32,16 +32,17 @@ type HttpFetcherParams struct {
 }
 
 type httpFetcher struct {
-	protection     *protection.Policy
-	crawlID, runID string
-	purgeDepth     int
-	flow           *flow.Controller
-	scope          string
-	allow, deny    *regexp.Regexp
-	maxBytes       int64
-	robots         frontier.ClosableFilter
-	ObjectStore    objectstore.ObjectStore
-	Client         util.DelverHTTPClient
+	createMappedBody func(int64) (*mappedBody, error)
+	protection       *protection.Policy
+	crawlID, runID   string
+	purgeDepth       int
+	flow             *flow.Controller
+	scope            string
+	allow, deny      *regexp.Regexp
+	maxBytes         int64
+	robots           frontier.ClosableFilter
+	ObjectStore      objectstore.ObjectStore
+	Client           util.DelverHTTPClient
 }
 
 func NewHttpFetcher(args HttpFetcherParams) worker.Worker {
@@ -217,6 +218,43 @@ func (s *httpFetcher) doHttpRequest(ctx context.Context, request message.Fetcher
 			return key, e
 		}
 		defer releaseMemory()
+		encoding := res.Header.Get("Content-Encoding")
+		// Small bodies stay buffered: mapping and pipe setup would outweigh the
+		// saved copies. Unknown/decompressed lengths retain the streaming path.
+		if res.ContentLength >= 64<<10 && res.ContentLength <= limit && len(res.TransferEncoding) == 0 && (encoding == "" || strings.EqualFold(encoding, "identity")) {
+			body, readErr := s.readMappedProtected(ctx, request.URI, response.EffectiveURI, source, res.ContentLength, res.Header.Get("Content-Type"))
+			if readErr == nil {
+				defer body.Close()
+				if s.flow != nil {
+					s.flow.Counter("body_mapped", 1)
+				}
+				err = s.protection.GuardMany([]string{request.URI, response.EffectiveURI}, func() error {
+					if store, ok := s.ObjectStore.(objectstore.FileObjectStore); ok {
+						var spliced int64
+						hash, spliced, err = store.PutFile(ctx, key, body.file)
+						if s.flow != nil {
+							s.flow.Counter("object_splice_bytes", spliced)
+							if err == nil {
+								s.flow.Counter("object_buffered_bytes", response.BytesReceived-spliced)
+							}
+						}
+						return err
+					}
+					hash, err = s.ObjectStore.Put(key, io.NewSectionReader(body.file, 0, res.ContentLength))
+					if err == nil && s.flow != nil {
+						s.flow.Counter("object_buffered_bytes", response.BytesReceived)
+					}
+					return err
+				})
+				return s.finishStorage(response, key, hash, storageStart, err)
+			}
+			if !errorspkg.Is(readErr, errMappedBodyUnavailable) {
+				return key, readErr
+			}
+		}
+		if s.flow != nil {
+			s.flow.Counter("body_buffered", 1)
+		}
 		raw, readErr := s.readProtected(ctx, request.URI, response.EffectiveURI, source, res.Header.Get("Content-Type"))
 		if readErr != nil {
 			return key, readErr
@@ -230,6 +268,13 @@ func (s *httpFetcher) doHttpRequest(ctx context.Context, request message.Fetcher
 	} else {
 		hash, err = s.ObjectStore.Put(key, source)
 	}
+	if err == nil && s.flow != nil {
+		s.flow.Counter("object_buffered_bytes", response.BytesReceived)
+	}
+	return s.finishStorage(response, key, hash, storageStart, err)
+}
+
+func (s *httpFetcher) finishStorage(response *message.FetcherResponse, key types.UUID, hash string, storageStart time.Time, err error) (types.UUID, error) {
 	if s.flow != nil {
 		s.flow.Measure("storage", time.Since(storageStart))
 	}
@@ -330,9 +375,7 @@ func (s *httpFetcher) readProtected(ctx context.Context, original, effective str
 	if e := s.protection.Check(effective); e != nil {
 		return nil, e
 	}
-	contentType = strings.ToLower(contentType)
-	textual := strings.Contains(contentType, "text/") || strings.Contains(contentType, "html") || strings.Contains(contentType, "xml") || strings.Contains(contentType, "json") || contentType == ""
-	if textual {
+	if textualResponse(contentType) {
 		inspector := s.protection.InspectReader(ctx, r, effective, s.crawlID, s.runID, s.purgeDepth)
 		defer inspector.Close()
 		r = inspector

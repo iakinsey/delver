@@ -27,8 +27,24 @@ func (r *Inspector) Read(buffer []byte) (int, error) {
 		return 0, e
 	}
 	n, e := r.source.Read(buffer)
-	for offset := 0; offset < n; {
-		end := min(n, offset+(32<<10))
+	if failure := r.InspectChunk(buffer[:n]); failure != nil {
+		clear(buffer[:n])
+		return 0, failure
+	}
+	return n, e
+}
+
+// InspectChunk applies the same incremental inspection to a caller-owned buffer.
+// It does not retain that buffer; only the bounded inspection window is kept.
+func (r *Inspector) InspectChunk(buffer []byte) error {
+	if e := r.ctx.Err(); e != nil {
+		return e
+	}
+	if e := r.policy.Check(r.uri); e != nil {
+		return e
+	}
+	for offset := 0; offset < len(buffer); {
+		end := min(len(buffer), offset+(32<<10))
 		part := buffer[offset:end]
 		if len(r.window)+len(part) > 64<<10 {
 			keep := (64 << 10) - len(part)
@@ -37,12 +53,11 @@ func (r *Inspector) Read(buffer []byte) (int, error) {
 		}
 		r.window = append(r.window, part...)
 		if failure := r.policy.Inspect(r.uri, r.window, r.crawl, r.run, r.depth); failure != nil {
-			clear(buffer[:n])
 			r.Close()
-			return 0, failure
+			return failure
 		}
 		offset = end
 	}
-	return n, e
+	return nil
 }
 func (r *Inspector) Close() error { clear(r.window); r.window = nil; return nil }
