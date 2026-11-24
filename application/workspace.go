@@ -65,6 +65,7 @@ type crawlSlot struct {
 	clockRunning bool
 }
 type Workspace struct {
+	repeatedJobs       map[string]context.CancelFunc
 	protectionPreviews map[string]protectionPreview
 	protection         *protection.Policy
 	atlasJobs          map[string]*atlasJob
@@ -546,6 +547,9 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 	if action == "patch_fetch" {
 		return patchFetch(raw)
 	}
+	if action == "patch_repeated_pages" {
+		return patchRepeatedPages(raw)
+	}
 	if action == "patch_queue_cache" {
 		return patchQueueCache(raw)
 	}
@@ -638,6 +642,9 @@ func (w *Workspace) HandleCrawls(ctx context.Context, action string, raw json.Ra
 			return map[string]interface{}{"deleted": true}, nil
 		}
 		return nil, errs.NewRequestError("crawl ID required")
+	}
+	if strings.HasPrefix(action, "repeated_") {
+		return w.handleRepeated(ctx, r, slot, action, raw)
 	}
 	if action == "trap_decisions" || action == "trap_restore" {
 		return w.handleTraps(ctx, r, slot, action, raw)

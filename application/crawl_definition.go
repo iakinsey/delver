@@ -5,6 +5,7 @@ import (
 	"github.com/iakinsey/delver/config"
 	"github.com/iakinsey/delver/flow"
 	"github.com/iakinsey/delver/frontier"
+	"github.com/iakinsey/delver/repetition"
 	"github.com/iakinsey/delver/trap"
 	"github.com/iakinsey/delver/types/errs"
 	"github.com/iakinsey/delver/util"
@@ -24,33 +25,35 @@ type ProxySettings struct {
 	URL  string `json:"url"`
 }
 type CrawlDefinition struct {
-	RequestQueueCacheMB  int                `json:"request_queue_cache_mb,omitempty"`
-	Traps                *trap.Settings     `json:"traps,omitempty"`
-	RestrictedPurgeDepth int                `json:"restricted_purge_depth"`
-	ExcludedExtensions   string             `json:"excluded_extensions,omitempty"`
-	Fetch                *flow.Policy       `json:"fetch,omitempty"`
-	Network              NetworkSettings    `json:"network"`
-	Proxy                ProxySettings      `json:"proxy"`
-	Name                 string             `json:"name"`
-	Seeds                []string           `json:"seeds"`
-	Feeds                []string           `json:"feeds"`
-	Scope                string             `json:"scope"`
-	Strategy             string             `json:"strategy"`
-	MaxDepth             int                `json:"max_depth"`
-	MaxHops              int                `json:"max_hops"`
-	AllowPattern         string             `json:"allow_pattern"`
-	DenyPattern          string             `json:"deny_pattern"`
-	RequestDelay         string             `json:"request_delay"`
-	Concurrency          int                `json:"concurrency"`
-	Revisit              string             `json:"revisit"`
-	Retention            frontier.Retention `json:"retention"`
-	Termination          Termination        `json:"termination"`
+	RepeatedPages        *repetition.Settings `json:"repeated_pages,omitempty"`
+	RequestQueueCacheMB  int                  `json:"request_queue_cache_mb,omitempty"`
+	Traps                *trap.Settings       `json:"traps,omitempty"`
+	RestrictedPurgeDepth int                  `json:"restricted_purge_depth"`
+	ExcludedExtensions   string               `json:"excluded_extensions,omitempty"`
+	Fetch                *flow.Policy         `json:"fetch,omitempty"`
+	Network              NetworkSettings      `json:"network"`
+	Proxy                ProxySettings        `json:"proxy"`
+	Name                 string               `json:"name"`
+	Seeds                []string             `json:"seeds"`
+	Feeds                []string             `json:"feeds"`
+	Scope                string               `json:"scope"`
+	Strategy             string               `json:"strategy"`
+	MaxDepth             int                  `json:"max_depth"`
+	MaxHops              int                  `json:"max_hops"`
+	AllowPattern         string               `json:"allow_pattern"`
+	DenyPattern          string               `json:"deny_pattern"`
+	RequestDelay         string               `json:"request_delay"`
+	Concurrency          int                  `json:"concurrency"`
+	Revisit              string               `json:"revisit"`
+	Retention            frontier.Retention   `json:"retention"`
+	Termination          Termination          `json:"termination"`
 }
 
 func DefaultCrawlDefinition() CrawlDefinition {
 	p := flow.Default()
 	traps := trap.Default()
-	return CrawlDefinition{RequestQueueCacheMB: 64, Traps: &traps, Fetch: &p, Network: DefaultNetworkSettings(), Name: "Untitled crawl", Seeds: []string{}, Feeds: []string{}, Scope: "same_domain", Strategy: "host_diverse", MaxDepth: 10, MaxHops: 3, RequestDelay: "100ms", Concurrency: 2, Revisit: "24h", Retention: frontier.DefaultRetention()}
+	repeated := repetition.Default()
+	return CrawlDefinition{RepeatedPages: &repeated, RequestQueueCacheMB: 64, Traps: &traps, Fetch: &p, Network: DefaultNetworkSettings(), Name: "Untitled crawl", Seeds: []string{}, Feeds: []string{}, Scope: "same_domain", Strategy: "host_diverse", MaxDepth: 10, MaxHops: 3, RequestDelay: "100ms", Concurrency: 2, Revisit: "24h", Retention: frontier.DefaultRetention()}
 }
 func decodeDefinition(raw json.RawMessage) (CrawlDefinition, error) {
 	d := DefaultCrawlDefinition()
@@ -70,6 +73,14 @@ func CompileCrawl(root, runID string, d CrawlDefinition) (config.Application, er
 	return compileCrawl(root, runID, d, false)
 }
 func compileCrawl(root, runID string, d CrawlDefinition, allowEmpty bool) (config.Application, error) {
+	if d.RepeatedPages == nil {
+		p := repetition.Default()
+		d.RepeatedPages = &p
+	}
+	if err := d.RepeatedPages.Validate(); err != nil {
+		return config.Application{}, errs.NewRequestError(err.Error())
+	}
+
 	if strings.TrimSpace(d.Name) == "" || !allowEmpty && len(d.Seeds)+len(d.Feeds) == 0 {
 		return config.Application{}, errs.NewRequestError("name and at least one seed URL or feed required")
 	}
@@ -192,7 +203,7 @@ func compileCrawl(root, runID string, d CrawlDefinition, allowEmpty bool) (confi
 	}
 	resource("objects", "filesystem_object_store", map[string]string{"path": filepath.Join(root, "objects")})
 	resource("source_progress", "persistent_map", map[string]string{"path": filepath.Join(root, "source_progress")})
-	fp := frontier.StoreParams{Traps: d.Traps, OriginDelay: frontier.Lifetime(delay), Retry: &frontier.RetryPolicy{Share: policy.RetryShare, Limit: c.HTTPClient.MaxRetries, Base: flow.Duration(c.HTTPClient.RetryDelay), Maximum: flow.Duration(c.HTTPClient.RetryMaxDelay), FailureThreshold: policy.FailureThreshold, HostCooldown: policy.HostCooldown, HostCooldownMax: policy.HostCooldownMax, ProbeInterval: policy.RecoveryProbeInterval}, Path: filepath.Join(root, "frontier"), Retention: d.Retention, MaxDispatches: d.Termination.MaxRequests, CacheBudgetMB: 64}
+	fp := frontier.StoreParams{RepeatedPages: d.RepeatedPages, Traps: d.Traps, OriginDelay: frontier.Lifetime(delay), Retry: &frontier.RetryPolicy{Share: policy.RetryShare, Limit: c.HTTPClient.MaxRetries, Base: flow.Duration(c.HTTPClient.RetryDelay), Maximum: flow.Duration(c.HTTPClient.RetryMaxDelay), FailureThreshold: policy.FailureThreshold, HostCooldown: policy.HostCooldown, HostCooldownMax: policy.HostCooldownMax, ProbeInterval: policy.RecoveryProbeInterval}, Path: filepath.Join(root, "frontier"), Retention: d.Retention, MaxDispatches: d.Termination.MaxRequests, CacheBudgetMB: 64}
 	if !d.Termination.WhenDrained {
 		fp.RevisitAfter = frontier.Lifetime(revisit)
 	}
@@ -210,7 +221,7 @@ func compileCrawl(root, runID string, d CrawlDefinition, allowEmpty bool) (confi
 	worker("admit_seeds", "frontier_admission", "seeds", "", map[string]interface{}{"frontier_store": "frontier", "allowed_host_suffixes": c.HTTPClient.AllowedHostSuffixes}, false, 0, false)
 	worker("fetch", "http_fetcher", "requests", "fetched", map[string]string{"object_store": "objects"}, false, 0, false)
 	enabledExtractors := []string{"url", "text", "title"}
-	if d.Traps != nil && d.Traps.Enabled {
+	if d.Traps != nil && d.Traps.Enabled || d.RepeatedPages.Mode != "off" {
 		enabledExtractors = append(enabledExtractors, "adversarial")
 	}
 	worker("extract", "composite_extractor", "fetched", "analyzed", map[string]interface{}{"object_store": "objects", "transformer_queue": "results", "enabled": enabledExtractors}, false, 0, false)

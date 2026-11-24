@@ -17,15 +17,19 @@ import (
 )
 
 type Operation struct {
-	RunID   string `json:"run_id,omitempty"`
-	Version uint64 `json:"configuration_version,omitempty"`
-	Queue   string `json:"queue,omitempty"`
-	Record  string `json:"record,omitempty"`
-	ID      string `json:"id"`
-	Action  string `json:"action"`
-	State   string `json:"state"`
-	Error   string `json:"error,omitempty"`
-	Updated int64  `json:"updated"`
+	Progress        map[string]int64          `json:"progress,omitempty"`
+	CancelRequested bool                      `json:"cancel_requested,omitempty"`
+	Input           json.RawMessage           `json:"input,omitempty"`
+	Analysis        *RepeatedAnalysisProgress `json:"analysis,omitempty"`
+	RunID           string                    `json:"run_id,omitempty"`
+	Version         uint64                    `json:"configuration_version,omitempty"`
+	Queue           string                    `json:"queue,omitempty"`
+	Record          string                    `json:"record,omitempty"`
+	ID              string                    `json:"id"`
+	Action          string                    `json:"action"`
+	State           string                    `json:"state"`
+	Error           string                    `json:"error,omitempty"`
+	Updated         int64                     `json:"updated"`
 }
 type operationsState struct {
 	Desired    string                `json:"desired"`

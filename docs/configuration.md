@@ -102,3 +102,11 @@ Dependencies must be listed explicitly. Unknown, duplicate, missing, or cyclic d
 ### Retired services
 
 Dashboard CRUD and streaming subscriptions are removed. Configure Elasticsearch indexing through transformer workers. Workspace execution limits are configured once through `/workspace/settings`; per-crawl policies retain local concurrency, pacing, retry, admission, and metric controls.
+
+## Repeated pages
+
+Guided crawls default to reversible repeated-page deprioritization. Custom
+frontier resources opt in with `repeated_pages`; omission keeps the policy off.
+The editor exposes thresholds, observation windows, bounds, admission share,
+family exemptions, and stored-result analysis. See [Repeated pages](repeated-pages.md)
+for defaults, migration, and graph folding.

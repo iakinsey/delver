@@ -20,3 +20,28 @@ All workspace actions use POST JSON. Responses include `http_code`, `success`, o
 `/crawler/*`, `/dashboard/*`, and legacy dashboard routes return 404. There is no WebSocket subscription listener. Elasticsearch indexing, log search, and scoped log deletion remain supported by the pipeline and gateway interfaces.
 
 See [workspace](workspace.md) for persistence, credentials, log deletion, and migration semantics. Synthetic requests and real-server fixtures are in `web/e2e` and `application` tests.
+
+### Repeated-page families
+
+These crawl endpoints accept `crawl_id` and an optional `run_id`:
+
+- `/crawls/repeated_families`: bounded `query`, `after`, and `limit` listing;
+  includes coverage, revision, and routing migration progress.
+- `/crawls/repeated_members`: `family`, `query`, `after`, `limit` member inspection.
+- `/crawls/repeated_override`: `family`, `exempt`, crawl `revision`, unique `id`.
+  Returns the existing serialized operation record.
+- `/crawls/repeated_analyze`: crawl `revision`, unique `id`; optional `resume`
+  references an interrupted analysis operation. Progress, seek position, routing
+  target, and projection target are persisted in the operation record.
+- `/crawls/repeated_cancel`: `revision`, `operation_id` of the analysis to cancel.
+  A repeated cancellation does not affect a subsequently started analysis.
+- `/crawls/patch_repeated_pages`: `configuration_json` and a `settings` map keyed
+  by frontier resource name. Returns exact server-patched `configuration_json`.
+
+Graph generation accepts `options.fold_repeated_pages` (default false).
+`/crawls/atlas_members` accepts `snapshot`, `host_id`, `query`, and `offset`; member
+pages contain at most 100 hosts. Member-name search selects the displayed family.
+Folded snapshots expose raw input counts, edge multiplicities, and internal edges.
+Raw report edges remain the authority for restricted-content propagation.
+
+See [repeated-page configuration and storage](repeated-pages.md).

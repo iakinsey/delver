@@ -10,6 +10,12 @@ import (
 	"time"
 )
 
+type revisitEntry struct {
+	message.FetcherRequest
+	Origins      []int64 `json:"origins,omitempty"`
+	NormalPinned bool    `json:"normal_pinned,omitempty"`
+}
+
 // DrainRecrawls makes completed work eligible independently of dedup retention.
 // The due entry owns future work until its replacement is durably admitted.
 func (s *Store) DrainRecrawls(ctx context.Context, limit int) error {
@@ -18,7 +24,7 @@ func (s *Store) DrainRecrawls(ctx context.Context, limit int) error {
 	}
 	type due struct {
 		key     string
-		request message.FetcherRequest
+		request revisitEntry
 	}
 	entries := []due{}
 	err := s.view(func(tx *badger.Txn) error {
@@ -48,7 +54,7 @@ func (s *Store) DrainRecrawls(ctx context.Context, limit int) error {
 			if deadline > time.Now().UnixNano() {
 				break
 			}
-			var r message.FetcherRequest
+			var r revisitEntry
 			if err := it.Item().Value(func(b []byte) error { return json.Unmarshal(b, &r) }); err != nil {
 				return err
 			}
@@ -74,6 +80,11 @@ func (s *Store) DrainRecrawls(ctx context.Context, limit int) error {
 				}
 				var c Candidate
 				if err := read(tx, "u/"+e.request.URI, &c); err == nil {
+					if c.Terminal == 0 {
+						if err := s.mergeRevisitProvenance(tx, &c, e.request); err != nil {
+							return err
+						}
+					}
 					if c.Terminal == 0 || c.Request.RequestID != e.request.RequestID {
 						active = true
 						return nil
@@ -101,13 +112,27 @@ func (s *Store) DrainRecrawls(ctx context.Context, limit int) error {
 			return err
 		}
 		if !active {
-			r := e.request
+			r := e.request.FetcherRequest
 			r.Attempt = 0
 			r.RequestID = ""
 			r.FrontierGeneration = ""
 			if err := s.Admit(ctx, r); err == ErrCapacity {
 				return nil
 			} else if err != nil && err != ErrRejected {
+				return err
+			}
+			s.mu.Lock()
+			err := s.update(func(tx *badger.Txn) error {
+				var c Candidate
+				if err := read(tx, "u/"+r.URI, &c); err == badger.ErrKeyNotFound {
+					return nil
+				} else if err != nil {
+					return err
+				}
+				return s.mergeRevisitProvenance(tx, &c, e.request)
+			})
+			s.mu.Unlock()
+			if err != nil {
 				return err
 			}
 		}
@@ -120,4 +145,42 @@ func (s *Store) DrainRecrawls(ctx context.Context, limit int) error {
 
 func revisitKey(timestamp int64, uri string) string {
 	return fmt.Sprintf("revisit/%020d/%s", timestamp, strings.TrimSpace(uri))
+}
+
+func (s *Store) mergeRevisitProvenance(tx *badger.Txn, c *Candidate, entry revisitEntry) error {
+	if !s.hasRepeated.Load() {
+		return nil
+	}
+	old := *c
+	c.NormalPinned = c.NormalPinned || entry.NormalPinned
+	for _, id := range entry.Origins {
+		found := false
+		for _, existing := range c.Origins {
+			if existing == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			if len(c.Origins) >= 128 {
+				c.NormalPinned = true
+				break
+			}
+			c.Origins = append(c.Origins, id)
+		}
+	}
+	repeated, err := s.candidateRepeated(tx, *c)
+	if err != nil {
+		return err
+	}
+	c.Repeated = repeated
+	if c.Repeated != old.Repeated && (c.State == "pending" || c.State == "reserved") {
+		if err := schedule(tx, old, true); err != nil {
+			return err
+		}
+		if err := schedule(tx, *c, false); err != nil {
+			return err
+		}
+	}
+	return write(tx, "u/"+c.Request.URI, *c)
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/dgraph-io/badger/v3"
 	"github.com/iakinsey/delver/protection"
+	"github.com/iakinsey/delver/repetition"
 	"github.com/iakinsey/delver/trap"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/message"
@@ -30,23 +31,27 @@ var ErrCooling = errors.New("origin cooling")
 var ErrTrapExcluded = errors.New("site excluded as crawler trap")
 
 type StoreParams struct {
-	Traps               *trap.Settings `json:"traps,omitempty"`
-	ExcludedExtensions  []string       `json:"excluded_extensions,omitempty"`
-	Retry               *RetryPolicy   `json:"retry,omitempty"`
-	RevisitAfter        Lifetime       `json:"revisit_after"`
-	MaxDispatches       int64          `json:"max_dispatches"`
-	CacheBudgetMB       int            `json:"cache_budget_mb"`
-	MaxURLs             int            `json:"max_urls"`
-	MaxURLsPerOrigin    int            `json:"max_urls_per_origin"`
-	PatternBudgets      map[string]int `json:"pattern_budgets"`
-	OriginDelay         Lifetime       `json:"origin_delay"`
-	MinFreeBytes        uint64         `json:"min_free_bytes"`
-	MaxPendingPerOrigin int            `json:"max_pending_per_origin"`
-	Path                string         `json:"path"`
-	Retention           Retention      `json:"retention"`
-	MaxPending          int            `json:"max_pending"`
+	RepeatedPages       *repetition.Settings `json:"repeated_pages,omitempty"`
+	Traps               *trap.Settings       `json:"traps,omitempty"`
+	ExcludedExtensions  []string             `json:"excluded_extensions,omitempty"`
+	Retry               *RetryPolicy         `json:"retry,omitempty"`
+	RevisitAfter        Lifetime             `json:"revisit_after"`
+	MaxDispatches       int64                `json:"max_dispatches"`
+	CacheBudgetMB       int                  `json:"cache_budget_mb"`
+	MaxURLs             int                  `json:"max_urls"`
+	MaxURLsPerOrigin    int                  `json:"max_urls_per_origin"`
+	PatternBudgets      map[string]int       `json:"pattern_budgets"`
+	OriginDelay         Lifetime             `json:"origin_delay"`
+	MinFreeBytes        uint64               `json:"min_free_bytes"`
+	MaxPendingPerOrigin int                  `json:"max_pending_per_origin"`
+	Path                string               `json:"path"`
+	Retention           Retention            `json:"retention"`
+	MaxPending          int                  `json:"max_pending"`
 }
 type Candidate struct {
+	Repeated        bool                   `json:"repeated,omitempty"`
+	NormalPinned    bool                   `json:"normal_pinned,omitempty"`
+	Origins         []int64                `json:"origins,omitempty"`
 	ExclusionPolicy string                 `json:"exclusion_policy,omitempty"`
 	NextAttempt     int64                  `json:"next_attempt,omitempty"`
 	LastFailure     string                 `json:"last_failure,omitempty"`
@@ -73,16 +78,19 @@ func (HTMLReward) Reward(r message.FetcherResponse, unique bool) float64 {
 }
 
 type Store struct {
-	policy          *protection.Policy
-	exclusionPolicy string
-	controller      atomic.Value
-	RewardPolicy    RewardPolicy
-	patterns        map[string]*regexp.Regexp
-	db              *badger.DB
-	mu              sync.Mutex
-	params          StoreParams
-	healthMu        sync.Mutex
-	lastError       string
+	policy           *protection.Policy
+	exclusionPolicy  string
+	hasRepeated      atomic.Bool
+	repeatedEpoch    string
+	repeatedScanStep atomic.Uint64
+	controller       atomic.Value
+	RewardPolicy     RewardPolicy
+	patterns         map[string]*regexp.Regexp
+	db               *badger.DB
+	mu               sync.Mutex
+	params           StoreParams
+	healthMu         sync.Mutex
+	lastError        string
 }
 
 func Normalize(raw, base string) (string, error) {
@@ -115,6 +123,11 @@ func Normalize(raw, base string) (string, error) {
 	return u.String(), nil
 }
 func OpenStore(p StoreParams) (*Store, error) {
+	if p.RepeatedPages != nil {
+		if err := p.RepeatedPages.Validate(); err != nil {
+			return nil, err
+		}
+	}
 	if p.Traps != nil {
 		if err := p.Traps.Validate(); err != nil {
 			return nil, err
@@ -192,6 +205,10 @@ func OpenStore(p StoreParams) (*Store, error) {
 		return nil, err
 	}
 	if err := store.ensureFreshIndexes(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := store.initializeRepeated(); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -294,7 +311,7 @@ func (s *Store) admitGuarded(ctx context.Context, r message.FetcherRequest) (boo
 
 // admitTx must be rolled back on every error: scheduling and budget mutations
 // may precede a capacity rejection.
-func (s *Store) admitTx(tx *badger.Txn, r message.FetcherRequest, usedSlot *bool) error {
+func (s *Store) admitTx(tx *badger.Txn, r message.FetcherRequest, usedSlot *bool, caches ...*repeatedClassifier) error {
 	uri := r.URI
 
 	if s.trapBlocked(tx, uri) {
@@ -302,6 +319,9 @@ func (s *Store) admitTx(tx *badger.Txn, r message.FetcherRequest, usedSlot *bool
 	}
 	var existing Candidate
 	if e := read(tx, "u/"+uri, &existing); e == nil {
+		if err := s.updateRepeatedCandidate(tx, &existing, r.Origin, caches...); err != nil {
+			return err
+		}
 		if existing.State == "excluded" && existing.ExclusionPolicy == s.exclusionPolicy {
 			return nil
 		}
@@ -354,6 +374,11 @@ func (s *Store) admitTx(tx *badger.Txn, r message.FetcherRequest, usedSlot *bool
 				return err
 			}
 			*usedSlot = true
+			if s.hasRepeated.Load() {
+				if err := increment(tx, "repeated/stage_step", 1); err != nil {
+					return err
+				}
+			}
 		}
 		if existing.State == "excluded" {
 			host := existing.Request.Host
@@ -373,6 +398,13 @@ func (s *Store) admitTx(tx *badger.Txn, r message.FetcherRequest, usedSlot *bool
 		existing.Request.Hops = r.Hops
 		existing.Terminal = 0
 		existing.State = "pending"
+		if s.hasRepeated.Load() {
+			repeated, err := s.candidateRepeated(tx, existing, caches...)
+			if err != nil {
+				return err
+			}
+			existing.Repeated = repeated
+		}
 		if err := write(tx, "u/"+uri, existing); err != nil {
 			return err
 		}
@@ -435,6 +467,14 @@ func (s *Store) admitTx(tx *badger.Txn, r message.FetcherRequest, usedSlot *bool
 		return err
 	}
 	c := Candidate{Request: r, State: "pending", Sequence: seq, Discovered: time.Now().UnixNano()}
+	if s.hasRepeated.Load() {
+		c.NormalPinned = r.Origin == ""
+		repeated, err := s.candidateRepeated(tx, c, caches...)
+		if err != nil {
+			return err
+		}
+		c.Repeated = repeated
+	}
 	if err := write(tx, "u/"+uri, c); err != nil {
 		return err
 	}
@@ -448,6 +488,11 @@ func (s *Store) admitTx(tx *badger.Txn, r message.FetcherRequest, usedSlot *bool
 		return err
 	}
 	*usedSlot = true
+	if s.hasRepeated.Load() {
+		if err := increment(tx, "repeated/stage_step", 1); err != nil {
+			return err
+		}
+	}
 	return write(tx, "meta/pending", n+1)
 }
 
@@ -562,6 +607,11 @@ func (s *Store) Published(c Candidate) error {
 			return err
 		}
 		current.State = "dispatched"
+		if s.hasRepeated.Load() && current.Request.Attempt == 0 {
+			if err := increment(tx, "repeated/dispatch_step", 1); err != nil {
+				return err
+			}
+		}
 		if err := schedule(tx, current, true); err != nil {
 			return err
 		}
@@ -573,6 +623,9 @@ func (s *Store) Published(c Candidate) error {
 }
 func expiry(t int64, kind, uri string) string { return fmt.Sprintf("e/%020d/%s/%s", t, kind, uri) }
 func (s *Store) Outcome(r message.FetcherResponse) error {
+	return s.outcome(r, nil)
+}
+func (s *Store) outcome(r message.FetcherResponse, observation func(*badger.Txn) error) error {
 	if r.FailureClass == "excluded" {
 		r.Retryable = false
 	}
@@ -667,7 +720,7 @@ func (s *Store) Outcome(r message.FetcherResponse) error {
 		}
 		c.Terminal = time.Now().UnixNano()
 		if s.params.RevisitAfter > 0 && r.FailureClass != "excluded" {
-			if err := write(tx, revisitKey(retentionDeadline(c.Terminal, s.params.RevisitAfter), c.Request.URI), c.Request); err != nil {
+			if err := write(tx, revisitKey(retentionDeadline(c.Terminal, s.params.RevisitAfter), c.Request.URI), revisitEntry{FetcherRequest: c.Request, Origins: c.Origins, NormalPinned: c.NormalPinned}); err != nil {
 				return err
 			}
 		}
@@ -704,6 +757,11 @@ func (s *Store) Outcome(r message.FetcherResponse) error {
 		var n int
 		if err := read(tx, "meta/pending", &n); err != nil {
 			return err
+		}
+		if observation != nil {
+			if err := observation(tx); err != nil {
+				return err
+			}
 		}
 		return write(tx, "meta/pending", n-1)
 	})

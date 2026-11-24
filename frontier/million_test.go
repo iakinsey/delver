@@ -199,14 +199,21 @@ func TestFrontierMillionURLs(t *testing.T) {
 	counts, err = s.Counts()
 	require.NoError(t, err)
 	require.Equal(t, int64(n), counts["admitted"])
+	if os.Getenv("DELVER_REPEATED_SCALE") == "1" {
+		s, params = repeatedMillionUpgrade(t, s, params, n, emit)
+	}
 	probe("million_active")
 
 	// Verify bounded progress past cooling prefixes on the actual million-record
 	// indexes, without consuming requests or changing the lifecycle cohort.
 	for _, strategy := range []string{"breadth_first", "depth_first", "host_diverse", "adaptive"} {
-		head, e := s.Candidates(ctx, strategy, "", 4096)
+		prefixSize := 4096
+		if params.RepeatedPages != nil {
+			prefixSize += 128
+		} // Cover phase rounding in both priority lanes.
+		head, e := s.Candidates(ctx, strategy, "", prefixSize)
 		require.NoError(t, e)
-		require.Len(t, head, 4096)
+		require.Len(t, head, prefixSize)
 		hosts := map[string]bool{}
 		for _, c := range head {
 			hosts[c.Request.Host] = true
@@ -255,6 +262,9 @@ func TestFrontierMillionURLs(t *testing.T) {
 	staged := make([]message.FetcherRequest, 4096)
 	for i := range staged {
 		staged[i] = message.FetcherRequest{URI: millionURI(i % n)}
+		if params.RepeatedPages != nil && i%2 == 0 {
+			staged[i].Origin = "http://mirror-0.test/"
+		} // Replay the same provenance, not a new normal source.
 	}
 	require.NoError(t, s.StageDiscovery(ctx, "million-admission-replay", staged))
 	originalGlobal, originalHost := s.params.MaxPending, s.params.MaxPendingPerOrigin

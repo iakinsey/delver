@@ -63,6 +63,8 @@ func (w *Workspace) handleAtlas(ctx context.Context, sourcePath, action string, 
 		return nil, err
 	}
 	switch action {
+	case "atlas_members":
+		return report.AtlasMembers(ctx, path, req.Snapshot, req.HostID, req.Query, req.Offset)
 	case "atlas_generate":
 		o := report.DefaultAtlasOptions()
 		if req.Options != nil {

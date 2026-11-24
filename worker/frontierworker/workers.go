@@ -12,6 +12,7 @@ import (
 	"github.com/iakinsey/delver/instrument"
 	"github.com/iakinsey/delver/protection"
 	"github.com/iakinsey/delver/queue"
+	"github.com/iakinsey/delver/repetition"
 	"github.com/iakinsey/delver/report"
 	"github.com/iakinsey/delver/trap"
 	"github.com/iakinsey/delver/types"
@@ -46,14 +47,15 @@ type Worker struct {
 	Reporter report.Writer
 	metrics  metrics.MetricSink
 	Params
-	Kind        string
-	lastHost    string
-	step        uint64
-	Selector    frontier.Selector
-	allow, deny *regexp.Regexp
-	scanCursor  frontier.ScanCursor
-	nextCleanup time.Time
-	Filters     []frontier.Filter
+	Kind         string
+	lastHost     string
+	step         uint64
+	repeatedStep uint64
+	Selector     frontier.Selector
+	allow, deny  *regexp.Regexp
+	scanCursor   frontier.ScanCursor
+	nextCleanup  time.Time
+	Filters      []frontier.Filter
 }
 
 func (w *Worker) SetProtection(p *protection.Policy) { w.policy = p }
@@ -163,8 +165,23 @@ func (w *Worker) OnMessageContext(ctx context.Context, m types.Message) (interfa
 	if err != nil {
 		return nil, err
 	}
-	if err := w.Store.Outcome(c.FetcherResponse); err != nil {
+	if target, ok := w.Store.(interface {
+		OutcomeAnalysis(context.Context, string, message.CompositeAnalysis, []string) error
+	}); ok {
+		if err := target.OutcomeAnalysis(ctx, m.ID, c, links); err != nil {
+			return nil, err
+		}
+	} else if err := w.Store.Outcome(c.FetcherResponse); err != nil {
 		return nil, err
+	}
+	if target, ok := w.Store.(interface {
+		FlushRepeated(context.Context, repetition.Writer) error
+	}); ok {
+		if reporter, ok := w.Reporter.(repetition.Writer); ok {
+			if err := target.FlushRepeated(ctx, reporter); err != nil {
+				return nil, err
+			}
+		}
 	}
 	gatewayBlocked := false
 	if target, ok := w.Store.(interface {
@@ -263,6 +280,30 @@ func (w *Worker) OnMessageContext(ctx context.Context, m types.Message) (interfa
 }
 func domain(h string) string { return util.SiteKey(h) }
 func (w *Worker) publish(ctx context.Context) error {
+	if source, ok := w.Store.(interface{ RepeatedDispatchStep() (uint64, error) }); ok {
+		step, err := source.RepeatedDispatchStep()
+		if err != nil {
+			return err
+		}
+		w.repeatedStep = step
+	}
+	if target, ok := w.Store.(interface {
+		MaintainRepeatedRouting(context.Context, int) error
+	}); ok {
+		if err := target.MaintainRepeatedRouting(ctx, 128); err != nil {
+			return err
+		}
+	}
+	if target, ok := w.Store.(interface {
+		FlushRepeated(context.Context, repetition.Writer) error
+	}); ok {
+		if reporter, ok := w.Reporter.(repetition.Writer); ok {
+			if err := target.FlushRepeated(ctx, reporter); err != nil {
+				return err
+			}
+		}
+	}
+
 	if target, ok := w.Store.(interface {
 		DrainParked(context.Context, int) error
 	}); ok {
@@ -398,6 +439,35 @@ func (w *Worker) publish(ctx context.Context) error {
 				selection = subset
 			}
 		}
+		if policy, ok := w.Store.(interface{ RepeatedAdmissionShare() int }); ok && policy.RepeatedAdmissionShare() > 0 {
+			share := policy.RepeatedAdmissionShare()
+			chooseRepeated := repetition.Turn(w.repeatedStep, share)
+			freshOnly := true
+			for _, entry := range selection {
+				if entry.Request.Attempt > 0 || entry.State == "reserved" {
+					freshOnly = false
+					break
+				}
+			}
+			if freshOnly {
+				subset := []frontier.Candidate{}
+				mapped := []int{}
+				for i, entry := range selection {
+					if entry.Repeated == chooseRepeated {
+						subset = append(subset, entry)
+						p := i
+						if len(positions) > 0 {
+							p = positions[i]
+						}
+						mapped = append(mapped, p)
+					}
+				}
+				if len(subset) > 0 {
+					selection = subset
+					positions = mapped
+				}
+			}
+		}
 		at := selector.Select(selection, w.lastHost, w.step, scores)
 		if at < 0 || at >= len(selection) {
 			return fmt.Errorf("selector returned invalid candidate index %d", at)
@@ -407,6 +477,7 @@ func (w *Worker) publish(ctx context.Context) error {
 		}
 
 		c := candidates[at]
+		freshRepeatedTurn := c.Request.Attempt == 0
 		candidates = append(candidates[:at], candidates[at+1:]...)
 		c, err = w.Store.Reserve(ctx, c)
 		if errors.Is(err, frontier.ErrTrapExcluded) {
@@ -454,6 +525,9 @@ func (w *Worker) publish(ctx context.Context) error {
 		}
 		w.metrics.IncrCounter([]string{"frontier", "published"}, 1)
 		w.step++
+		if freshRepeatedTurn {
+			w.repeatedStep++
+		}
 		published++
 		reason = "requests published"
 		remaining--

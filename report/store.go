@@ -197,6 +197,10 @@ func Open(path string, partial bool) (*Store, error) {
 			db.Close()
 			return nil, e
 		}
+		if e = s.ensureRepeatedPages(); e != nil {
+			db.Close()
+			return nil, e
+		}
 		success = true
 		return s, nil
 	}
@@ -227,6 +231,10 @@ func Open(path string, partial bool) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
+	if e = s.ensureRepeatedPages(); e != nil {
+		db.Close()
+		return nil, e
+	}
 	success = true
 	return s, nil
 }
@@ -234,7 +242,12 @@ func (s *Store) Close() error {
 	s.closeOnce.Do(func() { s.closeErr = s.db.Close(); releaseWriter(s.path, s.writer) })
 	return s.closeErr
 }
-func hostID(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
+func hostID(ctx context.Context, tx *sql.Tx, name string, caches ...map[string]int64) (int64, error) {
+	if len(caches) > 0 {
+		if id, ok := caches[0][name]; ok {
+			return id, nil
+		}
+	}
 	if _, e := tx.ExecContext(ctx, "INSERT OR IGNORE INTO hosts(name) VALUES(?)", name); e != nil {
 		return 0, e
 	}
@@ -243,14 +256,17 @@ func hostID(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
 	if e == nil {
 		_, e = tx.ExecContext(ctx, "INSERT OR IGNORE INTO site_hosts(host,site) VALUES(?,?)", id, site.Key(name))
 	}
+	if e == nil && len(caches) > 0 {
+		caches[0][name] = id
+	}
 	return id, e
 }
-func recordURL(ctx context.Context, tx *sql.Tx, raw string, received bool) (int64, error) {
+func recordURL(ctx context.Context, tx *sql.Tx, raw string, received bool, caches ...map[string]int64) (int64, error) {
 	uri, name, e := Normalize(raw)
 	if e != nil {
 		return 0, e
 	}
-	id, e := hostID(ctx, tx, name)
+	id, e := hostID(ctx, tx, name, caches...)
 	if e != nil {
 		return 0, e
 	}
@@ -303,26 +319,35 @@ func (s *Store) Discover(ctx context.Context, urls []URL) error {
 		}
 		if e := s.policy.GuardMany(uris, func() error {
 			return s.batch(ctx, func(tx *sql.Tx) error {
+				hosts := map[string]int64{}
+				origins := map[string]int64{}
+				edges := map[[2]int64]bool{}
 				for _, u := range urls[start:end] {
 					if _, _, e := Normalize(u.URI); e != nil {
 						continue
 					}
-					target, e := recordURL(ctx, tx, u.URI, false)
+					target, e := recordURL(ctx, tx, u.URI, false, hosts)
 					if e != nil {
 						return e
 					}
 					if u.Origin == "" {
 						continue
 					}
-					_, sourceName, e := Normalize(u.Origin)
-					if e != nil {
-						continue
+					source, known := origins[u.Origin]
+					if !known {
+						_, name, err := Normalize(u.Origin)
+						if err != nil {
+							continue
+						}
+						source, err = hostID(ctx, tx, name, hosts)
+						if err != nil {
+							return err
+						}
+						origins[u.Origin] = source
 					}
-					source, e := hostID(ctx, tx, sourceName)
-					if e != nil {
-						return e
-					}
-					if source != target {
+					pair := [2]int64{source, target}
+					if source != target && !edges[pair] {
+						edges[pair] = true
 						if _, e = tx.ExecContext(ctx, "INSERT OR IGNORE INTO edges(source,target) VALUES(?,?)", source, target); e != nil {
 							return e
 						}

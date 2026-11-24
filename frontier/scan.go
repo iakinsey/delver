@@ -13,8 +13,10 @@ import (
 // ScanCursor is a transient position in the existing reserved, retry and fresh
 // indexes. Keys remain valid seek positions after deletion. Nothing is persisted.
 type ScanCursor struct {
-	After [3]string
-	Done  [3]bool
+	After         [3]string
+	Done          [3]bool
+	RepeatedAfter string
+	RepeatedDone  bool
 }
 type CandidatePage struct {
 	Trapped            []Candidate
@@ -28,7 +30,7 @@ type CandidatePage struct {
 // ScanCandidates bounds inspected records, not just returned candidates. A caller
 // continues a refill across passes and resets the cursor when the refill or sweep
 // completes. Cooling entries cannot pin every pass to the same index prefix.
-func (s *Store) ScanCandidates(ctx context.Context, strategy string, cursor ScanCursor, limit int) (CandidatePage, error) {
+func (s *Store) scanLegacyCandidates(ctx context.Context, strategy string, cursor ScanCursor, limit int) (CandidatePage, error) {
 	page := CandidatePage{Cursor: cursor}
 	if limit < 1 {
 		return page, fmt.Errorf("candidate scan limit must be positive")

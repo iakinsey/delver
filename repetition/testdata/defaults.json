@@ -1,0 +1,13 @@
+{
+  "mode": "deprioritize",
+  "minimum_sites": 3,
+  "structure_similarity": 0.95,
+  "text_similarity": 0.85,
+  "destination_similarity": 0.8,
+  "host_dominance": 0.8,
+  "site_window": 20,
+  "family_window": 100,
+  "max_text_kib": 256,
+  "max_destinations": 256,
+  "admission_share_percent": 10
+}

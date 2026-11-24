@@ -139,6 +139,9 @@ func (s *Store) IncomingSites(ctx context.Context, root string, depth int) ([]Si
 	return out, revision, partial, e
 }
 func (s *Store) PurgeSite(ctx context.Context, key string) error {
+	if err := s.purgeRepeated(ctx, func(raw string) bool { return site.Key(raw) == key }); err != nil {
+		return err
+	}
 	return s.batch(ctx, func(tx *sql.Tx) error {
 		var known, visited int64
 		if e := tx.QueryRowContext(ctx, `SELECT COALESCE(SUM(h.known),0),COALESCE(SUM(h.visited),0) FROM hosts h JOIN site_hosts s ON s.host=h.id WHERE s.site=?`, key).Scan(&known, &visited); e != nil {
@@ -159,6 +162,9 @@ func (s *Store) PurgeSite(ctx context.Context, key string) error {
 }
 
 func (s *Store) PurgeMatchingHosts(ctx context.Context, match func(string) bool) error {
+	if err := s.purgeRepeated(ctx, func(raw string) bool { u, err := url.Parse(raw); return err == nil && match(u.Hostname()) }); err != nil {
+		return err
+	}
 	var after int64
 	for {
 		rows, e := s.db.QueryContext(ctx, `SELECT id,name FROM hosts WHERE id>? ORDER BY id LIMIT 256`, after)
@@ -217,6 +223,9 @@ func (s *Store) PurgeMatchingHosts(ctx context.Context, match func(string) bool)
 	}
 }
 func (s *Store) PurgeURL(ctx context.Context, raw string) error {
+	if err := s.purgeRepeated(ctx, func(uri string) bool { return uri == raw }); err != nil {
+		return err
+	}
 	uri, _, e := Normalize(raw)
 	if e != nil {
 		return e
@@ -373,6 +382,29 @@ func (s *Store) VerifyPurged(ctx context.Context, entries []protection.Entry, si
 		}
 		if n > 0 {
 			return fmt.Errorf("matching report URL remains")
+		}
+	}
+	for _, q := range []string{`SELECT representative FROM repeated_families`, `SELECT uri FROM repeated_sites`} {
+		rows, e := s.db.QueryContext(ctx, q)
+		if e != nil {
+			return e
+		}
+		for rows.Next() {
+			var uri string
+			if e = rows.Scan(&uri); e != nil {
+				break
+			}
+			if matcher.Matches(uri) {
+				e = fmt.Errorf("matching repeated-page metadata remains")
+				break
+			}
+		}
+		if e == nil {
+			e = rows.Err()
+		}
+		rows.Close()
+		if e != nil {
+			return e
 		}
 	}
 	s.write.Lock()

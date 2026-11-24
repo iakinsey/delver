@@ -14,6 +14,11 @@ func schedulingKeys(c Candidate) []string {
 		fmt.Sprintf("d/%010d/%020d/%s", int64(2147483647)-int64(c.Request.Depth), int64(9223372036854775807)-c.Sequence, c.Request.URI),
 		fmt.Sprintf("hs/%s/%010d/%020d/%s", util.SiteKey(c.Request.Host), c.Request.Depth, c.Sequence, c.Request.URI),
 	}
+	if c.Repeated {
+		for i, key := range keys {
+			keys[i] = "r" + key
+		}
+	}
 	if c.Request.Attempt > 0 {
 		keys = append(keys, fmt.Sprintf("retry_ready/%020d/%s", c.Sequence, c.Request.URI))
 	} else {
@@ -40,6 +45,10 @@ func schedule(tx *badger.Txn, c Candidate, remove bool) error {
 
 // Candidates uses strategy-specific indexes; completed history is never visited.
 func (s *Store) Candidates(ctx context.Context, strategy, lastHost string, limit int) ([]Candidate, error) {
+	if s.hasRepeated.Load() {
+		page, err := s.ScanCandidates(ctx, strategy, ScanCursor{}, limit)
+		return page.Candidates, err
+	}
 	out := []Candidate{}
 	err := s.view(func(tx *badger.Txn) error {
 		seen := map[string]bool{}

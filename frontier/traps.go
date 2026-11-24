@@ -68,16 +68,9 @@ func (s *Store) ObserveTrap(ctx context.Context, o trap.Observation) (bool, erro
 		} else if e != badger.ErrKeyNotFound {
 			return e
 		}
-		candidates := map[string]bool{}
-		for band := 0; band < 16; band++ {
-			prefix := fmt.Sprintf("trap/band/%02d/%016x%016x%016x%016x/", band, o.Signature[band*4], o.Signature[band*4+1], o.Signature[band*4+2], o.Signature[band*4+3])
-			opts := badger.DefaultIteratorOptions
-			opts.PrefetchValues = false
-			it := tx.NewIterator(opts)
-			for it.Seek([]byte(prefix)); it.ValidForPrefix([]byte(prefix)) && len(candidates) < 64; it.Next() {
-				candidates[strings.TrimPrefix(string(it.Item().Key()), prefix)] = true
-			}
-			it.Close()
+		candidates, err := structureCandidates(tx, "trap/band/", o.Signature)
+		if err != nil {
+			return err
 		}
 		family := TrapFamily{}
 		similarity := float64(0)
@@ -525,6 +518,15 @@ func (s *Store) updateBoundedParkedDiscoveries(ctx context.Context, limit int) e
 				}
 				if err = write(tx, original, request); err != nil {
 					return err
+				}
+				if s.hasRepeated.Load() {
+					marker, _, e := chunkMarker(original)
+					if e != nil {
+						return e
+					}
+					if e = s.routeRepeatedChunk(tx, marker); e != nil {
+						return e
+					}
 				}
 				if err = tx.Delete([]byte(key)); err != nil {
 					return err

@@ -119,17 +119,20 @@ func AtlasView(ctx context.Context, path string, o AtlasViewport) (frame AtlasFr
 	frame.Detailed = frame.Hosts <= o.NodeLimit && frame.Links <= o.EdgeLimit
 	cte := "WITH chosen AS (" + visible + " ORDER BY rank DESC,id LIMIT ?) "
 	params := append(append([]interface{}{}, args...), o.NodeLimit)
-	rows, e := tx.QueryContext(ctx, cte+"SELECT id,x,y,community,rank FROM chosen ORDER BY rank DESC,id", params...)
+	nodeColumns := "id,x,y,community,rank,1,0"
+	if info.Options.FoldRepeatedPages {
+		nodeColumns = "id,x,y,community,rank,MAX(1,(SELECT count(*) FROM members WHERE node=chosen.id)),COALESCE((SELECT internal FROM family_nodes WHERE node=chosen.id),0)"
+	}
+	rows, e := tx.QueryContext(ctx, cte+"SELECT "+nodeColumns+" FROM chosen ORDER BY rank DESC,id", params...)
 	if e != nil {
 		return frame, e
 	}
 	for rows.Next() {
 		var v AtlasNode
-		if e = rows.Scan(&v.HostID, &v.X, &v.Y, &v.Community, &v.Authority); e != nil {
+		if e = rows.Scan(&v.HostID, &v.X, &v.Y, &v.Community, &v.Authority, &v.Members, &v.Internal); e != nil {
 			break
 		}
 		v.ID = fmt.Sprintf("h:%d", v.HostID)
-		v.Members = 1
 		frame.Nodes = append(frame.Nodes, v)
 	}
 	if e == nil {
@@ -139,16 +142,21 @@ func AtlasView(ctx context.Context, path string, o AtlasViewport) (frame AtlasFr
 	if e != nil {
 		return frame, e
 	}
-	rows, e = tx.QueryContext(ctx, cte+"SELECT e.source,e.target FROM chosen a JOIN edges e ON e.source=a.id JOIN chosen b ON b.id=e.target ORDER BY e.source,e.target LIMIT ?", append(params, o.EdgeLimit)...)
+	edgeColumns := "e.source,e.target,1"
+	if info.Options.FoldRepeatedPages {
+		edgeColumns = "e.source,e.target,COALESCE((SELECT links FROM edge_multiplicity m WHERE m.source=e.source AND m.target=e.target),1)"
+	}
+	rows, e = tx.QueryContext(ctx, cte+"SELECT "+edgeColumns+" FROM chosen a JOIN edges e ON e.source=a.id JOIN chosen b ON b.id=e.target ORDER BY e.source,e.target LIMIT ?", append(params, o.EdgeLimit)...)
 	if e != nil {
 		return frame, e
 	}
 	for rows.Next() {
 		var a, b int64
-		if e = rows.Scan(&a, &b); e != nil {
+		var links int
+		if e = rows.Scan(&a, &b, &links); e != nil {
 			break
 		}
-		frame.Edges = append(frame.Edges, GraphEdge{Source: fmt.Sprintf("h:%d", a), Target: fmt.Sprintf("h:%d", b), Links: 1})
+		frame.Edges = append(frame.Edges, GraphEdge{Source: fmt.Sprintf("h:%d", a), Target: fmt.Sprintf("h:%d", b), Links: links})
 	}
 	if e == nil {
 		e = rows.Err()
@@ -193,10 +201,11 @@ type AtlasHost struct {
 	Bridges   int     `json:"bridges"`
 }
 type AtlasNeighbor struct {
-	ID   int64   `json:"id"`
-	Name string  `json:"name"`
-	X    float64 `json:"x"`
-	Y    float64 `json:"y"`
+	Multiplicity int     `json:"multiplicity,omitempty"`
+	ID           int64   `json:"id"`
+	Name         string  `json:"name"`
+	X            float64 `json:"x"`
+	Y            float64 `json:"y"`
 }
 type AtlasInspection struct {
 	Host      AtlasHost       `json:"host"`
@@ -239,7 +248,11 @@ func AtlasInspect(ctx context.Context, path, snapshot string, id int64, directio
 	if direction == "incoming" {
 		from, to = to, from
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT n.id,n.name,n.x,n.y FROM edges e JOIN nodes n ON n.id=e."+to+" WHERE e."+from+"=? ORDER BY n.id LIMIT 201 OFFSET ?", id, offset)
+	multiplicity := "1"
+	if info.Options.FoldRepeatedPages {
+		multiplicity = "COALESCE((SELECT links FROM edge_multiplicity m WHERE m.source=e.source AND m.target=e.target),1)"
+	}
+	rows, err := tx.QueryContext(ctx, "SELECT n.id,n.name,n.x,n.y,"+multiplicity+" FROM edges e JOIN nodes n ON n.id=e."+to+" WHERE e."+from+"=? ORDER BY n.id LIMIT 201 OFFSET ?", id, offset)
 	if err != nil {
 		return
 	}
@@ -248,7 +261,7 @@ func AtlasInspect(ctx context.Context, path, snapshot string, id int64, directio
 	out.Direction = direction
 	for rows.Next() {
 		var v AtlasNeighbor
-		if err = rows.Scan(&v.ID, &v.Name, &v.X, &v.Y); err != nil {
+		if err = rows.Scan(&v.ID, &v.Name, &v.X, &v.Y, &v.Multiplicity); err != nil {
 			return
 		}
 		out.Neighbors = append(out.Neighbors, v)
@@ -280,7 +293,21 @@ func AtlasSearch(ctx context.Context, path, query string, snapshot ...string) (o
 		}
 	}
 	query = strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(query)
-	rows, err := tx.QueryContext(ctx, `SELECT id,name,x,y FROM nodes WHERE name LIKE ? ESCAPE '\' ORDER BY incoming+outgoing DESC,id LIMIT 20`, "%"+query+"%")
+	var infoRaw string
+	if err = tx.QueryRowContext(ctx, "SELECT value FROM meta").Scan(&infoRaw); err != nil {
+		return
+	}
+	var info AtlasInfo
+	if err = json.Unmarshal([]byte(infoRaw), &info); err != nil {
+		return
+	}
+	sqlQuery := `SELECT id,name,x,y FROM nodes WHERE name LIKE ? ESCAPE '\' ORDER BY incoming+outgoing DESC,id LIMIT 20`
+	params := []interface{}{"%" + query + "%"}
+	if info.Options.FoldRepeatedPages {
+		sqlQuery = `SELECT n.id,n.name,n.x,n.y FROM nodes n WHERE n.name LIKE ? ESCAPE '\' OR n.id IN (SELECT node FROM members WHERE name LIKE ? ESCAPE '\') ORDER BY n.incoming+n.outgoing DESC,n.id LIMIT 20`
+		params = append(params, params[0])
+	}
+	rows, err := tx.QueryContext(ctx, sqlQuery, params...)
 	if err != nil {
 		return
 	}

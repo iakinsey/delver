@@ -34,6 +34,9 @@ func decodeParameters(raw json.RawMessage, target interface{}) error {
 	return decoder.Decode(target)
 }
 func validateParameters(app config.Application, resources map[string]config.Resource) error {
+	if e := validateRepeatedPages(app); e != nil {
+		return e
+	}
 	if e := validateProtection(app); e != nil {
 		return e
 	}

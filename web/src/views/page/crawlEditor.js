@@ -1,3 +1,5 @@
+import { RepeatedSettings, ExpertRepeatedSettings } from "./repeatedSettings";
+import { RepeatedFamilies } from "./repeatedFamilies";
 import { TrapSettings } from "./trapSettings";
 import {
   FetchSettings,
@@ -164,6 +166,13 @@ export function CrawlEditor({
               onBusy={setFetchApplying}
               onApply={(pipeline) => setEditor((old) => ({ ...old, pipeline }))}
               onError={onError}
+            />
+            <ExpertRepeatedSettings
+              pipeline={editor.pipeline}
+              onApply={(pipeline) => setEditor({ ...editor, pipeline })}
+              onError={onError}
+              onBusy={setFetchApplying}
+              disabled={busy}
             />
             <ExpertQueueCacheSettings
               disabled={fetchApplying}
@@ -392,6 +401,10 @@ export function CrawlEditor({
                 </Field>
               </div>
             </details>
+            <RepeatedSettings
+              value={d.repeated_pages}
+              onChange={(repeated_pages) => set({ repeated_pages })}
+            />
             <TrapSettings
               value={d.traps}
               onChange={(traps) => set({ traps })}
@@ -773,6 +786,13 @@ export function CrawlEditor({
         <button type="submit" disabled={locked}>
           {editor.record ? "Save draft" : "Create"}
         </button>
+        {editor.record && (
+          <RepeatedFamilies
+            configuration
+            crawlId={editor.record.id}
+            revision={editor.record.revision}
+          />
+        )}
       </aside>
     </form>
   );

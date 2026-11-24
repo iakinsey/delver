@@ -91,7 +91,13 @@ func (s *Store) StageDiscovery(ctx context.Context, id string, requests []messag
 				if err := increment(tx, "meta/staged", int64(remaining)); err != nil {
 					return err
 				}
-				return write(tx, marker, remaining)
+				if err := write(tx, marker, remaining); err != nil {
+					return err
+				}
+				if s.hasRepeated.Load() {
+					return s.routeRepeatedChunk(tx, marker)
+				}
+				return nil
 			})
 		})
 		if errors.Is(err, protection.ErrBlocked) {
@@ -119,6 +125,13 @@ func (s *Store) DrainDiscovery(ctx context.Context, limit int) (int, error) {
 	available := 0
 	cursor := ""
 	err := s.view(func(tx *badger.Txn) error {
+		var staged int64
+		if err := repeatedRead(tx, "meta/staged", &staged); err != nil {
+			return err
+		}
+		if staged == 0 {
+			return nil
+		}
 		var pending int
 		if err := read(tx, "meta/pending", &pending); err != nil && err != badger.ErrKeyNotFound {
 			return err
@@ -126,6 +139,41 @@ func (s *Store) DrainDiscovery(ctx context.Context, limit int) (int, error) {
 		available = s.params.MaxPending - pending
 		if available <= 0 {
 			return nil
+		}
+		if s.hasRepeated.Load() {
+			routed, ready, err := s.repeatedDiscoveryWindow(tx, limit)
+			if err != nil {
+				return err
+			}
+			if ready {
+				for _, e := range routed {
+					if e.stale {
+						entries = append(entries, e)
+						continue
+					}
+					uri, err := Normalize(e.request.URI, "")
+					if err != nil {
+						return err
+					}
+					e.request.URI = uri
+					u, _ := url.Parse(uri)
+					e.host = util.SiteKey(u.Host)
+					if _, ok := hosts[e.host]; !ok {
+						var n int
+						if err := repeatedRead(tx, "site_pending/"+e.host, &n); err != nil {
+							return err
+						}
+						hosts[e.host] = s.params.MaxPendingPerOrigin - n
+					}
+					if _, err := tx.Get([]byte("u/" + uri)); err == nil {
+						known[uri] = true
+					} else if err != badger.ErrKeyNotFound {
+						return err
+					}
+					entries = append(entries, e)
+				}
+				return nil
+			}
 		}
 		if err := read(tx, "meta/staged_cursor", &cursor); err != nil && err != badger.ErrKeyNotFound {
 			return err
@@ -193,6 +241,7 @@ func (s *Store) DrainDiscovery(ctx context.Context, limit int) (int, error) {
 	completed := []discoveryEntry{}
 	consumed, deferrals := 0, 0
 	last := ""
+	attempted := [2]discoveryEntry{}
 	var batched map[string]bool
 	for at, e := range entries {
 		if at%128 == 0 {
@@ -209,6 +258,13 @@ func (s *Store) DrainDiscovery(ctx context.Context, limit int) (int, error) {
 			break
 		}
 		last = e.key
+		if e.route != "" {
+			attempted[e.routeClass] = e
+		}
+		if e.stale {
+			completed = append(completed, e)
+			continue
+		}
 		// Old staged records may predate this policy. Count and remove them in
 		// the same acknowledgment transaction, never through per-record admit.
 		policyError := s.policy.Check(e.request.URI)
@@ -240,6 +296,7 @@ func (s *Store) DrainDiscovery(ctx context.Context, limit int) (int, error) {
 				available--
 				hosts[e.host]--
 			}
+			e.noSlot = !used
 			consumed++
 			completed = append(completed, e)
 		} else if errors.Is(result, ErrTrapExcluded) {
@@ -270,13 +327,18 @@ func (s *Store) DrainDiscovery(ctx context.Context, limit int) (int, error) {
 			return consumed, result
 		}
 	}
-	if err := s.checkpointDiscovery(ctx, completed, cursor, last, deferrals); err != nil {
+	if err := s.checkpointDiscovery(ctx, completed, cursor, last, deferrals, attempted[:]...); err != nil {
 		return consumed, err
 	}
 	return consumed, nil
 }
 
 type discoveryEntry struct {
+	noSlot       bool
+	stale        bool
+	route        string
+	routeClass   int
+	repeated     bool
 	key          string
 	request      message.FetcherRequest
 	host         string
@@ -289,10 +351,21 @@ type discoveryEntry struct {
 // Admission and staging cleanup deliberately remain separate transactions.
 // Interrupted cleanup replays through idempotent admission. Each cleanup chunk
 // is atomic, including its marker counts; a deleted cursor remains seekable.
-func (s *Store) checkpointDiscovery(ctx context.Context, entries []discoveryEntry, previous, last string, deferrals int) error {
+func (s *Store) checkpointDiscovery(ctx context.Context, entries []discoveryEntry, previous, last string, deferrals int, attempted ...discoveryEntry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	rotation := int64(deferrals)
+	for _, entry := range entries {
+		if entry.stale || entry.excluded || entry.rejected || entry.parked || entry.noSlot {
+			rotation++
+		}
+	}
 	checkpoint := func(tx *badger.Txn) error {
+		for _, e := range attempted {
+			if err := s.checkpointRepeatedRoute(tx, e); err != nil {
+				return err
+			}
+		}
 		var current string
 		if err := read(tx, "meta/staged_cursor", &current); err != nil && err != badger.ErrKeyNotFound {
 			return err
@@ -301,6 +374,11 @@ func (s *Store) checkpointDiscovery(ctx context.Context, entries []discoveryEntr
 		// Equality also permits normal wrap-around.
 		if current == previous && last != "" {
 			if err := write(tx, "meta/staged_cursor", last); err != nil {
+				return err
+			}
+		}
+		if s.hasRepeated.Load() && rotation > 0 {
+			if err := increment(tx, "repeated/stage_deferral_step", rotation); err != nil {
 				return err
 			}
 		}
@@ -320,14 +398,18 @@ func (s *Store) checkpointDiscovery(ctx context.Context, entries []discoveryEntr
 		}
 		err := s.update(func(tx *badger.Txn) error {
 			skipped := int64(0)
+			routing := &repeatedAcks{chunks: map[string]repeatedChunk{}}
 			for _, e := range entries[at : at+n] {
-				counted, err := s.ackDiscovery(tx, e)
+				counted, err := s.ackDiscovery(tx, e, routing)
 				if err != nil {
 					return err
 				}
 				if counted {
 					skipped++
 				}
+			}
+			if err := s.flushRepeatedAcks(tx, routing); err != nil {
+				return err
 			}
 			if skipped > 0 {
 				if err := increment(tx, "meta/policy_skips", skipped); err != nil {
@@ -357,13 +439,16 @@ func (s *Store) checkpointDiscovery(ctx context.Context, entries []discoveryEntr
 	return s.update(checkpoint)
 }
 
-func (s *Store) ackDiscovery(tx *badger.Txn, e discoveryEntry) (bool, error) {
+func (s *Store) ackDiscovery(tx *badger.Txn, e discoveryEntry, caches ...*repeatedAcks) (bool, error) {
 	if _, err := tx.Get([]byte(e.key)); err == badger.ErrKeyNotFound {
-		return false, nil
+		return false, s.ackRepeatedChunk(tx, e.key, caches...)
 	} else if err != nil {
 		return false, err
 	}
 	if e.parked {
+		if err := s.ackRepeatedChunk(tx, e.key, caches...); err != nil {
+			return false, err
+		}
 		key := "trap/staged/" + util.SiteKey(e.request.URI) + "/" + e.key
 		if err := write(tx, key, e.request); err != nil {
 			return false, err
@@ -384,13 +469,16 @@ func (s *Store) ackDiscovery(tx *badger.Txn, e discoveryEntry) (bool, error) {
 	if err := tx.Delete([]byte(e.key)); err != nil {
 		return false, err
 	}
-	if err := s.finishDiscoveryReceipt(tx, e.key, e.purgeReceipt); err != nil {
+	if err := s.finishDiscoveryReceipt(tx, e.key, e.purgeReceipt, caches...); err != nil {
 		return false, err
 	}
 	return e.excluded, increment(tx, "meta/staged", -1)
 }
 
-func (s *Store) finishDiscoveryReceipt(tx *badger.Txn, key string, deleteEmpty bool) error {
+func (s *Store) finishDiscoveryReceipt(tx *badger.Txn, key string, deleteEmpty bool, caches ...*repeatedAcks) error {
+	if err := s.ackRepeatedChunk(tx, key, caches...); err != nil {
+		return err
+	}
 	parts := strings.Split(key, "/")
 	if len(parts) != 3 || parts[0] != "staged" || parts[1] == "" {
 		return fmt.Errorf("invalid discovery key")

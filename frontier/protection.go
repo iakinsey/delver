@@ -14,6 +14,9 @@ import (
 
 // PurgeMatching uses seek continuations rather than retaining the frontier.
 func (s *Store) PurgeMatching(ctx context.Context, match func(string) bool) error {
+	if err := s.purgeRepeated(ctx, match); err != nil {
+		return err
+	}
 	for _, prefix := range []string{"u/", "staged/", "revisit/", "e/", "retry/", "trap/", "cool/", "failures/", "reward/", "site_reward/", "budget/site/", "site_pending/"} {
 		cursor := ""
 		for {
@@ -43,10 +46,31 @@ func (s *Store) PurgeMatching(ctx context.Context, match func(string) bool) erro
 							return e
 						}
 						if !match(c.Request.URI) {
+							changed := false
+							if c.Request.ScopeRoot != "" && match(c.Request.ScopeRoot) {
+								c.Request.ScopeRoot = ""
+								changed = true
+							}
 							if c.Request.Origin != "" && match(c.Request.Origin) {
 								c.Request.Origin = ""
+								changed = true
+							}
+
+							if changed {
+								if c.State == "pending" || c.State == "reserved" {
+									if e := schedule(tx, c, true); e != nil {
+										return e
+									}
+								}
+								c.NormalPinned = true
+								c.Repeated = false
 								if e := write(tx, key, c); e != nil {
 									return e
+								}
+								if c.State == "pending" || c.State == "reserved" {
+									if e := schedule(tx, c, false); e != nil {
+										return e
+									}
 								}
 							}
 							continue
@@ -102,6 +126,27 @@ func (s *Store) PurgeMatching(ctx context.Context, match func(string) bool) erro
 							}
 						}
 					case "revisit/", "e/", "retry/":
+						if prefix == "revisit/" {
+							var raw []byte
+							if err := it.Item().Value(func(b []byte) error { raw = append([]byte{}, b...); return nil }); err != nil {
+								return err
+							}
+							clean, changed, err := protection.SanitizeJSON(raw, match)
+							if err != nil {
+								return err
+							}
+							if changed {
+								if clean == nil {
+									if err = tx.Delete([]byte(key)); err != nil {
+										return err
+									}
+								} else {
+									if err = tx.Set([]byte(key), clean); err != nil {
+										return err
+									}
+								}
+							}
+						}
 						at := strings.Index(key, "http")
 						if at >= 0 && match(key[at:]) {
 							if e := tx.Delete([]byte(key)); e != nil {

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
@@ -113,6 +114,29 @@ func main() {
 				w.Header().Set("Content-Type", "text/html")
 				fmt.Fprint(w, "<html><title>Protection fixture</title><body>Unrelated material.</body></html>")
 			}
+			return
+		}
+		if r.URL.Path == "/repeated-root" {
+			w.Header().Set("Content-Type", "text/html")
+			fmt.Fprint(w, `<html><head><title>Stored family fixture</title></head><body><header><nav>Directory</nav></header><main><article><h1>Shared directory</h1><section>`)
+			if r.URL.Query().Get("independent") != "" {
+				for i := 0; i < 220; i++ {
+					h := sha256.Sum256([]byte(fmt.Sprintf("%s-%d", r.Host, i)))
+					fmt.Fprintf(w, "%x ", h[:6])
+				}
+			} else {
+				fmt.Fprint(w, strings.Repeat("apple apricot blueberry raspberry orchard harvest season rainfall sunlight soil crop garden ", 40))
+			}
+			fmt.Fprint(w, `</section><ul>`)
+			for i := 0; i < 12; i++ {
+				fmt.Fprintf(w, `<li><a href="http://repeated-peer-%d.invalid/repeated-leaf">Reference %d</a></li>`, i, i)
+			}
+			fmt.Fprint(w, `</ul></article></main><footer>Directory index</footer></body></html>`)
+			return
+		}
+		if r.URL.Path == "/repeated-leaf" {
+			w.Header().Set("Content-Type", "text/html")
+			fmt.Fprint(w, `<html><body><main><p>Leaf resource without outgoing destinations.</p></main></body></html>`)
 			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/extension-test/") {
@@ -397,6 +421,7 @@ func main() {
 	}
 	defer cleanup()
 	mux := http.NewServeMux()
+	mux.HandleFunc("/fixture/repeated-history", repeatedHistoryFixture(root, workspace))
 	mux.HandleFunc("/fixture/atlas-seed", atlasFixture(root, workspace))
 	mux.HandleFunc("/fixture/protection-fault", protectionFault(root, workspace))
 	mux.HandleFunc("/fixture/info", func(w http.ResponseWriter, r *http.Request) {

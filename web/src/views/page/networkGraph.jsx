@@ -1,3 +1,4 @@
+import { NetworkMembers } from "./networkMembers";
 import { useNetworkTiles, tileGeometry } from "./networkTiles";
 import CrawlNavigation from "./crawlNavigation";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -6,6 +7,7 @@ import { apiRequest } from "./crawlApi";
 import "./workspace.css";
 import "./networkGraph.css";
 const defaults = {
+  fold_repeated_pages: false,
   max_hosts: 200000,
   max_edges: 1000000,
   memory_mb: 512,
@@ -516,6 +518,20 @@ export default function NetworkGraph() {
             <label className="crawl-check">
               <input
                 type="checkbox"
+                checked={!!options.fold_repeated_pages}
+                disabled={running}
+                onChange={(e) =>
+                  setOptions((o) => ({
+                    ...o,
+                    fold_repeated_pages: e.target.checked,
+                  }))
+                }
+              />
+              Fold repeated-page families
+            </label>
+            <label className="crawl-check">
+              <input
+                type="checkbox"
                 checked={options.visited_only}
                 disabled={running}
                 onChange={(e) =>
@@ -591,6 +607,9 @@ export default function NetworkGraph() {
             Snapshot: {new Date(snapshot.created).toLocaleString()} · revision{" "}
             {snapshot.revision}
             {snapshot.partial ? " · Partial historical links" : ""}
+            {snapshot.options?.fold_repeated_pages
+              ? ` · Folded network · ${fmt(snapshot.raw_hosts)} raw hosts · ${fmt(snapshot.raw_edges)} raw edges`
+              : ""}
           </p>
           <div className="network-toolbar">
             <label>
@@ -629,6 +648,9 @@ export default function NetworkGraph() {
               {matches.map((h) => (
                 <li key={h.id}>
                   <button onClick={() => focus(h)}>{h.name}</button>
+                  {h.multiplicity > 1 && (
+                    <span> ×{h.multiplicity} raw edges</span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -678,6 +700,13 @@ export default function NetworkGraph() {
                       </React.Fragment>
                     ))}
                   </dl>
+                  {snapshot.options?.fold_repeated_pages && (
+                    <NetworkMembers
+                      call={call}
+                      snapshot={snapshot.id}
+                      hostId={inspection.host.id}
+                    />
+                  )}
                   <button onClick={() => focus(inspection.host)}>
                     Center host
                   </button>
@@ -700,6 +729,9 @@ export default function NetworkGraph() {
                     {inspection.neighbors.map((h) => (
                       <li key={h.id}>
                         <button onClick={() => focus(h)}>{h.name}</button>
+                        {h.multiplicity > 1 && (
+                          <span> ×{h.multiplicity} raw edges</span>
+                        )}
                       </li>
                     ))}
                   </ul>

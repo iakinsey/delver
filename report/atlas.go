@@ -16,17 +16,18 @@ import (
 )
 
 type AtlasOptions struct {
-	MaxHosts      int  `json:"max_hosts"`
-	MaxEdges      int  `json:"max_edges"`
-	MemoryMB      int  `json:"memory_mb"`
-	Passes        int  `json:"passes"`
-	ClusterSize   int  `json:"cluster_size"`
-	VisitedOnly   bool `json:"visited_only"`
-	RemoveOrphans bool `json:"remove_orphans"`
+	FoldRepeatedPages bool `json:"fold_repeated_pages"`
+	MaxHosts          int  `json:"max_hosts"`
+	MaxEdges          int  `json:"max_edges"`
+	MemoryMB          int  `json:"memory_mb"`
+	Passes            int  `json:"passes"`
+	ClusterSize       int  `json:"cluster_size"`
+	VisitedOnly       bool `json:"visited_only"`
+	RemoveOrphans     bool `json:"remove_orphans"`
 }
 
 func DefaultAtlasOptions() AtlasOptions {
-	return AtlasOptions{200000, 1000000, 512, 12, 800, true, true}
+	return AtlasOptions{MaxHosts: 200000, MaxEdges: 1000000, MemoryMB: 512, Passes: 12, ClusterSize: 800, VisitedOnly: true, RemoveOrphans: true}
 }
 func (o AtlasOptions) Validate() error {
 	if o.MaxHosts < 10 || o.MaxHosts > 2000000 || o.MaxEdges < 10 || o.MaxEdges > 10000000 || o.MemoryMB < 64 || o.MemoryMB > 4096 || o.Passes < 2 || o.Passes > 40 || o.ClusterSize < 20 || o.ClusterSize > 5000 {
@@ -36,6 +37,8 @@ func (o AtlasOptions) Validate() error {
 }
 
 type AtlasInfo struct {
+	RawHosts    int          `json:"raw_hosts,omitempty"`
+	RawEdges    int          `json:"raw_edges,omitempty"`
 	HiddenHosts int          `json:"hidden_hosts,omitempty"`
 	Format      int          `json:"format"`
 	ID          string       `json:"id"`
@@ -170,13 +173,22 @@ func (s *Store) GenerateFilteredAtlas(ctx context.Context, target, id string, o 
 	if err != nil {
 		return
 	}
+	info.RawHosts, info.RawEdges = len(nodes), len(edges)
+	var fold *atlasFold
+	if o.FoldRepeatedPages {
+		progress("Folding repeated-page families")
+		nodes, edges, fold, err = foldAtlas(ctx, tx, nodes, edges, check)
+		if err != nil {
+			return
+		}
+	}
 	tx.Rollback()
 	if o.RemoveOrphans {
 		keep := make([]int, len(nodes))
 		filtered := []atlasVertex{}
 		for i, v := range nodes {
 			keep[i] = -1
-			if len(v.in)+len(v.out) > 0 {
+			if len(v.in)+len(v.out) > 0 || fold != nil && fold.internal[v.id] > 0 {
 				keep[i] = len(filtered)
 				filtered = append(filtered, v)
 			}
@@ -311,6 +323,9 @@ func (s *Store) GenerateFilteredAtlas(ctx context.Context, target, id string, o 
 		if _, err = es.ExecContext(ctx, nodes[e.a].id, nodes[e.b].id); err != nil {
 			return
 		}
+	}
+	if err = writeAtlasFold(ctx, wt, fold, nodes); err != nil {
+		return
 	}
 	meta, _ := json.Marshal(info)
 	if _, err = wt.ExecContext(ctx, "INSERT INTO meta VALUES(?)", string(meta)); err != nil {

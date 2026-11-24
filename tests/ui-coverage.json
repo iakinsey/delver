@@ -76,6 +76,102 @@
       "title": "two-host network remains legible mobile"
     },
     {
+      "file": "workspace-body.spec.js",
+      "title": "protected body direct http chunked"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body direct http fixed"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body direct http gzip"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body direct https chunked"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body direct https fixed"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body direct https gzip"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body http http chunked"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body http http fixed"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body http http gzip"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body http https chunked"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body http https fixed"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body http https gzip"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body https-proxy http chunked"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body https-proxy http fixed"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body https-proxy http gzip"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body https-proxy https chunked"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body https-proxy https fixed"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body https-proxy https gzip"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body socks5 http chunked"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body socks5 http fixed"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body socks5 http gzip"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body socks5 https chunked"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body socks5 https fixed"
+    },
+    {
+      "file": "workspace-body.spec.js",
+      "title": "protected body socks5 https gzip"
+    },
+    {
       "file": "workspace-boundaries.spec.js",
       "title": "feed-only same_domain preview explains unresolved boundaries"
     },
@@ -572,6 +668,22 @@
       "title": "two blocklist editors reject revision conflicts without losing entered values"
     },
     {
+      "file": "workspace-queue-cache.spec.js",
+      "title": "request queue cache expert exact integers desktop"
+    },
+    {
+      "file": "workspace-queue-cache.spec.js",
+      "title": "request queue cache expert exact integers mobile"
+    },
+    {
+      "file": "workspace-queue-cache.spec.js",
+      "title": "request queue cache guided persistence and runtime desktop"
+    },
+    {
+      "file": "workspace-queue-cache.spec.js",
+      "title": "request queue cache guided persistence and runtime mobile"
+    },
+    {
       "file": "workspace-reconfigure.spec.js",
       "title": "configuration paused save-and-restart retains run and pending work"
     },
@@ -598,6 +710,54 @@
     {
       "file": "workspace-recovery.spec.js",
       "title": "workspace reconnects without hiding failed form validation"
+    },
+    {
+      "file": "workspace-repeated.spec.js",
+      "title": "repeated boundaries expert roundtrip conflicts and cancellation desktop"
+    },
+    {
+      "file": "workspace-repeated.spec.js",
+      "title": "repeated boundaries expert roundtrip conflicts and cancellation mobile"
+    },
+    {
+      "file": "workspace-repeated.spec.js",
+      "title": "repeated family inspection overrides analysis and folding desktop"
+    },
+    {
+      "file": "workspace-repeated.spec.js",
+      "title": "repeated family inspection overrides analysis and folding mobile"
+    },
+    {
+      "file": "workspace-repeated.spec.js",
+      "title": "repeated member pagination and asynchronous retry desktop"
+    },
+    {
+      "file": "workspace-repeated.spec.js",
+      "title": "repeated member pagination and asynchronous retry mobile"
+    },
+    {
+      "file": "workspace-repeated.spec.js",
+      "title": "repeated settings deprioritize desktop"
+    },
+    {
+      "file": "workspace-repeated.spec.js",
+      "title": "repeated settings deprioritize mobile"
+    },
+    {
+      "file": "workspace-repeated.spec.js",
+      "title": "repeated settings observe desktop"
+    },
+    {
+      "file": "workspace-repeated.spec.js",
+      "title": "repeated settings observe mobile"
+    },
+    {
+      "file": "workspace-repeated.spec.js",
+      "title": "repeated settings off desktop"
+    },
+    {
+      "file": "workspace-repeated.spec.js",
+      "title": "repeated settings off mobile"
     },
     {
       "file": "workspace-report.spec.js",
@@ -798,118 +958,6 @@
     {
       "file": "workspace.spec.js",
       "title": "monitoring crawls remain independent and the editor works on mobile"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body direct http fixed"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body direct http gzip"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body direct http chunked"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body direct https fixed"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body direct https gzip"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body direct https chunked"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body http http fixed"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body http http gzip"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body http http chunked"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body http https fixed"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body http https gzip"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body http https chunked"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body socks5 http fixed"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body socks5 http gzip"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body socks5 http chunked"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body socks5 https fixed"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body socks5 https gzip"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body socks5 https chunked"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body https-proxy http fixed"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body https-proxy http gzip"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body https-proxy http chunked"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body https-proxy https fixed"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body https-proxy https gzip"
-    },
-    {
-      "file": "workspace-body.spec.js",
-      "title": "protected body https-proxy https chunked"
-    },
-    {
-      "file": "workspace-queue-cache.spec.js",
-      "title": "request queue cache expert exact integers desktop"
-    },
-    {
-      "file": "workspace-queue-cache.spec.js",
-      "title": "request queue cache expert exact integers mobile"
-    },
-    {
-      "file": "workspace-queue-cache.spec.js",
-      "title": "request queue cache guided persistence and runtime desktop"
-    },
-    {
-      "file": "workspace-queue-cache.spec.js",
-      "title": "request queue cache guided persistence and runtime mobile"
     }
   ]
 }

@@ -80,6 +80,11 @@ func init() {
 }
 
 func paramsFrontier(p frontier.StoreParams) error {
+	if p.RepeatedPages != nil {
+		if err := p.RepeatedPages.Validate(); err != nil {
+			return err
+		}
+	}
 	if p.Traps != nil {
 		if err := p.Traps.Validate(); err != nil {
 			return err

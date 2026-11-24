@@ -45,12 +45,12 @@ test-soak:
 test-million:
 	@test -z "$${DELVER_FRONTIER_RESUME_ROOT}" || (echo 'Acceptance scale workloads must start from empty storage; unset DELVER_FRONTIER_RESUME_ROOT'; exit 1)
 	@test -d /dev/shm && test "$$(stat -f -c %T "$(dir $(TMPFS_ROOT))")" = tmpfs || (echo 'TMPFS_ROOT must be on tmpfs'; exit 1)
-	DELVER_FRONTIER_MILLION=1 DELVER_FRONTIER_URLS=1000000 DELVER_FRONTIER_HISTORY_URLS=900000 DELVER_VALIDATION_ROOT="$(TMPFS_ROOT)" go test ./frontier -run '^TestFrontierMillionURLs$$' -count=1 -timeout=90m -v
+	DELVER_REPEATED_SCALE=1 DELVER_FRONTIER_MILLION=1 DELVER_FRONTIER_URLS=1000000 DELVER_FRONTIER_HISTORY_URLS=900000 DELVER_VALIDATION_ROOT="$(TMPFS_ROOT)" go test ./frontier -run '^TestFrontierMillionURLs$$' -count=1 -timeout=90m -v
 test-million-disk:
 	@test -z "$${DELVER_FRONTIER_RESUME_ROOT}" || (echo 'Acceptance scale workloads must start from empty storage; unset DELVER_FRONTIER_RESUME_ROOT'; exit 1)
 	@mkdir -p "$(DISK_ROOT)"
 	@test "$$(stat -f -c %T "$(DISK_ROOT)")" != tmpfs || (echo 'DISK_ROOT must be on persistent storage'; exit 1)
-	DELVER_FRONTIER_MILLION=1 DELVER_FRONTIER_URLS=1000000 DELVER_FRONTIER_HISTORY_URLS=10000 DELVER_VALIDATION_ROOT="$(DISK_ROOT)" go test ./frontier -run '^TestFrontierMillionURLs$$' -count=1 -timeout=$(MILLION_DISK_TIMEOUT) -v
+	DELVER_REPEATED_SCALE=1 DELVER_FRONTIER_MILLION=1 DELVER_FRONTIER_URLS=1000000 DELVER_FRONTIER_HISTORY_URLS=10000 DELVER_VALIDATION_ROOT="$(DISK_ROOT)" go test ./frontier -run '^TestFrontierMillionURLs$$' -count=1 -timeout=$(MILLION_DISK_TIMEOUT) -v
 test-storage-scale:
 	DELVER_FRONTIER_SCALE=1 go test ./frontier -run '^TestFrontierScale$$' -count=1 -timeout=20m -v
 test-elasticsearch:
@@ -76,7 +76,7 @@ test-report-graph:
 
 .PHONY: test-network-million
 test-network-million:
-	DELVER_ATLAS_MILLION=1 go test ./report -run '^TestAtlasMillionHosts$$' -count=1 -timeout=20m -v
+	DELVER_ATLAS_MILLION=1 go test ./report -run '^TestAtlas(MillionHosts|RepeatedFoldingScale)$$' -count=1 -timeout=20m -v
 
 .PHONY: test-protection-benchmark
 test-protection-benchmark:

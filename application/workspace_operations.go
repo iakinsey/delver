@@ -1,6 +1,7 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"github.com/iakinsey/delver/types"
 	"github.com/iakinsey/delver/types/errs"
@@ -44,7 +45,7 @@ func (w *Workspace) acceptWorkflow(r *CrawlRecord, slot *crawlSlot, action strin
 		// Run-scoped commands do not include a draft revision in their
 		// request signature. Saving a draft must not invalidate a retry.
 		revisionChanged := len(details) == 0 && existing.Version != revision
-		if existing.Action != action || revisionChanged || existing.Queue != queue || existing.Record != record {
+		if existing.Action != action || revisionChanged || existing.Queue != queue || existing.Record != record || len(details) > 0 && !bytes.Equal(existing.Input, details[0].Input) {
 			return nil, errs.NewRequestError("operation ID was already used for another request")
 		}
 		copy := *existing
@@ -67,6 +68,7 @@ func (w *Workspace) acceptWorkflow(r *CrawlRecord, slot *crawlSlot, action strin
 	}
 	op := &Operation{RunID: runID, ID: id, Action: action, Version: revision, State: "accepted", Updated: time.Now().Unix()}
 	if len(details) > 0 {
+		op.Input = details[0].Input
 		op.Queue = details[0].Queue
 		op.Record = details[0].Record
 	}
@@ -78,8 +80,10 @@ func (w *Workspace) acceptWorkflow(r *CrawlRecord, slot *crawlSlot, action strin
 	w.background.Add(1)
 	go func() {
 		defer w.background.Done()
-		slot.mu.Lock()
-		defer slot.mu.Unlock()
+		if action != "repeated_analyze" && action != "repeated_override" {
+			slot.mu.Lock()
+			defer slot.mu.Unlock()
+		}
 		w.mu.Lock()
 		op.State = "running"
 		err := w.saveLocked()
@@ -124,6 +128,10 @@ func (w *Workspace) crawlOperations(ctx context.Context, r *CrawlRecord, slot *c
 // All accepted commands execute under the same per-crawl slot lock.
 func (w *Workspace) executeWorkflow(r *CrawlRecord, slot *crawlSlot, action string, revision uint64, op *Operation) error {
 	switch action {
+	case "repeated_override":
+		return w.executeRepeatedOverride(w.ctx, r, slot, op)
+	case "repeated_analyze":
+		return w.executeRepeatedAnalysis(w.ctx, r, slot, op)
 	case "start_run", "activate", "continue_run":
 		_, err := w.applyRun(r, slot, action, revision)
 		return err

@@ -1,3 +1,4 @@
+import { RepeatedFamilies } from "./repeatedFamilies";
 import CrawlNavigation from "./crawlNavigation";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useHistory, useLocation, useParams } from "react-router-dom";
@@ -530,6 +531,7 @@ export default function CrawlReport() {
           </p>
         )}
       </section>
+      <RepeatedFamilies crawlId={crawlId} runId={runId} />
     </main>
   );
 }

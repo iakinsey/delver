@@ -71,7 +71,7 @@ func NewServerWithOperations(conf config.APIConfig, operations Operations) (*htt
 		if multi, ok := operations.(interface {
 			HandleCrawls(context.Context, string, json.RawMessage) (interface{}, error)
 		}); ok {
-			for _, name := range []string{"patch_queue_cache", "trap_decisions", "trap_restore", "atlas_tile", "atlas_pick", "atlas_generate", "atlas_cancel", "atlas_status", "atlas_view", "atlas_host", "atlas_search", "report", "hosts", "host_graph", "defaults", "patch_fetch", "preview", "results", "list", "create", "detail", "validate", "draft", "activate", "start_run", "continue_run", "duplicate", "delete", "archive", "restore", "command", "status", "operations", "failed", "log", "pipeline"} {
+			for _, name := range []string{"repeated_families", "repeated_members", "repeated_override", "repeated_analyze", "repeated_cancel", "patch_repeated_pages", "patch_queue_cache", "trap_decisions", "trap_restore", "atlas_members", "atlas_tile", "atlas_pick", "atlas_generate", "atlas_cancel", "atlas_status", "atlas_view", "atlas_host", "atlas_search", "report", "hosts", "host_graph", "defaults", "patch_fetch", "preview", "results", "list", "create", "detail", "validate", "draft", "activate", "start_run", "continue_run", "duplicate", "delete", "archive", "restore", "command", "status", "operations", "failed", "log", "pipeline"} {
 				action := name
 				routes["/crawls/"+action] = func(ctx context.Context, raw json.RawMessage) (interface{}, error) {
 					return multi.HandleCrawls(ctx, action, raw)

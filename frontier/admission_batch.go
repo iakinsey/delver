@@ -22,6 +22,9 @@ func (s *Store) batchAdmissions(ctx context.Context, entries []discoveryEntry, h
 	}
 	uris := make([]string, 0, len(entries))
 	for _, e := range entries {
+		if e.stale {
+			return nil, nil
+		}
 		if e.request.Depth < 0 || e.request.Hops < 0 {
 			return nil, nil
 		}
@@ -55,12 +58,13 @@ func (s *Store) batchAdmissions(ctx context.Context, entries []discoveryEntry, h
 			return err
 		}
 		return s.update(func(tx *badger.Txn) error {
+			cache := newRepeatedClassifier(s, tx)
 			for _, e := range entries {
 				if err := ctx.Err(); err != nil {
 					return err
 				}
 				used := false
-				if err := s.admitTx(tx, e.request, &used); err != nil {
+				if err := s.admitTx(tx, e.request, &used, cache); err != nil {
 					return err
 				}
 				results[e.key] = used
